@@ -493,6 +493,18 @@ bool DX8Wrapper::Init(void * hwnd, bool lite)
 	Invalidate_Cached_Render_States();
 
 	if (!lite) {
+#if defined(PLATFORM_LINUX) || defined(__linux__) || defined(_UNIX)
+		static IDirect3D9 linuxD3D9;
+		D3DInterface = &linuxD3D9;
+		IsInitted = true;
+
+		/*
+		** Enumerate the available devices
+		*/
+		WWDEBUG_SAY(("Enumerate devices\n"));
+		Enumerate_Devices();
+		WWDEBUG_SAY(("DX8Wrapper Init completed\n"));
+#else
 		D3D9Lib = LoadLibrary("D3D9.DLL");
 
 		if (D3D9Lib == NULL) return false;	// Return false at this point if init failed
@@ -516,6 +528,7 @@ bool DX8Wrapper::Init(void * hwnd, bool lite)
 		WWDEBUG_SAY(("Enumerate devices\n"));
 		Enumerate_Devices();
 		WWDEBUG_SAY(("DX8Wrapper Init completed\n"));
+#endif
 	}
 
 	return(true);

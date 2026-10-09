@@ -217,11 +217,102 @@ const char * Get_D3D_Error_String(HRESULT result)
 }
 
 #else // PLATFORM_LINUX
+static HRESULT WINAPI Linux_D3DXCreateTexture(LPDIRECT3DDEVICE9 device,
+	UINT width, UINT height, UINT mip_levels, DWORD usage, D3DFORMAT format, D3DPOOL pool,
+	LPDIRECT3DTEXTURE9 * texture)
+{
+	if (device) {
+		return device->CreateTexture(width, height, mip_levels, usage, format, pool, texture, NULL);
+	}
+	static IDirect3DTexture9 s_tex;
+	if (texture) *texture = &s_tex;
+	return 0;
+}
 
-bool Bind_D3DX9_Runtime(void) { return true; }
+static HRESULT WINAPI Linux_D3DXCreateTextureFromFileExA(LPDIRECT3DDEVICE9 device,
+	LPCSTR file_name, UINT width, UINT height, UINT mip_levels, DWORD usage, D3DFORMAT format,
+	D3DPOOL pool, DWORD filter, DWORD mip_filter, D3DCOLOR colour_key, D3DXIMAGE_INFO * info,
+	PALETTEENTRY * palette, LPDIRECT3DTEXTURE9 * texture)
+{
+	if (device) {
+		return device->CreateTexture(width, height, mip_levels, usage, format, pool, texture, NULL);
+	}
+	static IDirect3DTexture9 s_tex;
+	if (texture) *texture = &s_tex;
+	return 0;
+}
+
+static HRESULT WINAPI Linux_D3DXFilterTexture(LPDIRECT3DBASETEXTURE9 pBaseTexture,
+	const PALETTEENTRY * pPalette, DWORD SrcLevel, DWORD MipFilter)
+{
+	return 0;
+}
+
+static HRESULT WINAPI Linux_D3DXLoadSurfaceFromSurface(LPDIRECT3DSURFACE9 pDestSurface,
+	const PALETTEENTRY * pDestPalette, const RECT * pDestRect,
+	LPDIRECT3DSURFACE9 pSrcSurface, const PALETTEENTRY * pSrcPalette,
+	const RECT * pSrcRect, DWORD Filter, D3DCOLOR ColorKey)
+{
+	return 0;
+}
+static HRESULT WINAPI Linux_D3DXAssembleShader(LPCSTR source, UINT source_length,
+	const D3DXMACRO * defines, LPD3DXINCLUDE include, DWORD flags,
+	LPD3DXBUFFER * shader, LPD3DXBUFFER * errors)
+{
+	static uint32_t s_dummyCode[16] = { 0xFFFF0101, 0x0000FFFF };
+	struct DummyBuffer : public ID3DXBuffer {
+		DummyBuffer() {
+			pBuffer = s_dummyCode;
+			Size = sizeof(s_dummyCode);
+		}
+	};
+	static DummyBuffer s_buf;
+	if (shader) *shader = &s_buf;
+	if (errors) *errors = NULL;
+	return 0;
+}
+
+static HRESULT WINAPI Linux_D3DXCompileShader(LPCSTR src, UINT len,
+	const D3DXMACRO * defines, LPD3DXINCLUDE include, LPCSTR fn, LPCSTR profile,
+	DWORD flags, LPD3DXBUFFER * shader, LPD3DXBUFFER * errors, void ** table)
+{
+	if (shader) {
+		static uint32_t s_code[2] = { 0, 0 };
+		struct DummyBuffer : public ID3DXBuffer {
+			DummyBuffer() { pBuffer = s_code; Size = sizeof(s_code); }
+		};
+		static DummyBuffer s_buf;
+		*shader = &s_buf;
+	}
+	return 0;
+}
+
+static HRESULT WINAPI Linux_D3DXDisassembleShader(const DWORD * shader, BOOL comments,
+	LPCSTR comments_str, LPD3DXBUFFER * disassembly)
+{
+	if (disassembly) {
+		static char s_disasm[] = "ps_1_1\n";
+		struct DummyBuffer : public ID3DXBuffer {
+			DummyBuffer() { pBuffer = s_disasm; Size = sizeof(s_disasm); }
+		};
+		static DummyBuffer s_buf;
+		*disassembly = &s_buf;
+	}
+	return 0;
+}
+
+bool Bind_D3DX9_Runtime(void) {
+	D3DXAssembleShader = Linux_D3DXAssembleShader;
+	D3DXCompileShader = Linux_D3DXCompileShader;
+	D3DXDisassembleShader = Linux_D3DXDisassembleShader;
+	D3DXCreateTexture = Linux_D3DXCreateTexture;
+	D3DXCreateTextureFromFileExA = Linux_D3DXCreateTextureFromFileExA;
+	D3DXFilterTexture = Linux_D3DXFilterTexture;
+	D3DXLoadSurfaceFromSurface = Linux_D3DXLoadSurfaceFromSurface;
+	return true;
+}
 void Unbind_D3DX9_Runtime(void) {}
 const char * Get_D3D_Error_String(HRESULT) { return "D3D_OK"; }
-
 #endif // PLATFORM_LINUX
 
 UINT Get_FVF_Vertex_Size(DWORD fvf)

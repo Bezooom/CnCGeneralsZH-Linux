@@ -391,12 +391,12 @@ struct IDirect3DSwapChain9 {
 };
 
 struct IDirect3DDevice9 {
-  HRESULT CreateIndexBuffer(UINT, DWORD, D3DFORMAT, D3DPOOL, IDirect3DIndexBuffer9**, HANDLE) { return 0; }
-  HRESULT CreateVertexBuffer(UINT, DWORD, DWORD, D3DPOOL, IDirect3DVertexBuffer9**, HANDLE) { return 0; }
-  HRESULT CreateTexture(UINT, UINT, UINT, DWORD, D3DFORMAT, D3DPOOL, IDirect3DTexture9**, HANDLE*) { return 0; }
-  HRESULT CreatePixelShader(const DWORD*, IDirect3DPixelShader9**) { return 0; }
-  HRESULT CreateVertexShader(const DWORD*, IDirect3DVertexShader9**) { return 0; }
-  HRESULT CreateVertexDeclaration(const D3DVERTEXELEMENT9*, IDirect3DVertexDeclaration9**) { return 0; }
+  HRESULT CreateIndexBuffer(UINT, DWORD, D3DFORMAT, D3DPOOL, IDirect3DIndexBuffer9**, HANDLE);
+  HRESULT CreateVertexBuffer(UINT, DWORD, DWORD, D3DPOOL, IDirect3DVertexBuffer9**, HANDLE);
+  HRESULT CreateTexture(UINT, UINT, UINT, DWORD, D3DFORMAT, D3DPOOL, IDirect3DTexture9**, HANDLE*);
+  HRESULT CreatePixelShader(const DWORD*, IDirect3DPixelShader9**);
+  HRESULT CreateVertexShader(const DWORD*, IDirect3DVertexShader9**);
+  HRESULT CreateVertexDeclaration(const D3DVERTEXELEMENT9*, IDirect3DVertexDeclaration9**);
   HRESULT SetIndices(IDirect3DIndexBuffer9*) { return 0; }
   HRESULT SetTransform(D3DTRANSFORMSTATETYPE, const D3DMATRIX*) { return 0; }
   HRESULT GetTransform(D3DTRANSFORMSTATETYPE, D3DMATRIX*) { return 0; }
@@ -412,22 +412,22 @@ struct IDirect3DDevice9 {
   HRESULT TestCooperativeLevel() { return 0; }
   HRESULT SetFVF(DWORD) { return 0; }
   HRESULT GetRenderState(D3DRENDERSTATETYPE, DWORD*) { return 0; }
-  HRESULT GetRenderTarget(UINT, IDirect3DSurface9**) { return 0; }
-  HRESULT GetDepthStencilSurface(IDirect3DSurface9**) { return 0; }
+  HRESULT GetRenderTarget(UINT, IDirect3DSurface9**);
+  HRESULT GetDepthStencilSurface(IDirect3DSurface9**);
   HRESULT SetPixelShaderConstantF(UINT, const float*, UINT) { return 0; }
   HRESULT SetVertexShaderConstantF(UINT, const float*, UINT) { return 0; }
   HRESULT Clear(UINT, const RECT*, DWORD, DWORD, float, DWORD) { return 0; }
   HRESULT ShowCursor(BOOL) { return 0; }
   HRESULT SetCursorProperties(int, int, IDirect3DSurface9*) { return 0; }
   HRESULT SetCursorPosition(int, int, POINT*) { return 0; }
-  HRESULT CreateOffscreenPlainSurface(UINT, UINT, D3DFORMAT, D3DPOOL, IDirect3DSurface9**, HANDLE*) { return 0; }
-  HRESULT GetRenderTargetData(IDirect3DSurface9*, IDirect3DSurface9*) { return 0; }
+  HRESULT CreateOffscreenPlainSurface(UINT, UINT, D3DFORMAT, D3DPOOL, IDirect3DSurface9**, HANDLE*);
+  HRESULT GetRenderTargetData(IDirect3DSurface9*, IDirect3DSurface9*);
   HRESULT DrawPrimitive(D3DPRIMITIVETYPE, UINT, UINT) { return 0; }
   HRESULT SetVertexDeclaration(IDirect3DVertexDeclaration9*) { return 0; }
   HRESULT SetVertexShader(IDirect3DVertexShader9*) { return 0; }
   HRESULT SetPixelShader(IDirect3DPixelShader9*) { return 0; }
   HRESULT SetSoftwareVertexProcessing(BOOL) { return 0; }
-  HRESULT GetDeviceCaps(D3DCAPS9*) { return 0; }
+  HRESULT GetDeviceCaps(D3DCAPS9* caps);
   HRESULT EvictManagedResources() { return 0; }
   HRESULT BeginScene() { return 0; }
   HRESULT EndScene() { return 0; }
@@ -437,16 +437,16 @@ struct IDirect3DDevice9 {
   HRESULT GetVertexShader(IDirect3DVertexShader9**) { return 0; }
   HRESULT ValidateDevice(DWORD*) { return 0; }
   HRESULT ValidateDevice(unsigned long*) { return 0; }
-  HRESULT SetRenderTarget(DWORD, IDirect3DSurface9*) { return 0; }
-  HRESULT SetDepthStencilSurface(IDirect3DSurface9*) { return 0; }
+  HRESULT SetRenderTarget(DWORD, IDirect3DSurface9*);
+  HRESULT SetDepthStencilSurface(IDirect3DSurface9*);
   HRESULT DrawPrimitiveUP(D3DPRIMITIVETYPE, UINT, const void*, UINT) { return 0; }
   HRESULT UpdateSurface(IDirect3DSurface9*, const RECT*, IDirect3DSurface9*, const POINT*) { return 0; }
   HRESULT StretchRect(IDirect3DSurface9*, const RECT*, IDirect3DSurface9*, const RECT*, D3DTEXTUREFILTERTYPE) { return 0; }
   HRESULT UpdateTexture(IDirect3DBaseTexture9*, IDirect3DBaseTexture9*) { return 0; }
   HRESULT GetDisplayMode(UINT, D3DDISPLAYMODE*) { return 0; }
   HRESULT GetFrontBufferData(UINT, IDirect3DSurface9*) { return 0; }
-  HRESULT GetBackBuffer(UINT, UINT, D3DBACKBUFFER_TYPE, IDirect3DSurface9**) { return 0; }
-  HRESULT CreateDepthStencilSurface(UINT, UINT, D3DFORMAT, D3DMULTISAMPLE_TYPE, DWORD, BOOL, IDirect3DSurface9**, HANDLE*) { return 0; }
+  HRESULT GetBackBuffer(UINT, UINT, D3DBACKBUFFER_TYPE, IDirect3DSurface9**);
+  HRESULT CreateDepthStencilSurface(UINT, UINT, D3DFORMAT, D3DMULTISAMPLE_TYPE, DWORD, BOOL, IDirect3DSurface9**, HANDLE*);
   HRESULT CreateAdditionalSwapChain(D3DPRESENT_PARAMETERS*, IDirect3DSwapChain9**) { return 0; }
   UINT GetAvailableTextureMem() { return 0; }
   void SetGammaRamp(UINT, DWORD, const D3DGAMMARAMP*) {}
@@ -484,6 +484,10 @@ struct D3DVOLUME_DESC {
   UINT Height;
   UINT Depth;
 };
+static inline uint8_t* Get_Dummy_D3D_Scratch() {
+  static uint8_t s_scratch[2048 * 2048 * 4];
+  return s_scratch;
+}
 
 struct IDirect3DBaseTexture9 {
   DWORD SetLOD(DWORD) { return 0; }
@@ -495,9 +499,22 @@ struct IDirect3DBaseTexture9 {
   ULONG Release() { return 0; }
 };
 struct IDirect3DTexture9 : IDirect3DBaseTexture9 {
-  HRESULT GetSurfaceLevel(UINT, IDirect3DSurface9**) { return 0; }
-  HRESULT GetLevelDesc(UINT, D3DSURFACE_DESC*) { return 0; }
-  HRESULT LockRect(UINT, D3DLOCKED_RECT*, const RECT*, DWORD) { return 0; }
+  HRESULT GetSurfaceLevel(UINT, IDirect3DSurface9**);
+  HRESULT GetLevelDesc(UINT, D3DSURFACE_DESC* desc) {
+    if (desc) {
+      desc->Width = 256;
+      desc->Height = 256;
+      desc->Format = D3DFMT_A8R8G8B8;
+    }
+    return 0;
+  }
+  HRESULT LockRect(UINT, D3DLOCKED_RECT* rect, const RECT*, DWORD) {
+    if (rect) {
+      rect->Pitch = 1024;
+      rect->pBits = Get_Dummy_D3D_Scratch();
+    }
+    return 0;
+  }
   HRESULT UnlockRect(UINT) { return 0; }
   HRESULT AddDirtyRect(const RECT*) { return 0; }
   ULONG AddRef() { return 1; }
@@ -519,20 +536,39 @@ struct IDirect3DVolumeTexture9 : IDirect3DBaseTexture9 {
   ULONG Release() { return 0; }
 };
 struct IDirect3DSurface9 {
-  HRESULT GetDesc(D3DSURFACE_DESC*) { return 0; }
-  HRESULT LockRect(D3DLOCKED_RECT*, const RECT*, DWORD) { return 0; }
+  HRESULT GetDesc(D3DSURFACE_DESC* desc) {
+    if (desc) {
+      desc->Width = 1280;
+      desc->Height = 720;
+      desc->Format = D3DFMT_X8R8G8B8;
+    }
+    return 0;
+  }
+  HRESULT LockRect(D3DLOCKED_RECT* rect, const RECT*, DWORD) {
+    if (rect) {
+      rect->Pitch = 1280 * 4;
+      rect->pBits = Get_Dummy_D3D_Scratch();
+    }
+    return 0;
+  }
   HRESULT UnlockRect() { return 0; }
   HRESULT GetContainer(const GUID&, void**) { return 0; }
   ULONG AddRef() { return 1; }
   ULONG Release() { return 0; }
 };
 struct IDirect3DVertexBuffer9 {
-  HRESULT Lock(UINT, UINT, void**, DWORD) { return 0; }
+  HRESULT Lock(UINT, UINT, void** ppbData, DWORD) {
+    if (ppbData) *ppbData = Get_Dummy_D3D_Scratch();
+    return 0;
+  }
   HRESULT Unlock() { return 0; }
   ULONG Release() { return 0; }
 };
 struct IDirect3DIndexBuffer9 {
-  HRESULT Lock(UINT, UINT, void**, DWORD) { return 0; }
+  HRESULT Lock(UINT, UINT, void** ppbData, DWORD) {
+    if (ppbData) *ppbData = Get_Dummy_D3D_Scratch();
+    return 0;
+  }
   HRESULT Unlock() { return 0; }
   ULONG Release() { return 0; }
 };
@@ -545,6 +581,69 @@ struct IDirect3DVertexDeclaration9 {
 struct IDirect3DPixelShader9 {
   ULONG Release() { return 0; }
 };
+inline HRESULT IDirect3DTexture9::GetSurfaceLevel(UINT, IDirect3DSurface9** ppSurface) {
+  static IDirect3DSurface9 s_surface;
+  if (ppSurface) *ppSurface = &s_surface;
+  return 0;
+}
+inline HRESULT IDirect3DDevice9::CreateIndexBuffer(UINT, DWORD, D3DFORMAT, D3DPOOL, IDirect3DIndexBuffer9** pp, HANDLE) {
+  static IDirect3DIndexBuffer9 s_ib;
+  if (pp) *pp = &s_ib;
+  return 0;
+}
+inline HRESULT IDirect3DDevice9::CreateVertexBuffer(UINT, DWORD, DWORD, D3DPOOL, IDirect3DVertexBuffer9** pp, HANDLE) {
+  static IDirect3DVertexBuffer9 s_vb;
+  if (pp) *pp = &s_vb;
+  return 0;
+}
+inline HRESULT IDirect3DDevice9::CreateTexture(UINT, UINT, UINT, DWORD, D3DFORMAT, D3DPOOL, IDirect3DTexture9** pp, HANDLE*) {
+  static IDirect3DTexture9 s_tex;
+  if (pp) *pp = &s_tex;
+  return 0;
+}
+inline HRESULT IDirect3DDevice9::CreatePixelShader(const DWORD*, IDirect3DPixelShader9** pp) {
+  static IDirect3DPixelShader9 s_ps;
+  if (pp) *pp = &s_ps;
+  return 0;
+}
+inline HRESULT IDirect3DDevice9::CreateVertexShader(const DWORD*, IDirect3DVertexShader9** pp) {
+  static IDirect3DVertexShader9 s_vs;
+  if (pp) *pp = &s_vs;
+  return 0;
+}
+inline HRESULT IDirect3DDevice9::CreateVertexDeclaration(const D3DVERTEXELEMENT9*, IDirect3DVertexDeclaration9** pp) {
+  static IDirect3DVertexDeclaration9 s_vd;
+  if (pp) *pp = &s_vd;
+  return 0;
+}
+inline HRESULT IDirect3DDevice9::CreateOffscreenPlainSurface(UINT, UINT, D3DFORMAT, D3DPOOL, IDirect3DSurface9** pp, HANDLE*) {
+  static IDirect3DSurface9 s_surf;
+  if (pp) *pp = &s_surf;
+  return 0;
+}
+inline HRESULT IDirect3DDevice9::CreateDepthStencilSurface(UINT, UINT, D3DFORMAT, D3DMULTISAMPLE_TYPE, DWORD, BOOL, IDirect3DSurface9** pp, HANDLE*) {
+  static IDirect3DSurface9 s_surf;
+  if (pp) *pp = &s_surf;
+  return 0;
+}
+inline HRESULT IDirect3DDevice9::GetRenderTarget(UINT, IDirect3DSurface9** pp) {
+  static IDirect3DSurface9 s_surf;
+  if (pp) *pp = &s_surf;
+  return 0;
+}
+inline HRESULT IDirect3DDevice9::GetDepthStencilSurface(IDirect3DSurface9** pp) {
+  static IDirect3DSurface9 s_surf;
+  if (pp) *pp = &s_surf;
+  return 0;
+}
+inline HRESULT IDirect3DDevice9::GetBackBuffer(UINT, UINT, D3DBACKBUFFER_TYPE, IDirect3DSurface9** pp) {
+  static IDirect3DSurface9 s_surf;
+  if (pp) *pp = &s_surf;
+  return 0;
+}
+inline HRESULT IDirect3DDevice9::GetRenderTargetData(IDirect3DSurface9*, IDirect3DSurface9*) { return 0; }
+inline HRESULT IDirect3DDevice9::SetRenderTarget(DWORD, IDirect3DSurface9*) { return 0; }
+inline HRESULT IDirect3DDevice9::SetDepthStencilSurface(IDirect3DSurface9*) { return 0; }
 
 #ifndef _D3DMATRIX
 #define _D3DMATRIX D3DMATRIX
@@ -705,7 +804,9 @@ inline D3DXMATRIX& operator*=(D3DXMATRIX& a, const D3DXMATRIX& b) { return a = a
 #endif
 
 #define E_FAIL 0x80004005L
+#ifndef S_OK
 #define S_OK 0L
+#endif
 #ifndef D3DXVECTOR4_DEFINED
 #define D3DXVECTOR4_DEFINED
 struct D3DXVECTOR4 { float x, y, z, w; D3DXVECTOR4() : x(0),y(0),z(0),w(0) {} D3DXVECTOR4(float a, float b, float c, float d) : x(a),y(b),z(c),w(d) {} operator const float*() { return &x; } };
@@ -713,7 +814,7 @@ struct D3DXVECTOR4 { float x, y, z, w; D3DXVECTOR4() : x(0),y(0),z(0),w(0) {} D3
 using FLOAT = float;
 #define D3DCOLOR_ARGB(A,R,G,B) ((DWORD)(A)<<24 | (DWORD)(R)<<16 | (DWORD)(G)<<8 | (DWORD)(B))
 
-struct D3DDISPLAYMODE { D3DFORMAT Format; UINT Width, Height; };
+struct D3DDISPLAYMODE { UINT Width, Height, RefreshRate; D3DFORMAT Format; };
 enum D3DSWAPEFFECT : unsigned {
   D3DSWAPEFFECT_DISCARD = 1,
   D3DSWAPEFFECT_FLIP = 2,
@@ -758,20 +859,109 @@ struct D3DADAPTER_IDENTIFIER9 {
   GUID DeviceIdentifier;
   DWORD WHQLLevel;
 };
+inline HRESULT IDirect3DDevice9::GetDeviceCaps(D3DCAPS9* caps) {
+  if (caps) {
+    memset(caps, 0, sizeof(*caps));
+    caps->DeviceType = D3DDEVTYPE_HAL;
+    caps->Caps2 = 0x00020000L;
+    caps->DevCaps = 0x00000020L | 0x00000010L;
+    caps->PresentationIntervals = 0x80000000L | 0x00000001L;
+    caps->MaxTextureWidth = 4096;
+    caps->MaxTextureHeight = 4096;
+    caps->MaxVolumeExtent = 4096;
+    caps->MaxTextureRepeat = 32768;
+    caps->MaxTextureAspectRatio = 32768;
+    caps->MaxAnisotropy = 16;
+    caps->MaxVertexW = 1.0f;
+    caps->StencilCaps = 0xFF;
+    caps->FVFCaps = 0xFF;
+    caps->TextureOpCaps = 0xFFFFFFFF;
+    caps->TextureCaps = 0xFFFFFFFF;
+    caps->TextureFilterCaps = 0xFFFFFFFF;
+    caps->MaxTextureBlendStages = 8;
+    caps->MaxSimultaneousTextures = 8;
+    caps->VertexShaderVersion = 0xFFFE0300;
+    caps->MaxVertexShaderConst = 256;
+    caps->PixelShaderVersion = 0xFFFF0300;
+    caps->PixelShader1xMaxValue = 8.0f;
+  }
+  return 0;
+}
 struct IDirect3D9 {
   HRESULT Create(UINT, UINT, D3DFORMAT, D3DFORMAT, UINT, D3DDISPLAYMODE*, IDirect3D9**) { return 0; }
   HRESULT RegisterSoftwareDevice(void*) { return 0; }
   UINT GetAdapterCount() { return 1; }
-  HRESULT GetAdapterIdentifier(UINT, DWORD, D3DADAPTER_IDENTIFIER9*) { return 0; }
-  HRESULT GetAdapterModeCount(UINT, D3DFORMAT) { return 0; }
-  HRESULT EnumAdapterModes(UINT, D3DFORMAT, UINT, D3DDISPLAYMODE*) { return 0; }
-  HRESULT GetAdapterDisplayMode(UINT, D3DDISPLAYMODE*) { return 0; }
+  HRESULT GetAdapterIdentifier(UINT, DWORD, D3DADAPTER_IDENTIFIER9* id) {
+    if (id) {
+      memset(id, 0, sizeof(*id));
+      strncpy(id->Driver, "Vulkan PAL", sizeof(id->Driver)-1);
+      strncpy(id->Description, "Vulkan Render Device", sizeof(id->Description)-1);
+      strncpy(id->DeviceName, "Vulkan0", sizeof(id->DeviceName)-1);
+      id->VendorId = 0x10DE;
+      id->DeviceId = 0x2204;
+    }
+    return 0;
+  }
+  HRESULT GetAdapterModeCount(UINT, D3DFORMAT) { return 4; }
+  HRESULT EnumAdapterModes(UINT, D3DFORMAT fmt, UINT mode, D3DDISPLAYMODE* d3dmode) {
+    if (d3dmode) {
+      static const struct { UINT w, h; } modes[4] = {
+        { 800, 600 }, { 1024, 768 }, { 1280, 720 }, { 1920, 1080 }
+      };
+      UINT idx = (mode < 4) ? mode : 0;
+      d3dmode->Width = modes[idx].w;
+      d3dmode->Height = modes[idx].h;
+      d3dmode->RefreshRate = 60;
+      d3dmode->Format = fmt;
+    }
+    return 0;
+  }
+  HRESULT GetAdapterDisplayMode(UINT, D3DDISPLAYMODE* d3dmode) {
+    if (d3dmode) {
+      d3dmode->Width = 1280;
+      d3dmode->Height = 720;
+      d3dmode->RefreshRate = 60;
+      d3dmode->Format = D3DFMT_X8R8G8B8;
+    }
+    return 0;
+  }
   HRESULT CheckDeviceType(UINT, D3DDEVTYPE, D3DFORMAT, D3DFORMAT, BOOL) { return 0; }
   HRESULT CheckDeviceFormat(UINT, D3DDEVTYPE, D3DFORMAT, DWORD, D3DRESOURCETYPE, D3DFORMAT) { return 0; }
   HRESULT CheckDeviceMultiSampleType(UINT, D3DDEVTYPE, D3DFORMAT, BOOL, D3DMULTISAMPLE_TYPE, DWORD*) { return 0; }
   HRESULT CheckDepthStencilMatch(UINT, D3DDEVTYPE, D3DFORMAT, D3DFORMAT, D3DFORMAT) { return 0; }
-  HRESULT GetDeviceCaps(UINT, D3DDEVTYPE, D3DCAPS9*) { return 0; }
-  HRESULT CreateDevice(UINT, D3DDEVTYPE, HWND, DWORD, D3DPRESENT_PARAMETERS*, IDirect3DDevice9**) { return 0; }
+  HRESULT GetDeviceCaps(UINT, D3DDEVTYPE, D3DCAPS9* caps) {
+    if (caps) {
+      memset(caps, 0, sizeof(*caps));
+      caps->DeviceType = D3DDEVTYPE_HAL;
+      caps->Caps2 = 0x00020000L;
+      caps->DevCaps = 0x00000020L | 0x00000010L;
+      caps->PresentationIntervals = 0x80000000L | 0x00000001L;
+      caps->MaxTextureWidth = 4096;
+      caps->MaxTextureHeight = 4096;
+      caps->MaxVolumeExtent = 4096;
+      caps->MaxTextureRepeat = 32768;
+      caps->MaxTextureAspectRatio = 32768;
+      caps->MaxAnisotropy = 16;
+      caps->MaxVertexW = 1.0f;
+      caps->StencilCaps = 0xFF;
+      caps->FVFCaps = 0xFF;
+      caps->TextureOpCaps = 0xFFFFFFFF;
+      caps->TextureCaps = 0xFFFFFFFF;
+      caps->TextureFilterCaps = 0xFFFFFFFF;
+      caps->MaxTextureBlendStages = 8;
+      caps->MaxSimultaneousTextures = 8;
+      caps->VertexShaderVersion = 0xFFFE0300;
+      caps->MaxVertexShaderConst = 256;
+      caps->PixelShaderVersion = 0xFFFF0300;
+      caps->PixelShader1xMaxValue = 8.0f;
+    }
+    return 0;
+  }
+  HRESULT CreateDevice(UINT, D3DDEVTYPE, HWND, DWORD, D3DPRESENT_PARAMETERS*, IDirect3DDevice9** ppDevice) {
+    static IDirect3DDevice9 s_linuxDevice;
+    if (ppDevice) *ppDevice = &s_linuxDevice;
+    return 0;
+  }
   ULONG Release() { return 0; }
 };
 #endif
