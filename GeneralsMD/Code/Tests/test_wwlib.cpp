@@ -1355,10 +1355,13 @@ public:
 protected:
 	virtual void Thread_Function()
 	{
-		while (running)
+		while (true)
 		{
 			FastCriticalSectionClass::LockClass lock(m_lock);
 			m_entered = true;
+			if (!running) {
+				break;
+			}
 			for (volatile int i = 0; i < 2000; ++i) {}
 		}
 	}

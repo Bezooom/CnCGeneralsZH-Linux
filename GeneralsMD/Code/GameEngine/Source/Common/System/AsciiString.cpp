@@ -127,7 +127,7 @@ void AsciiString::ensureUniqueBufferOfSize(int numCharsNeeded, Bool preserveData
 	{
 		// no buffer manhandling is needed (it's already large enough, and unique to us)
 		if (strToCopy)
-			strcpy(m_data->peek(), strToCopy);
+			memmove(m_data->peek(), strToCopy, strlen(strToCopy) + 1);
 		if (strToCat)
 			strcat(m_data->peek(), strToCat);
 		return;
@@ -398,11 +398,20 @@ Bool AsciiString::nextToken(AsciiString* tok, const char* seps)
 	if (end > start)
 	{
 		Int len = end - start;
-		char* tmp = tok->getBufferForRead(len + 1);
-		memcpy(tmp, start, len);
-		tmp[len] = 0;
+		char tmp[256];
+		char *buf = tmp;
+		if (len >= (Int)sizeof(tmp)) {
+			buf = (char *)malloc(len + 1);
+		}
+		memcpy(buf, start, len);
+		buf[len] = 0;
 
 		this->set(end);
+		tok->set(buf);
+
+		if (buf != tmp) {
+			free(buf);
+		}
 
 		return true;
 	}

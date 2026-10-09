@@ -53,6 +53,9 @@
 #include <io.h>
 #else
 #include <unistd.h>
+#ifdef PLATFORM_LINUX
+#include "PAL_FileSystem.h"
+#endif
 #endif
 #include <string.h>
 #include <sys/stat.h>
@@ -175,6 +178,18 @@ Bool LocalFile::open( const Char *filename, Int access )
 		return FALSE;
 	}
 
+#ifdef PLATFORM_LINUX
+	std::string resolvedPath = filename ? filename : "";
+	Platform_NormalizePath(resolvedPath);
+	std::string caseResolved;
+	if (Platform_ResolveCasePath(resolvedPath, caseResolved)) {
+		resolvedPath = caseResolved;
+	}
+	const char *openFilename = resolvedPath.c_str();
+#else
+	const char *openFilename = filename;
+#endif
+
 	/* here we translate WSYS file access to the std C equivalent */
 #ifdef USE_BUFFERED_IO
 	char mode[32];
@@ -224,7 +239,7 @@ Bool LocalFile::open( const Char *filename, Int access )
 
 	*m++ = 0;
 
-	m_file = fopen(filename, mode);
+	m_file = fopen(openFilename, mode);
 	if (m_file == NULL)
 	{
 		goto error;
@@ -271,7 +286,7 @@ Bool LocalFile::open( const Char *filename, Int access )
 		flags |= _O_RDONLY;
 	}
 
-	m_handle = ::open( filename, flags , _S_IREAD | _S_IWRITE);
+	m_handle = ::open( openFilename, flags , _S_IREAD | _S_IWRITE);
 
 	if( m_handle == -1 )
 	{

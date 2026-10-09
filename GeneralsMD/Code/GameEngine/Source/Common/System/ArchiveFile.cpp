@@ -119,8 +119,9 @@ void ArchiveFile::addFile(const AsciiString& path, const ArchivedFileInfo *fileI
 		temp.nextToken(&token, "\\/");
 	}
 
-	dirInfo->m_files[fileInfo->m_filename] = *fileInfo;
-	//path.concat(fileInfo->m_filename);
+	AsciiString lowerFilename = fileInfo->m_filename;
+	lowerFilename.toLower();
+	dirInfo->m_files[lowerFilename] = *fileInfo;
 }
 
 void ArchiveFile::getFileListInDirectory(const AsciiString& currentDirectory, const AsciiString& originalDirectory, const AsciiString& searchName, FilenameList &filenameList, Bool searchSubdirectories) const
@@ -218,7 +219,6 @@ const ArchivedFileInfo * ArchiveFile::getArchivedFileInfo(const AsciiString& fil
 		{
 			return NULL;
 		}
-
 		path.nextToken(&token, "\\/");
 	}
 
@@ -231,5 +231,4 @@ const ArchivedFileInfo * ArchiveFile::getArchivedFileInfo(const AsciiString& fil
 	{
 		return NULL;
 	}
-
 }

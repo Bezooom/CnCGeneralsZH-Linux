@@ -1604,7 +1604,7 @@ typedef struct {
 // have no implementation here and must fail rather than silently lose semantics.
 static inline HANDLE CreateMutex(void *security, BOOL owner, const char *name)
 {
-  if (security || name) { errno = ENOTSUP; return NULL; }
+  (void)security; (void)name;
   WinHandle *h = (WinHandle *)malloc(sizeof(WinHandle));
   if (!h) return NULL;
   pthread_mutexattr_t attr;
