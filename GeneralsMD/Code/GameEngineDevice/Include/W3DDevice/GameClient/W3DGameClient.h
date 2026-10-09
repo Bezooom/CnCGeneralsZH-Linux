@@ -52,16 +52,14 @@
 #ifdef _WIN32
 #include "Win32Device/GameClient/Win32DIKeyboard.h"
 #include "Win32Device/GameClient/Win32DIMouse.h"
-#include "Win32Device/GameClient/Win32Mouse.h"
 #endif
+#include "Win32Device/GameClient/Win32Mouse.h"
 #include "W3DDevice/GameClient/W3DMouse.h"
 #include "W3DDevice/GameClient/W3DSnow.h"
 
 class ThingTemplate;
 
-#ifdef _WIN32
 extern Win32Mouse *TheWin32Mouse;
-#endif
 
 ///////////////////////////////////////////////////////////////////////////////
 // PROTOTYPES /////////////////////////////////////////////////////////////////
@@ -134,6 +132,16 @@ inline Mouse *W3DGameClient::createMouse( void )
 	//return new DirectInputMouse;
 	Win32Mouse * mouse = NEW W3DMouse;
 	TheWin32Mouse = mouse;   ///< global cheat for the WndProc()
+	return mouse;
+}
+#else
+#include "PAL_Input.h"
+#include "Win32Device/GameClient/Win32Mouse.h"
+inline Keyboard *W3DGameClient::createKeyboard( void ) { return NEW LinuxKeyboard; }
+inline Mouse *W3DGameClient::createMouse( void )
+{
+	Win32Mouse * mouse = NEW W3DMouse;
+	TheWin32Mouse = mouse;
 	return mouse;
 }
 #endif

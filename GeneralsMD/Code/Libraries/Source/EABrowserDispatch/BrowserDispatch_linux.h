@@ -100,7 +100,8 @@ extern const GUID IID_IUnknown;
 
 #define STDMETHOD(m) virtual HRESULT STDMETHODCALLTYPE m
 #define STDMETHOD_(t, m) virtual t STDMETHODCALLTYPE m
-
+#define STDMETHODIMP HRESULT STDMETHODCALLTYPE
+#define STDMETHODIMP_(t) t STDMETHODCALLTYPE
 struct IUnknown
 {
   STDMETHOD(QueryInterface)(REFIID riid, void **ppvObject) = 0;

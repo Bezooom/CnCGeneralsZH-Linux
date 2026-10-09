@@ -114,7 +114,7 @@ typedef void* LPWAVEFORMAT;
 #include <dirent.h>
 #include <sys/stat.h>
 #include <sys/sysinfo.h>
-
+#include <fnmatch.h>
 #ifndef TRUE
 #define TRUE 1
 #define FALSE 0
@@ -805,6 +805,14 @@ typedef struct _GUID {
   unsigned short Data3;
   unsigned char  Data4[8];
 } GUID;
+#ifdef __cplusplus
+static inline bool operator==(const _GUID& a, const _GUID& b) {
+  return __builtin_memcmp(&a, &b, sizeof(_GUID)) == 0;
+}
+static inline bool operator!=(const _GUID& a, const _GUID& b) {
+  return !(a == b);
+}
+#endif
 #endif
 
 typedef struct tagSIZE {
@@ -909,6 +917,14 @@ typedef void* HMENU;
 typedef struct HICON__ *HICON;
 typedef struct HCURSOR__ *HCURSOR;
 typedef struct HBRUSH__ *HBRUSH;
+extern HWND ApplicationHWnd;
+static inline BOOL ScreenToClient(HWND, LPPOINT) { return TRUE; }
+static inline HWND WindowFromPoint(POINT) { return ApplicationHWnd; }
+static inline HCURSOR LoadCursorFromFileA(LPCSTR) { return (HCURSOR)(intptr_t)1; }
+#ifndef LoadCursorFromFile
+#define LoadCursorFromFile LoadCursorFromFileA
+#endif
+static inline HCURSOR SetCursor(HCURSOR) { return nullptr; }
 
 typedef struct tagWNDCLASSA {
   UINT style;
@@ -1410,6 +1426,7 @@ static inline BOOL GetVolumeInformationA(LPCSTR, LPSTR, DWORD, DWORD*, DWORD*, D
 typedef struct {
   DIR *dir;
   char dirPath[MAX_PATH];
+  char pattern[MAX_PATH];
 } WinFindState;
 
 static inline BOOL FindNextFileA(HANDLE hFindFile, WIN32_FIND_DATAA *lpFindFileData)
@@ -1422,6 +1439,11 @@ static inline BOOL FindNextFileA(HANDLE hFindFile, WIN32_FIND_DATAA *lpFindFileD
   {
     if (e->d_name[0] == 0 || strcmp(e->d_name, ".") == 0 || strcmp(e->d_name, "..") == 0)
       continue;
+    if (st->pattern[0] != 0 && strcmp(st->pattern, "*") != 0 && strcmp(st->pattern, "*.*") != 0)
+    {
+      if (fnmatch(st->pattern, e->d_name, FNM_CASEFOLD) != 0)
+        continue;
+    }
     strncpy(lpFindFileData->cFileName, e->d_name, MAX_PATH - 1);
     lpFindFileData->cFileName[MAX_PATH - 1] = 0;
     lpFindFileData->cAlternateFileName[0] = 0;
@@ -1447,20 +1469,23 @@ static inline HANDLE FindFirstFileA(const char *lpFileName, WIN32_FIND_DATAA *lp
 {
   if (!lpFileName)
     return INVALID_HANDLE_VALUE;
-  // directory = pattern up to the last separator (the trailing "*" mask
-  // itself is dropped; only "*" is supported).
   const char *slash = strrchr(lpFileName, '/');
   const char *back = strrchr(lpFileName, '\\');
   if (back && (!slash || back > slash))
     slash = back;
   char dir[MAX_PATH];
+  char pattern[MAX_PATH];
   if (!slash)
   {
     strcpy(dir, ".");
+    strncpy(pattern, lpFileName, sizeof(pattern) - 1);
+    pattern[sizeof(pattern) - 1] = 0;
   }
   else if (slash == lpFileName)
   {
     strcpy(dir, "/");
+    strncpy(pattern, slash + 1, sizeof(pattern) - 1);
+    pattern[sizeof(pattern) - 1] = 0;
   }
   else
   {
@@ -1469,7 +1494,11 @@ static inline HANDLE FindFirstFileA(const char *lpFileName, WIN32_FIND_DATAA *lp
       n = sizeof(dir) - 1;
     memcpy(dir, lpFileName, n);
     dir[n] = 0;
+    strncpy(pattern, slash + 1, sizeof(pattern) - 1);
+    pattern[sizeof(pattern) - 1] = 0;
   }
+  if (pattern[0] == 0)
+    strcpy(pattern, "*");
   DIR *d = opendir(dir);
   if (!d)
     return INVALID_HANDLE_VALUE;
@@ -1482,6 +1511,8 @@ static inline HANDLE FindFirstFileA(const char *lpFileName, WIN32_FIND_DATAA *lp
   st->dir = d;
   strncpy(st->dirPath, dir, sizeof(st->dirPath) - 1);
   st->dirPath[sizeof(st->dirPath) - 1] = 0;
+  strncpy(st->pattern, pattern, sizeof(st->pattern) - 1);
+  st->pattern[sizeof(st->pattern) - 1] = 0;
   if (!FindNextFileA((HANDLE)st, lpFindFileData))
   {
     closedir(d);
@@ -1493,9 +1524,9 @@ static inline HANDLE FindFirstFileA(const char *lpFileName, WIN32_FIND_DATAA *lp
 
 static inline BOOL FindClose(HANDLE hFindFile)
 {
-  WinFindState *st = (WinFindState *)hFindFile;
-  if (!st)
+  if (!hFindFile || hFindFile == INVALID_HANDLE_VALUE)
     return FALSE;
+  WinFindState *st = (WinFindState *)hFindFile;
   if (st->dir)
     closedir(st->dir);
   free(st);

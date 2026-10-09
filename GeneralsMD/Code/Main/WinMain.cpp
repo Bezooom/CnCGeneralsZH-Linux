@@ -42,6 +42,7 @@
 #else
 #include <stdlib.h>
 #include "win.h"
+#include "PAL_Window.h"
 #endif
 // USER INCLUDES //////////////////////////////////////////////////////////////
 #include "WinMain.h"
@@ -821,6 +822,10 @@ static Bool initializeAppWindows( HINSTANCE hInstance, Int nCmdShow, Bool runWin
 
 	gInitializing = true;
 
+#ifdef PLATFORM_LINUX
+  Platform_CreateWindow("Command and Conquer Generals", rect.right - rect.left, rect.bottom - rect.top, runWindowed);
+  HWND hWnd = ApplicationHWnd;
+#else
   HWND hWnd = CreateWindow( TEXT("Game Window"),
                             TEXT("Command and Conquer Generals"),
                             windowStyle, 
@@ -837,7 +842,7 @@ static Bool initializeAppWindows( HINSTANCE hInstance, Int nCmdShow, Bool runWin
 														0L, 
 														hInstance, 
 														0L );
-
+#endif
 
 	//
 	// A headless run has a window because W3D wants a device and a device wants a window, but

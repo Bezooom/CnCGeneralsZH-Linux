@@ -33,6 +33,7 @@
 #include <windows.h>
 #else
 #include "win.h"
+#include "PAL_Window.h"
 #endif
 #include "Win32Device/Common/Win32GameEngine.h"
 #include "Common/PerfTimer.h"
@@ -136,6 +137,9 @@ void Win32GameEngine::update( void )
 //-------------------------------------------------------------------------------------------------
 void Win32GameEngine::serviceWindowsOS( void )
 {
+#ifdef PLATFORM_LINUX
+	Platform_PumpEvents();
+#endif
 	MSG msg;
   Int returnValue;
 

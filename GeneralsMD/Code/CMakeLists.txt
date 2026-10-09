@@ -121,6 +121,7 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID STREQUAL "Clang
     rt
     m
     unwind
+    X11
   )
 
   # Find required packages
@@ -771,12 +772,6 @@ list(REMOVE_ITEM GAMEENGINE_SOURCES
 # includer - the live code went to GameNetwork/GameSpy/ instead.
 list(REMOVE_ITEM GAMEENGINE_SOURCES
   ${GE}/Source/GameNetwork/GameSpyGameInfo.cpp)
-if(PLATFORM_LINUX)
-  # WOL lobby browser: real COM/IE work, out of scope until multiplayer
-  # (Phase 6+). The header still parses (ATL shims) for its includers.
-  list(REMOVE_ITEM GAMEENGINE_SOURCES
-    ${GE}/Source/GameNetwork/WOLBrowser/WebBrowser.cpp)
-endif()
 
 add_library(gameengine STATIC ${GAMEENGINE_SOURCES})
 target_include_directories(gameengine PUBLIC
@@ -840,12 +835,15 @@ set(STUBS ${CMAKE_CURRENT_SOURCE_DIR}/Stubs)
 
 file(GLOB_RECURSE GAMEENGINEDEVICE_SOURCES ${GED}/Source/*.cpp)
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
-  # Win32Device is a Windows-specific adapter; exclude from Linux compile gate.
-  # Phase 3.1 (SDL window/input) will provide Linux equivalents.
+  # DirectInput devices are Windows-only; exclude from Linux.
   list(REMOVE_ITEM GAMEENGINEDEVICE_SOURCES
     ${GED}/Source/Win32Device/GameClient/Win32DIMouse.cpp
-    ${GED}/Source/Win32Device/GameClient/Win32Mouse.cpp
     ${GED}/Source/Win32Device/GameClient/Win32DIKeyboard.cpp
+  )
+  list(APPEND GAMEENGINEDEVICE_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/Platform/PAL_Input.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/Platform/PAL_Window.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/Platform/PAL_Vulkan.cpp
   )
   # Compile every device translation unit without linking the device or renderer.
   add_library(gameenginedevice_linux_compile OBJECT EXCLUDE_FROM_ALL
@@ -943,7 +941,9 @@ target_link_libraries(generals PRIVATE
   gameenginedevice ww3d2 gameengine wwmath wwsaveload wwlib wwutil wwdebug
   compression wwdownload benchmark eabrowserdispatch profile debug gamespy ffshader
   ${DEBUG_SYSTEM_LIBS}
-  "-Wl,--end-group")
+  "-Wl,--end-group"
+  Vulkan::Vulkan
+  -lX11)
 else()
 add_executable(generals WIN32 ${CMAKE_CURRENT_SOURCE_DIR}/Main/WinMain.cpp
                              ${CMAKE_CURRENT_SOURCE_DIR}/Main/RTS.RC)
@@ -973,8 +973,8 @@ endif()
 # The game reads its data relative to the working directory, so it has to sit
 # beside Run/'s .big files to find anything (Phase 5).
 add_custom_command(TARGET generals POST_BUILD
-  COMMAND ${CMAKE_COMMAND} -E copy_if_different
-          $<TARGET_FILE:generals> ${CMAKE_CURRENT_SOURCE_DIR}/../Run/
+  COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+          "$<TARGET_FILE:generals>" "${CMAKE_CURRENT_SOURCE_DIR}/../Run/"
   # The fork's INI files: the key bindings and their labels, and the detonation
   # light loaded after EA's FXList.ini.  Run/ is gitignored, so these used to be
   # hand-made files that silently went stale - the tracked copies under Code/Data
@@ -983,38 +983,39 @@ add_custom_command(TARGET generals POST_BUILD
   # each build is safe.  The whole directory, so a new master is copied without a
   # line here: anything in it lands in the multiplayer INI CRC, and package.bat
   # ships the same directory and refuses a Run/ that disagrees with it.
-  COMMAND ${CMAKE_COMMAND} -E copy_directory
-          ${CMAKE_CURRENT_SOURCE_DIR}/Data/INI
-          ${CMAKE_CURRENT_SOURCE_DIR}/../Run/Data/INI
-  COMMAND ${CMAKE_COMMAND} -E copy_if_different
-          ${CMAKE_CURRENT_SOURCE_DIR}/Data/Patch.str
-          ${CMAKE_CURRENT_SOURCE_DIR}/../Run/Data/
+  COMMAND "${CMAKE_COMMAND}" -E copy_directory
+          "${CMAKE_CURRENT_SOURCE_DIR}/Data/INI"
+          "${CMAKE_CURRENT_SOURCE_DIR}/../Run/Data/INI"
+  COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+          "${CMAKE_CURRENT_SOURCE_DIR}/Data/Patch.str"
+          "${CMAKE_CURRENT_SOURCE_DIR}/../Run/Data/"
   # The startup splash.  WinMain loads it from a loose file next to the exe, so
   # the fork's own artwork is a tracked master here rather than a hand-made file
   # in gitignored Run/.
-  COMMAND ${CMAKE_COMMAND} -E copy_if_different
-          ${CMAKE_CURRENT_SOURCE_DIR}/Data/Install_Final.bmp
-          ${CMAKE_CURRENT_SOURCE_DIR}/../Run/
+  COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+          "${CMAKE_CURRENT_SOURCE_DIR}/Data/Install_Final.bmp"
+          "${CMAKE_CURRENT_SOURCE_DIR}/../Run/"
   # The three command bar plates per side.  A loose texture beats every .big, so
   # these land in Run/Art/Textures where the W3D file system looks first.
-  COMMAND ${CMAKE_COMMAND} -E copy_directory
-          ${CMAKE_CURRENT_SOURCE_DIR}/Data/Art/Textures
-          ${CMAKE_CURRENT_SOURCE_DIR}/../Run/Art/Textures
+  COMMAND "${CMAKE_COMMAND}" -E copy_directory
+          "${CMAKE_CURRENT_SOURCE_DIR}/Data/Art/Textures"
+          "${CMAKE_CURRENT_SOURCE_DIR}/../Run/Art/Textures"
   # The fork's window layouts, generated from the shipped ones by Tools/*.py and
   # tracked here.  They live outside Data/ in the archive (Window/Menus/...), and
   # a loose file wins over WindowZH.big.  Layouts are not in the multiplayer INI
   # checksum, so an out of date copy costs a wrong looking screen, not a refused
   # join.
-  COMMAND ${CMAKE_COMMAND} -E copy_directory
-          ${CMAKE_CURRENT_SOURCE_DIR}/Data/Window
-          ${CMAKE_CURRENT_SOURCE_DIR}/../Run/Window
+  COMMAND "${CMAKE_COMMAND}" -E copy_directory
+          "${CMAKE_CURRENT_SOURCE_DIR}/Data/Window"
+          "${CMAKE_CURRENT_SOURCE_DIR}/../Run/Window"
   # -scenario reads these. They are a measuring tool rather than game data: outside Data/ so they
   # cannot collide with an archive path, and outside the multiplayer INI checksum because nothing
   # loads them with &xferCRC. They are not in package.bat for the same reason - a player has no use
   # for one, and a scenario run cannot be replayed anyway.
-  COMMAND ${CMAKE_COMMAND} -E copy_directory
-          ${CMAKE_CURRENT_SOURCE_DIR}/Data/Scenarios
-          ${CMAKE_CURRENT_SOURCE_DIR}/../Run/Scenarios)
+  COMMAND "${CMAKE_COMMAND}" -E copy_directory
+          "${CMAKE_CURRENT_SOURCE_DIR}/Data/Scenarios"
+          "${CMAKE_CURRENT_SOURCE_DIR}/../Run/Scenarios"
+  VERBATIM)
 
 # Windows/MSVC only: copy PDB for crash debugging
 if(MSVC)
@@ -1213,6 +1214,22 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     set_target_properties(test_vk_pipeline PROPERTIES CXX_STANDARD 17)
     add_test(NAME test_vk_pipeline COMMAND test_vk_pipeline)
     set_tests_properties(test_vk_pipeline PROPERTIES LABELS "linux;vulkan;renderer" TIMEOUT 15)
+
+    # Milestone M2.4: Native Vulkan X11 Swapchain & Presentation Test
+    add_executable(test_vk_swapchain
+      ${TESTS}/test_vk_swapchain.cpp
+      ${CMAKE_CURRENT_SOURCE_DIR}/Platform/PAL_Vulkan.cpp
+      ${CMAKE_CURRENT_SOURCE_DIR}/Platform/PAL_Window.cpp)
+    set_target_properties(test_vk_swapchain PROPERTIES CXX_STANDARD 17)
+    target_include_directories(test_vk_swapchain PRIVATE
+      ${TESTS} ${CMAKE_CURRENT_SOURCE_DIR}/Platform
+      ${CMAKE_CURRENT_SOURCE_DIR}/Libraries/Include
+      ${CMAKE_CURRENT_SOURCE_DIR}/GameEngine/Include
+      ${CMAKE_CURRENT_SOURCE_DIR}/GameEngineDevice/Include
+      ${WW} ${WW}/WWLib ${WW}/LinuxDX)
+    target_link_libraries(test_vk_swapchain PRIVATE test_harness debuglib Vulkan::Vulkan -lX11)
+    add_test(NAME test_vk_swapchain COMMAND test_vk_swapchain)
+    set_tests_properties(test_vk_swapchain PROPERTIES LABELS "linux;vulkan;renderer" TIMEOUT 15)
   endif()
 
   # PAL contract unit tests
@@ -1220,6 +1237,20 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
   set_target_properties(test_pal PROPERTIES CXX_STANDARD 17)
   target_include_directories(test_pal PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/Platform)
   set_tests_properties(test_pal PROPERTIES LABELS "linux;pal" TIMEOUT 10)
+
+  add_executable(test_pal_window
+    ${TESTS}/test_pal_window.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/Platform/PAL_Window.cpp)
+  set_target_properties(test_pal_window PROPERTIES CXX_STANDARD 17)
+  target_include_directories(test_pal_window PRIVATE
+    ${TESTS} ${CMAKE_CURRENT_SOURCE_DIR}/Platform
+    ${CMAKE_CURRENT_SOURCE_DIR}/Libraries/Include
+    ${CMAKE_CURRENT_SOURCE_DIR}/GameEngine/Include
+    ${CMAKE_CURRENT_SOURCE_DIR}/GameEngineDevice/Include
+    ${WW} ${WW}/WWLib ${WW}/LinuxDX)
+  target_link_libraries(test_pal_window PRIVATE test_harness debuglib -lX11)
+  add_test(NAME test_pal_window COMMAND test_pal_window)
+  set_tests_properties(test_pal_window PROPERTIES LABELS "linux;pal" TIMEOUT 10)
 endif()
 
 # bink_smoke validates the hand-reconstructed Bink ABI against the real

@@ -124,13 +124,3 @@ int WINAPI WinMain( HINSTANCE, HINSTANCE, LPSTR, int ) { return 0; }
 Int DX8Wrapper_PreserveFPU = 0;
 bool DX8Wrapper_IsWindowed = false;
 HINSTANCE ApplicationHInstance = NULL;
-CComModule _Module;
-CComObject<WebBrowser> *TheWebBrowser = NULL;
-
-WebBrowserURL *WebBrowser::findURL(AsciiString) { return NULL; }
-WebBrowserURL *WebBrowser::makeNewURL(AsciiString) { return NULL; }
-const FieldParse WebBrowserURL::m_URLFieldParseTable[] =
-{
-	{ "URL", INI::parseAsciiString, NULL, offsetof(WebBrowserURL, m_url) },
-	{ NULL, NULL, NULL, 0 },
-};

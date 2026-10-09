@@ -8,27 +8,30 @@
 
 ## Current Status — 2026-10-09
 
-### Full CTest 28/28 Green, RegistryClass Linux Tests & M2.2 Complete
+### Full CTest 30/30 Green, Native Executable `generals` Linked & M2.4 Presentation Complete
 
-- [x] **RegistryClass Linux Test & Backend Complete**: Added permanent `test_registry_class_linux`
-  driving `RegistryClass` directly over `Platform/PAL_Registry` with XDG/HOME isolation (7 tests, 35 checks).
-  Removed obsolete `RegistryClass` stubs from `test_ww3d2.cpp` now that `libwwlib.a` provides the real Linux implementation.
-- [x] **WW3D2 Linux Compile Gate Complete**: **109/109 translation units compiled (0 failures)**.
-  Built native `libww3d2.a` (9.8 MB) static library target on Linux. Resolved all Direct3D 9
-  header dependencies (`ww3d_d3d9.h`), GDI font/DIB shims in `win.h`, D3D render states,
-  texture op caps, and functional cast syntax.
-- [x] **GameEngineDevice & Win32GameEngine Complete**: `Win32GameEngine.cpp` compiled and linked
-  into `libgameenginedevice.a` (16 MB) on Linux with POSIX error mode and message loop stubs.
-- [x] **Milestone M2.2 Green**: Added `test_vk_pipeline` matching the `test_dx11pipeline` contract:
-  - Full graphics pipeline creation on discrete GPU (NVIDIA RTX 3090).
-  - FVF vertex input layout matching `DX8_FVF_XYZNDUV2` (`PipelineVertex`: Pos float3, Normal float3, Diffuse float4, Tex0/Tex1 float2).
-  - Depth-stencil testing (`VK_COMPARE_OP_LESS_OR_EQUAL`) and depth write enabled with `VK_FORMAT_D32_SFLOAT`.
-  - Indexed drawing of 3 quads with depth occlusion: Quad 1 at Z=0.5 with `0xff112233`, Quad 2 at Z=0.8 behind Quad 1 (successfully occluded/rejected by depth test), and Quad 3 at Z=0.2 (successfully passes and renders in front).
-  - CPU readback via staging buffer: Center pixel (32, 32) verified at RGBA(17, 34, 51, 255); Top-left pixel (16, 16) verified at RGBA(0, 255, 0, 255); Background verified at clear color RGBA(64, 0, 128, 255).
-- [x] **Milestone M2.1 Green**: `test_vk_smoke` renders offscreen triangle via native Vulkan on RTX 3090.
-- [x] **PAL Abstraction & Tests Green**: `PAL_DynamicLibrary.h`, `PAL_FileSystem.h`/`.cpp`, `PAL_Timing.h`/`.cpp`, `test_pal` passing (9 tests, 34 checks).
-- [x] Full `ctest --output-on-failure`: **28/28 passed, 0 failed (100%)**.
-- [ ] Next milestones: Phase 2.3/M2.3 (W3D model loading & rendering via Vulkan), Phase 3.1 (SDL window/input).
+- [x] **Native `generals` Executable Built & Linked**: **30 MB ELF 64-bit binary** compiled and linked
+  cleanly on Linux with GCC 13.3 (C++17, Ninja).
+- [x] **Milestone M2.4 Green**: Added `test_vk_swapchain` verifying native Vulkan presentation:
+  - Native X11 window creation through `PAL_Window`.
+  - Vulkan Xlib surface (`VkSurfaceKHR`) creation on NVIDIA RTX 3090 discrete GPU.
+  - Swapchain creation (`VkSwapchainKHR`, `VK_FORMAT_B8G8R8A8_UNORM`, double/triple buffering).
+  - Swapchain image views, render pass, framebuffers, command buffers, semaphores and fences.
+  - Frame presentation: `Platform_BeginVulkanFrame` + `Platform_EndVulkanFrame` rendering 3 frames via `vkQueuePresentKHR`.
+- [x] **Windowing & Event Pump (`PAL_Window`) Complete**: Implemented native X11 window lifecycle,
+  event translation for mouse, keyboard, focus, resize, and `WM_DELETE_WINDOW` in `PAL_Window.h`/`.cpp`.
+  Verified by new automated test `test_pal_window` (1 test, 8 checks).
+- [x] **Input Subsystem (`PAL_Input`) Complete**: Implemented `LinuxKeyboard` over `Keyboard` base class
+  with ring buffer and keycode mapping to `KeyDefs.h` scan codes. Integrated with `W3DGameClient::createKeyboard`
+  and `createMouse` using `W3DMouse` / `Win32Mouse`.
+- [x] **ActiveX / IE WebBrowser Resolved**: Restored native `WebBrowser.cpp` into `libgameengine.a`
+  with POSIX guards for `OleInitialize`, resolved `_Module`, `TheWebBrowser`, and added inline
+  no-op `DX8WebBrowser` fallback on non-Windows (`ENABLE_EMBEDDED_BROWSER=0`).
+- [x] **Win32 Directory Enumeration Fixed**: Fixed `win.h` `FindClose` crash on `INVALID_HANDLE_VALUE`
+  and added POSIX `fnmatch(..., FNM_CASEFOLD)` wildcard pattern filtering to `FindFirstFileA`/`FindNextFileA`,
+  enabling `Win32BIGFileSystem` to correctly filter `*.big` files without crashing on non-archive files.
+- [x] Full `ctest --output-on-failure`: **30/30 passed, 0 failed (100%)**.
+- [ ] Next milestones: Asset placement (`place_steam_build_here.txt`) in `Run/` to load `GameData.ini` and game assets, Phase 5 in-game main menu rendering.
 Verification: `GeneralsMD/build-linux` (GCC 13.3, Release, C++17, Ninja).
 ### Latest device continuation — 2026-09-17
 

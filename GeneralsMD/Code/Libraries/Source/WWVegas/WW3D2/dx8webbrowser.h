@@ -44,11 +44,13 @@
 // ***********************************
 // Set this to 0 to remove all embedded browser code.
 //
+#if defined(_WIN32)
 #define ENABLE_EMBEDDED_BROWSER		1
+#else
+#define ENABLE_EMBEDDED_BROWSER		0
+#endif
 //
 // ***********************************
-
-#if ENABLE_EMBEDDED_BROWSER
 
 // These options must match the browser option bits defined in the BrowserEngine code.
 // Look in febrowserengine.h
@@ -58,6 +60,8 @@
 struct IDirect3DDevice9;
 struct IDispatch;
 typedef IDispatch* LPDISPATCH;
+
+#if ENABLE_EMBEDDED_BROWSER
 
 /**
 ** DX8WebBrowser
@@ -95,6 +99,20 @@ private:
 	static				HWND						hWnd;
 };
 
-#endif
+#else
 
+class DX8WebBrowser
+{
+public:
+	static bool Initialize(const char* = 0, const char* = 0, const char* = 0, const char* = 0) { return false; }
+	static void Shutdown(void) {}
+	static void Update(void) {}
+	static void Render(int) {}
+	static void CreateBrowser(const char*, const char*, int, int, int, int, int = 0, LONG = 0, LPDISPATCH = 0) {}
+	static void DestroyBrowser(const char*) {}
+	static bool Is_Browser_Open(const char*) { return false; }
+	static void Navigate(const char*, const char*) {}
+};
+
+#endif // DX8_WEBBROWSER_H
 #endif

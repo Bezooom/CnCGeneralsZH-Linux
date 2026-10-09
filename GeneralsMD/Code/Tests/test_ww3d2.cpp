@@ -78,14 +78,6 @@ void freeFromW3DMemPool(void * /*pool*/, void *p)
 	::operator delete(raw);
 }
 
-#ifdef PLATFORM_LINUX
-#include "dx8webbrowser.h"
-
-// RegistryClass is no longer stubbed here: it has a real Linux backend through
-// Platform/PAL_Registry, so this test links the real one.
-void DX8WebBrowser::Update(void) {}
-void DX8WebBrowser::Render(int) {}
-#endif
 
 /*=========================================================================
    ww3dformat - format property tables

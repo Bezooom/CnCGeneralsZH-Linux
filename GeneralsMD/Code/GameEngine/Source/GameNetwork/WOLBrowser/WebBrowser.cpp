@@ -52,6 +52,7 @@
 //#pragma MESSAGE("************************************** WARNING, optimization disabled for debugging purposes")
 #endif
 
+#ifdef _WIN32
 /**
 	* OLEInitializer class - Init and shutdown OLE & COM as a global
 	* object.  Scary, nasty stuff, COM.  /me shivers.
@@ -70,6 +71,7 @@ public:
 	}
 };
 OLEInitializer g_OLEInitializer;
+#endif
 CComModule _Module;
 
 CComObject<WebBrowser> * TheWebBrowser = NULL;
