@@ -17,6 +17,13 @@
   - Wired `IDirect3D9` and `IDirect3DDevice9` adapter enumeration and device caps on Linux in `ww3d_d3d9.h` with scratch-backed surface and buffer locking.
   - Implemented Linux D3DX runtime functions in `d3dx9runtime.cpp` (`D3DXAssembleShader`, `D3DXCompileShader`, `D3DXDisassembleShader`, `D3DXCreateTexture`).
   - Game successfully executes `GameEngine::init()` through all 44 `.big` archives, parses all INIs, brings up `WW3D2` rendering subsystems, and enters `GameEngine::execute()` -> `GameLogic::update()` -> `GameLogic::startNewGame()` -> `ShellGameLoadScreen` loading the main menu shell map (`INPUTWATCH: frame 0`).
+- [x] **Vulkan Draw Call Translation & Texture Upload Complete**:
+  - Implemented `Platform_CreateVulkanPipeline` with embedded SPIR-V shaders, alpha blending, dynamic viewport and scissor.
+  - Allocated host-visible dynamic vertex buffer (4 MB) and index buffer (1 MB) in `PAL_Vulkan`.
+  - Implemented `Platform_DrawVulkanIndexed` and `Platform_DrawVulkanVertices`, binding pipeline, buffers, and issuing `vkCmdDrawIndexed` / `vkCmdDraw`.
+  - Implemented `Platform_CreateVulkanTexture`, `Platform_BindVulkanTexture`, and `Platform_DestroyVulkanTexture` with `VkImage`, `VkImageView`, and `VkSampler`.
+  - Connected `IDirect3DDevice9::DrawIndexedPrimitive`, `DrawPrimitive`, `DrawPrimitiveUP`, and `SetTexture` to Vulkan.
+  - Wired `IDirect3DTexture9::UnlockRect` to upload decoded `.dds` texture buffers to `VkImage`.
 - [x] **Native `generals` Executable Built & Linked**: **30 MB ELF 64-bit binary** compiled and linked
   cleanly on Linux with GCC 13.3 (C++17, Ninja).
 - [x] **Milestone M2.4 Green**: Added `test_vk_swapchain` verifying native Vulkan presentation:
