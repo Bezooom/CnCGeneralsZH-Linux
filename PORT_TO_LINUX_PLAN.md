@@ -8,8 +8,15 @@
 
 ## Current Status — 2026-10-09
 
-### Full CTest 30/30 Green, Native Executable `generals` Linked & M2.4 Presentation Complete
+### Full CTest 30/30 Green, Engine Initialization Complete, Frame 0 & Shell Game Loop Reached
 
+- [x] **GameEngine Initialization Reaches Main Loop (Frame 0)**:
+  - Fixed `win.h` `CRITICAL_SECTION` to use `PTHREAD_MUTEX_RECURSIVE`, resolving recursive self-deadlock in `TheUnicodeStringCriticalSection` during Object INI loading.
+  - Resolved `AsciiString::nextToken` buffer corruption on repeated delimiters and `ensureUniqueBufferOfSize` overlapping copies via `memmove`.
+  - Added case-insensitive file path resolution in `LocalFile` via `PAL_FileSystem` and lowercase index in `ArchiveFile`.
+  - Wired `IDirect3D9` and `IDirect3DDevice9` adapter enumeration and device caps on Linux in `ww3d_d3d9.h` with scratch-backed surface and buffer locking.
+  - Implemented Linux D3DX runtime functions in `d3dx9runtime.cpp` (`D3DXAssembleShader`, `D3DXCompileShader`, `D3DXDisassembleShader`, `D3DXCreateTexture`).
+  - Game successfully executes `GameEngine::init()` through all 44 `.big` archives, parses all INIs, brings up `WW3D2` rendering subsystems, and enters `GameEngine::execute()` -> `GameLogic::update()` -> `GameLogic::startNewGame()` -> `ShellGameLoadScreen` loading the main menu shell map (`INPUTWATCH: frame 0`).
 - [x] **Native `generals` Executable Built & Linked**: **30 MB ELF 64-bit binary** compiled and linked
   cleanly on Linux with GCC 13.3 (C++17, Ninja).
 - [x] **Milestone M2.4 Green**: Added `test_vk_swapchain` verifying native Vulkan presentation:
@@ -20,7 +27,7 @@
   - Frame presentation: `Platform_BeginVulkanFrame` + `Platform_EndVulkanFrame` rendering 3 frames via `vkQueuePresentKHR`.
 - [x] **Windowing & Event Pump (`PAL_Window`) Complete**: Implemented native X11 window lifecycle,
   event translation for mouse, keyboard, focus, resize, and `WM_DELETE_WINDOW` in `PAL_Window.h`/`.cpp`.
-  Verified by new automated test `test_pal_window` (1 test, 8 checks).
+  Verified by automated test `test_pal_window` (1 test, 8 checks).
 - [x] **Input Subsystem (`PAL_Input`) Complete**: Implemented `LinuxKeyboard` over `Keyboard` base class
   with ring buffer and keycode mapping to `KeyDefs.h` scan codes. Integrated with `W3DGameClient::createKeyboard`
   and `createMouse` using `W3DMouse` / `Win32Mouse`.
@@ -28,10 +35,9 @@
   with POSIX guards for `OleInitialize`, resolved `_Module`, `TheWebBrowser`, and added inline
   no-op `DX8WebBrowser` fallback on non-Windows (`ENABLE_EMBEDDED_BROWSER=0`).
 - [x] **Win32 Directory Enumeration Fixed**: Fixed `win.h` `FindClose` crash on `INVALID_HANDLE_VALUE`
-  and added POSIX `fnmatch(..., FNM_CASEFOLD)` wildcard pattern filtering to `FindFirstFileA`/`FindNextFileA`,
-  enabling `Win32BIGFileSystem` to correctly filter `*.big` files without crashing on non-archive files.
-- [x] Full `ctest --output-on-failure`: **30/30 passed, 0 failed (100%)**.
-- [ ] Next milestones: Asset placement (`place_steam_build_here.txt`) in `Run/` to load `GameData.ini` and game assets, Phase 5 in-game main menu rendering.
+  and added POSIX `fnmatch(..., FNM_CASEFOLD)` wildcard pattern filtering to `FindFirstFileA`/`FindNextFileA`.
+- [x] **Full CTest Suite**: **30/30 passed, 0 failed (100% green)**.
+- [ ] Next milestone: Phase 2.2 / Phase 5: connect `WW3D2` draw calls directly to `VulkanDevice` swapchain rendering.
 Verification: `GeneralsMD/build-linux` (GCC 13.3, Release, C++17, Ninja).
 ### Latest device continuation — 2026-09-17
 
