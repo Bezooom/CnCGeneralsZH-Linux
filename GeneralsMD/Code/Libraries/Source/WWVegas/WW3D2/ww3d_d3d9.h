@@ -8,6 +8,10 @@
 #else
 #include "win.h"
 #include "ffshader_d3d.h"
+#if defined(PLATFORM_LINUX) || defined(__linux__) || defined(_UNIX)
+#include "PAL_Window.h"
+#include "PAL_Vulkan.h"
+#endif
 
 struct IDirect3D9;
 struct IDirect3DDevice9;
@@ -416,7 +420,18 @@ struct IDirect3DDevice9 {
   HRESULT GetDepthStencilSurface(IDirect3DSurface9**);
   HRESULT SetPixelShaderConstantF(UINT, const float*, UINT) { return 0; }
   HRESULT SetVertexShaderConstantF(UINT, const float*, UINT) { return 0; }
-  HRESULT Clear(UINT, const RECT*, DWORD, DWORD, float, DWORD) { return 0; }
+  HRESULT Clear(UINT, const RECT*, DWORD flags, DWORD color, float, DWORD) {
+#if defined(PLATFORM_LINUX) || defined(__linux__) || defined(_UNIX)
+    if (flags & 1) { // D3DCLEAR_TARGET
+      float a = ((color >> 24) & 0xFF) / 255.0f;
+      float r = ((color >> 16) & 0xFF) / 255.0f;
+      float g = ((color >> 8) & 0xFF) / 255.0f;
+      float b = (color & 0xFF) / 255.0f;
+      Platform_SetVulkanClearColor(r, g, b, a);
+    }
+#endif
+    return 0;
+  }
   HRESULT ShowCursor(BOOL) { return 0; }
   HRESULT SetCursorProperties(int, int, IDirect3DSurface9*) { return 0; }
   HRESULT SetCursorPosition(int, int, POINT*) { return 0; }
@@ -431,7 +446,16 @@ struct IDirect3DDevice9 {
   HRESULT EvictManagedResources() { return 0; }
   HRESULT BeginScene() { return 0; }
   HRESULT EndScene() { return 0; }
-  HRESULT Present(const RECT*, const RECT*, HWND, const void*) { return 0; }
+  HRESULT Present(const RECT*, const RECT*, HWND, const void*) {
+#if defined(PLATFORM_LINUX) || defined(__linux__) || defined(_UNIX)
+    uint32_t img = 0;
+    if (Platform_BeginVulkanFrame(&img)) {
+      Platform_EndVulkanFrame(img);
+    }
+    Platform_PumpEvents();
+#endif
+    return 0;
+  }
   HRESULT SetViewport(const D3DVIEWPORT9*) { return 0; }
   HRESULT GetPixelShader(IDirect3DPixelShader9**) { return 0; }
   HRESULT GetVertexShader(IDirect3DVertexShader9**) { return 0; }
@@ -960,6 +984,12 @@ struct IDirect3D9 {
   HRESULT CreateDevice(UINT, D3DDEVTYPE, HWND, DWORD, D3DPRESENT_PARAMETERS*, IDirect3DDevice9** ppDevice) {
     static IDirect3DDevice9 s_linuxDevice;
     if (ppDevice) *ppDevice = &s_linuxDevice;
+#if defined(PLATFORM_LINUX) || defined(__linux__) || defined(_UNIX)
+    PlatformWindowInfo *winInfo = Platform_GetWindowInfo();
+    if (winInfo && !Platform_GetVulkanContext()->isInitialized) {
+      Platform_InitVulkan(winInfo);
+    }
+#endif
     return 0;
   }
   ULONG Release() { return 0; }

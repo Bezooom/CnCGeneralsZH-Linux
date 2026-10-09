@@ -26,6 +26,7 @@ bool Platform_InitVulkan(PlatformWindowInfo *windowInfo);
 bool Platform_BeginVulkanFrame(uint32_t *imageIndex);
 bool Platform_EndVulkanFrame(uint32_t imageIndex);
 void Platform_ShutdownVulkan(void);
+void Platform_SetVulkanClearColor(float r, float g, float b, float a);
 PlatformVulkanContext *Platform_GetVulkanContext(void);
 
 #ifdef __cplusplus

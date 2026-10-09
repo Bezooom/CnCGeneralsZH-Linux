@@ -30,6 +30,7 @@ static std::vector<VkCommandBuffer> s_commandBuffers;
 static VkSemaphore s_imageAvailableSemaphore = VK_NULL_HANDLE;
 static VkSemaphore s_renderFinishedSemaphore = VK_NULL_HANDLE;
 static VkFence s_inFlightFence = VK_NULL_HANDLE;
+static VkClearValue s_clearColor = { {{ 0.0f, 0.0f, 0.0f, 1.0f }} };
 
 PlatformVulkanContext *Platform_GetVulkanContext(void)
 {
@@ -44,6 +45,13 @@ bool Platform_InitVulkan(PlatformWindowInfo *windowInfo)
     if (!windowInfo || !windowInfo->x11Display || !windowInfo->x11Window) {
         return false;
     }
+    // Prefer NVIDIA ICD directly if present to prevent Mesa lavapipe LLVM conflicts
+    if (getenv("VK_ICD_FILENAMES") == nullptr && getenv("VK_DRIVER_FILES") == nullptr) {
+        if (access("/usr/share/vulkan/icd.d/nvidia_icd.json", R_OK) == 0) {
+            setenv("VK_ICD_FILENAMES", "/usr/share/vulkan/icd.d/nvidia_icd.json", 0);
+        }
+    }
+
 
     Display *display = (Display *)windowInfo->x11Display;
     Window window = (Window)windowInfo->x11Window;
@@ -354,7 +362,7 @@ bool Platform_BeginVulkanFrame(uint32_t *imageIndex)
     VkCommandBufferBeginInfo beginInfo = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO };
     vkBeginCommandBuffer(cb, &beginInfo);
 
-    VkClearValue clearColor = { {{ 64.0f / 255.0f, 0.0f, 128.0f / 255.0f, 1.0f }} };
+    static VkClearValue s_clearColor = { {{ 0.0f, 0.0f, 0.0f, 1.0f }} };
 
     VkRenderPassBeginInfo rpBegin = {};
     rpBegin.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
@@ -363,7 +371,7 @@ bool Platform_BeginVulkanFrame(uint32_t *imageIndex)
     rpBegin.renderArea.offset = { 0, 0 };
     rpBegin.renderArea.extent = { (uint32_t)s_ctx.width, (uint32_t)s_ctx.height };
     rpBegin.clearValueCount = 1;
-    rpBegin.pClearValues = &clearColor;
+    rpBegin.pClearValues = &s_clearColor;
 
     vkCmdBeginRenderPass(cb, &rpBegin, VK_SUBPASS_CONTENTS_INLINE);
     return true;
@@ -410,6 +418,13 @@ bool Platform_EndVulkanFrame(uint32_t imageIndex)
 
     VkResult res = vkQueuePresentKHR(s_presentQueue, &presentInfo);
     return (res == VK_SUCCESS || res == VK_SUBOPTIMAL_KHR);
+}
+void Platform_SetVulkanClearColor(float r, float g, float b, float a)
+{
+    s_clearColor.color.float32[0] = r;
+    s_clearColor.color.float32[1] = g;
+    s_clearColor.color.float32[2] = b;
+    s_clearColor.color.float32[3] = a;
 }
 
 void Platform_ShutdownVulkan(void)

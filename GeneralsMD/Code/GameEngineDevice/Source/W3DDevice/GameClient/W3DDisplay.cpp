@@ -1120,11 +1120,7 @@ void W3DDisplay::init( void )
 		SortingRendererClass::SetMinVertexBufferSize(1);
 	}
 	if (WW3D::Init(
-#ifdef _WIN32
 		ApplicationHWnd
-#else
-		NULL
-#endif
 		) != WW3D_ERROR_OK)
 		throw ERROR_INVALID_D3D;	//failed to initialize.  User probably doesn't have DX 8.1
 
