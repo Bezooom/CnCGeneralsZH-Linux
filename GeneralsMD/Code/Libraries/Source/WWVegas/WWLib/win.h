@@ -315,15 +315,14 @@ close(srcFd);
 }
 
 // CRITICAL_SECTION for GameEngine's CriticalSection.h; thin wrapper
-// around pthread_mutex_t with the same semantics (non-recursive by
-// default, but InitializeCriticalSection/DeleteCriticalSection/
-// EnterCriticalSection/LeaveCriticalSection map 1:1).
+// around pthread_mutex_t with the same semantics (Win32 CRITICAL_SECTION
+// is recursive by specification, allowing the owner thread to re-enter).
 typedef pthread_mutex_t CRITICAL_SECTION;
 static inline void InitializeCriticalSection(CRITICAL_SECTION *cs)
 {
   pthread_mutexattr_t attr;
   pthread_mutexattr_init(&attr);
-  pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_DEFAULT);
+  pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_RECURSIVE);
   pthread_mutex_init(cs, &attr);
   pthread_mutexattr_destroy(&attr);
 }
