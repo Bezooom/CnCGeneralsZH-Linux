@@ -396,7 +396,7 @@ std::string CombinerShader_Pipeline_Key(const PixelPipelineDescription & pipelin
 	char field[32];
 	snprintf(field, sizeof(field), ":A%u,%lu,F%u",
 		pipeline.AlphaTestEnabled ? 1u : 0u,
-		pipeline.AlphaTestEnabled ? pipeline.AlphaFunction : 0ul,
+		pipeline.AlphaTestEnabled ? static_cast<unsigned long>(pipeline.AlphaFunction) : 0ul,
 		pipeline.FogEnabled ? 1u : 0u);
 	return field;
 }
@@ -404,19 +404,24 @@ std::string CombinerShader_Pipeline_Key(const PixelPipelineDescription & pipelin
 std::string CombinerShader_Key(const CombinerDescription & description)
 {
 	std::string key;
-	char field[32];
+	// Four full-width DWORDs, four separators and the terminating zero.
+	char field[45];
 	snprintf(field, sizeof(field), "%u", description.StageCount);
 	key += field;
 
 	for (unsigned stage = 0; stage < description.StageCount; ++stage) {
 		const CombinerStage & source = description.Stages[stage];
 		snprintf(field, sizeof(field), ":%lu,%lu,%lu,%lu",
-			source.ColourOperation, source.ColourArgument0,
-			source.ColourArgument1, source.ColourArgument2);
+			static_cast<unsigned long>(source.ColourOperation),
+			static_cast<unsigned long>(source.ColourArgument0),
+			static_cast<unsigned long>(source.ColourArgument1),
+			static_cast<unsigned long>(source.ColourArgument2));
 		key += field;
 		snprintf(field, sizeof(field), ",%lu,%lu,%lu,%lu",
-			source.AlphaOperation, source.AlphaArgument0,
-			source.AlphaArgument1, source.AlphaArgument2);
+			static_cast<unsigned long>(source.AlphaOperation),
+			static_cast<unsigned long>(source.AlphaArgument0),
+			static_cast<unsigned long>(source.AlphaArgument1),
+			static_cast<unsigned long>(source.AlphaArgument2));
 		key += field;
 		snprintf(field, sizeof(field), ",%u,%u",
 			coordinate_register(source.TextureCoordinateIndex), source.TextureBound ? 1u : 0u);

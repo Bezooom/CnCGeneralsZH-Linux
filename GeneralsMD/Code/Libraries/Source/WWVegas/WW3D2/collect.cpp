@@ -75,7 +75,11 @@
 #include "chunkio.h"
 #include "camera.h"
 #include "wwdebug.h"
+#if defined(_WIN32)
 #include "snappts.h"
+#else
+#include "snapPts.h"
+#endif
 #include "assetmgr.h"
 #include "ww3d.h"
 #include "w3derr.h"

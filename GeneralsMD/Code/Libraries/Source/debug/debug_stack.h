@@ -22,7 +22,7 @@
 // $Revision: #1 $
 // $DateTime: 2003/07/03 11:55:26 $
 //
-// ©2003 Electronic Arts
+// ï¿½2003 Electronic Arts
 //
 // Stack walker
 //////////////////////////////////////////////////////////////////////////////
@@ -31,6 +31,13 @@
 #endif
 #ifndef DEBUG_STACK_H // Include guard
 #define DEBUG_STACK_H
+
+#if !defined(_MSC_VER)
+// Linux: processor context type used by the crash handler (defined in
+// internal_except.h); the stack walker itself always captures the
+// current chain and ignores it.
+struct _CONTEXT;
+#endif
 
 /// \brief stack walker class (singleton)
 class DebugStackwalk
@@ -58,8 +65,9 @@ public:
     /// number of addresses
     unsigned m_numAddr;
 
-    /// addresses
-    unsigned m_addr[MAX_ADDR];
+    /// addresses (pointer-sized: truncated `unsigned` loses the upper
+    /// 32 bits on 64-bit targets, which also breaks the ordering below)
+    uintptr_t m_addr[MAX_ADDR];
 
   public:
     explicit Signature(void): m_numAddr(0) {}
@@ -73,7 +81,7 @@ public:
     */
     unsigned Size(void) const { return m_numAddr; }
 
-    /** 
+    /**
       \brief Get a single address from the signature.
 
       The address at index 0 is always on top of the stack.
@@ -81,7 +89,7 @@ public:
       \param n index, 0..Size()-1
       \return signature address
     */
-    unsigned GetAddress(int n) const;
+    uintptr_t GetAddress(int n) const;
 
     /**
       \brief Strong ordering operator.
@@ -106,14 +114,14 @@ public:
     /**
       \brief Determines symbol for given address.
 
-      The data is returned in the form 
+      The data is returned in the form
       \<addr\> \<module\>+NN, \<sym\>+NN, \<file\>:\<line\>+NN
 
       \param addr function address
       \param buf return buffer
       \param bufSize size of return buffer, minimum is 64 bytes (256 recommended)
     */
-    static void GetSymbol(unsigned addr, char *buf, unsigned bufSize);
+    static void GetSymbol(uintptr_t addr, char *buf, unsigned bufSize);
     
     /**
       \brief Determines symbol for given address.
@@ -130,7 +138,7 @@ public:
       \param line line number, may be NULL
       \param relLine relative address within line, may be NULL
     */
-    static void GetSymbol(unsigned addr,
+    static void GetSymbol(uintptr_t addr,
                           char *bufMod, unsigned sizeMod, unsigned *relMod,
                           char *bufSym, unsigned sizeSym, unsigned *relSym,
                           char *bufFile, unsigned sizeFile, unsigned *line, unsigned *relLine);

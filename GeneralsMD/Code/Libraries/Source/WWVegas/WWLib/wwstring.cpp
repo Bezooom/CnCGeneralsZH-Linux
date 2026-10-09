@@ -38,6 +38,7 @@
 #include "win.h"
 #include "wwmemlog.h"
 #include "mutex.h"
+#include <stdint.h>
 #include <stdio.h>
 
 
@@ -102,12 +103,12 @@ StringClass::Get_String (int length, bool is_temp)
 				//
 				//	Grab this unused buffer for our string
 				//
-				unsigned temp_string=reinterpret_cast<unsigned>(m_TempStrings);
-				temp_string+=MAX_TEMP_BYTES*MAX_TEMP_STRING;
-				temp_string&=~(MAX_TEMP_BYTES*MAX_TEMP_STRING-1);
-				temp_string+=index*MAX_TEMP_BYTES;
-				temp_string+=sizeof(_HEADER);	// The buffer contains header as well, and it needs to be at the start
-				string=reinterpret_cast<char*>(temp_string);
+				uintptr_t temp_string = reinterpret_cast<uintptr_t>(m_TempStrings);
+				temp_string += MAX_TEMP_BYTES*MAX_TEMP_STRING;
+				temp_string &= ~(uintptr_t)(MAX_TEMP_BYTES*MAX_TEMP_STRING-1);
+				temp_string += (uintptr_t)index*MAX_TEMP_BYTES;
+				temp_string += sizeof(_HEADER);	// The buffer contains header as well, and it needs to be at the start
+				string = reinterpret_cast<char*>(temp_string);
 
 				Set_Buffer_And_Allocated_Length (string, MAX_TEMP_LEN);
 				break;
@@ -197,8 +198,8 @@ StringClass::Free_String (void)
 {
 	if (m_Buffer != m_EmptyString) {
 
-		unsigned buffer_base=reinterpret_cast<unsigned>(m_Buffer-sizeof (StringClass::_HEADER));
-		unsigned temp_base=reinterpret_cast<unsigned>(m_TempStrings+MAX_TEMP_BYTES*MAX_TEMP_STRING);
+		uintptr_t buffer_base = reinterpret_cast<uintptr_t>(m_Buffer-sizeof (StringClass::_HEADER));
+		uintptr_t temp_base = reinterpret_cast<uintptr_t>(m_TempStrings+MAX_TEMP_BYTES*MAX_TEMP_STRING);
 
 		if ((buffer_base>>11)==(temp_base>>11)) {
 			m_Buffer[0] = 0;
@@ -252,11 +253,21 @@ StringClass::Format_Args (const TCHAR *format, const va_list & arg_list )
 	//
 	//	Format the string
 	//
+#if defined(_MSC_VER)
 	#ifdef _UNICODE
 		retval = _vsnwprintf (temp_buffer, 512, format, arg_list);
 	#else
 		retval = _vsnprintf (temp_buffer, 512, format, arg_list);
 	#endif
+#else
+	// vsnprintf always terminates (C99); the spare slot stays spare.
+	// va_copy takes va_list by value; the const on our parameter is cast
+	// off (it is only read, never written through).
+	va_list args;
+	va_copy (args, const_cast<va_list &> (arg_list));
+	retval = vsnprintf (temp_buffer, 512 + 1, format, args);
+	va_end (args);
+#endif
 	
 	//
 	//	Copy the string into our buffer
@@ -290,11 +301,16 @@ StringClass::Format (const TCHAR *format, ...)
 	//
 	//	Format the string
 	//
+#if defined(_MSC_VER)
 	#ifdef _UNICODE
 		retval = _vsnwprintf (temp_buffer, 512, format, arg_list);
 	#else
 		retval = _vsnprintf (temp_buffer, 512, format, arg_list);
 	#endif
+#else
+	// vsnprintf always terminates (C99); the spare slot stays spare.
+	retval = vsnprintf (temp_buffer, 512 + 1, format, arg_list);
+#endif
 	
 	//
 	//	Copy the string into our buffer
@@ -326,6 +342,7 @@ bool StringClass::Copy_Wide (const WCHAR *source)
 {
 	if (source != NULL) {
 
+#if defined(_MSC_VER)
 		int  length;
 		BOOL unmapped;
 			
@@ -341,6 +358,24 @@ bool StringClass::Copy_Wide (const WCHAR *source)
 
 		// Were all characters successfully mapped?
 		return (!unmapped);
+#else
+		// Linux: no codepages; narrow by truncation (twin of Convert_From's
+		// widening). Characters above 255 set the unmapped flag.
+		size_t wlen = 0;
+		while (source[wlen] != 0)
+			++wlen;
+		int length = (int)wlen + 1;
+		BOOL unmapped = FALSE;
+		char *buffer = Get_Buffer (length);
+		for (size_t i = 0; i < wlen; ++i) {
+			if ((unsigned int)source[i] > 255)
+				unmapped = TRUE;
+			buffer[i] = (char)source[i];
+		}
+		buffer[wlen] = '\0';
+		Store_Length ((int)wlen);
+		return (!unmapped);
+#endif
 	}
 
 	// Failure.

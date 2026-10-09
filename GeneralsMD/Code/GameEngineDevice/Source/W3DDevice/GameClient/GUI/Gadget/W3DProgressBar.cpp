@@ -45,6 +45,9 @@
 
 // SYSTEM INCLUDES ////////////////////////////////////////////////////////////
 #include <stdlib.h>
+#if defined(LINUX)
+#include <cstdint>
+#endif
 
 // USER INCLUDES //////////////////////////////////////////////////////////////
 #include "GameClient/GameWindowGlobal.h"
@@ -76,7 +79,12 @@ void W3DGadgetProgressBarDraw( GameWindow *window, WinInstanceData *instData )
 {
 	ICoord2D origin, size, start, end;
 	Color backColor, backBorder, barColor, barBorder;
+#if defined(LINUX)
+	// GadgetProgressBarSystem stores a validated integer payload (0..100), not an object.
+	const std::intptr_t progress = reinterpret_cast<std::intptr_t>(window->winGetUserData());
+#else
 	Int progress = (Int)window->winGetUserData();
+#endif
 
 	// get window size and position
   window->winGetScreenPosition( &origin.x, &origin.y );
@@ -186,7 +194,12 @@ void W3DGadgetProgressBarImageDrawA( GameWindow *window, WinInstanceData *instDa
 {
 	ICoord2D origin, size;
 	const Image *barCenter, *barRight, *left, *right, *center;
+#if defined(LINUX)
+	// GadgetProgressBarSystem stores a validated integer payload (0..100), not an object.
+	const std::intptr_t progress = reinterpret_cast<std::intptr_t>(window->winGetUserData());
+#else
 	Int progress = (Int)window->winGetUserData();
+#endif
 	Int xOffset, yOffset;
 	Int i;
 	// get window size and position
@@ -229,7 +242,12 @@ void W3DGadgetProgressBarImageDraw( GameWindow *window, WinInstanceData *instDat
 	ICoord2D origin, size, start, end;
 	const Image *backLeft, *backRight, *backCenter, 
 				 *barRight, *barCenter;//*backSmallCenter,*barLeft,, *barSmallCenter;
+#if defined(LINUX)
+	// GadgetProgressBarSystem stores a validated integer payload (0..100), not an object.
+	const std::intptr_t progress = reinterpret_cast<std::intptr_t>(window->winGetUserData());
+#else
 	Int progress = (Int)window->winGetUserData();
+#endif
 	Int xOffset, yOffset;
 	Int i;
 

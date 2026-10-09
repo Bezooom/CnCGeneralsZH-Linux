@@ -823,7 +823,7 @@ Bool BlockCheckpointInfo::shouldBeInReport(Int flags, Int startCheckpoint, Int e
 
 	BlockCheckpointInfo *freed = NULL;
 	try {
-		freed = (BlockCheckpointInfo *)::sysAllocateDoNotZero(sizeof(BlockCheckpointInfo));
+		freed = (BlockCheckpointInfo *)sysAllocateDoNotZero(sizeof(BlockCheckpointInfo));
 	} catch (...) {
 		freed = NULL;
 	}
@@ -932,7 +932,7 @@ void MemoryPoolSingleBlock::initBlock(Int logicalSize, MemoryPoolBlob *owningBlo
 	MemoryPoolFactory *owningFactory
 	DECLARE_LITERALSTRING_ARG2)
 {
-	MemoryPoolSingleBlock *block = (MemoryPoolSingleBlock *)::sysAllocateDoNotZero(calcRawBlockSize(logicalSize));
+	MemoryPoolSingleBlock *block = (MemoryPoolSingleBlock *)sysAllocateDoNotZero(calcRawBlockSize(logicalSize));
 	block->initBlock(logicalSize, NULL, owningFactory PASS_LITERALSTRING_ARG2);
 	block->setNextRawBlock(*pRawListHead);
 	*pRawListHead = block;
@@ -1187,7 +1187,7 @@ void MemoryPoolBlob::initBlob(MemoryPool *owningPool, Int allocationCount)
 	m_usedBlocksInBlob = 0;
 
 	Int rawBlockSize = MemoryPoolSingleBlock::calcRawBlockSize(m_owningPool->getAllocationSize());
-	m_blockData = (char *)::sysAllocateDoNotZero(rawBlockSize * m_totalBlocksInBlob);	// throws on failure
+	m_blockData = (char *)sysAllocateDoNotZero(rawBlockSize * m_totalBlocksInBlob);	// throws on failure
 
 	// set up the list of free blocks in the blob (namely, all of 'em)
 	MemoryPoolSingleBlock *block = (MemoryPoolSingleBlock *)m_blockData;
@@ -1560,7 +1560,8 @@ MemoryPoolBlob* MemoryPool::createBlob(Int allocationCount)
 {
 	DEBUG_ASSERTCRASH(allocationCount > 0 && allocationCount%MEM_BOUND_ALIGNMENT==0, ("bad allocationCount (must be >0 and evenly divisible by %d)",MEM_BOUND_ALIGNMENT));
 
-	MemoryPoolBlob* blob = new (::sysAllocateDoNotZero(sizeof MemoryPoolBlob)) MemoryPoolBlob;	// will throw on failure
+	void* __p = sysAllocateDoNotZero(sizeof(MemoryPoolBlob));
+	MemoryPoolBlob* blob = new (__p) MemoryPoolBlob;	// will throw on failure
 
 	blob->initBlob(this, allocationCount);	// will throw on failure
 
@@ -2682,7 +2683,8 @@ MemoryPool *MemoryPoolFactory::createMemoryPool(const char *poolName, Int alloca
 		throw ERROR_OUT_OF_MEMORY;
 	}
 
-	pool = new (::sysAllocateDoNotZero(sizeof MemoryPool)) MemoryPool;	// will throw on failure
+	void* __p = sysAllocateDoNotZero(sizeof(MemoryPool));
+		pool = new (__p) MemoryPool;	// will throw on failure
 	pool->init(this, poolName, allocationSize, initialAllocationCount, overflowAllocationCount);	// will throw on failure
 
 	pool->addToList(&m_firstPoolInFactory);
@@ -2737,7 +2739,8 @@ DynamicMemoryAllocator *MemoryPoolFactory::createDynamicMemoryAllocator(Int numS
 {
 	DynamicMemoryAllocator *dma;
 
-	dma = new (::sysAllocateDoNotZero(sizeof DynamicMemoryAllocator)) DynamicMemoryAllocator;	// will throw on failure
+	void* __p = sysAllocateDoNotZero(sizeof(DynamicMemoryAllocator));
+		dma = new (__p) DynamicMemoryAllocator;	// will throw on failure
 	dma->init(this, numSubPools, pParms);	// will throw on failure
 
 	dma->addToList(&m_firstDmaInFactory);
@@ -3267,6 +3270,15 @@ void MemoryPoolFactory::debugMemoryReport(Int flags, Int startCheckpoint, Int en
 	#pragma comment(linker, "/force:multiple")
 #endif
 
+#if !defined(_MSC_VER)
+// Static initializers run in link order, which on Linux put a LogClass ctor
+// (AsciiString::format -> DynamicMemoryAllocator, bypassing operator new's
+// preMain trigger) before the memory manager existed. init_priority(101)
+// runs this first, deterministically, on every link order.
+struct PreMainMemoryInit { PreMainMemoryInit() { preMainInitMemoryManager(); } };
+static PreMainMemoryInit thePreMainMemoryInit __attribute__((init_priority(101)));
+#endif
+
 static int theLinkTester = 0;
 
 //-----------------------------------------------------------------------------
@@ -3444,7 +3456,8 @@ void initMemoryManager()
 		Int numSubPools;
 		const PoolInitRec *pParms;
 		userMemoryManagerGetDmaParms(&numSubPools, &pParms);
-		TheMemoryPoolFactory = new (::sysAllocateDoNotZero(sizeof MemoryPoolFactory)) MemoryPoolFactory;	// will throw on failure
+		void* __p = sysAllocateDoNotZero(sizeof(MemoryPoolFactory));
+		TheMemoryPoolFactory = new (__p) MemoryPoolFactory;	// will throw on failure
 		TheMemoryPoolFactory->init();	// will throw on failure
 		TheDynamicMemoryAllocator = TheMemoryPoolFactory->createDynamicMemoryAllocator(numSubPools, pParms);	// will throw on failure
 		userMemoryManagerInitPools();
@@ -3522,7 +3535,8 @@ static void preMainInitMemoryManager()
 		Int numSubPools;
 		const PoolInitRec *pParms;
 		userMemoryManagerGetDmaParms(&numSubPools, &pParms);
-		TheMemoryPoolFactory = new (::sysAllocateDoNotZero(sizeof MemoryPoolFactory)) MemoryPoolFactory;	// will throw on failure
+		void* __p = sysAllocateDoNotZero(sizeof(MemoryPoolFactory));
+		TheMemoryPoolFactory = new (__p) MemoryPoolFactory;	// will throw on failure
 		TheMemoryPoolFactory->init();	// will throw on failure
 
 		TheDynamicMemoryAllocator = TheMemoryPoolFactory->createDynamicMemoryAllocator(numSubPools, pParms);	// will throw on failure

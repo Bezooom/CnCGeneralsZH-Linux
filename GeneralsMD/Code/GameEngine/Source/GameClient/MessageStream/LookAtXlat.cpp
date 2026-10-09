@@ -28,7 +28,9 @@
 
 #include "PreRTS.h"	// This must go first in EVERY cpp file int the GameEngine
 
+#if defined(_MSC_VER)
 #include "windows.h"
+#endif
 
 #include "Common/GameType.h"
 #include "Common/MessageStream.h"
@@ -55,7 +57,7 @@
 
 LookAtTranslator *TheLookAtTranslator = NULL;
 
-static enum
+enum
 {
 	DIR_UP = 0,
 	DIR_DOWN,

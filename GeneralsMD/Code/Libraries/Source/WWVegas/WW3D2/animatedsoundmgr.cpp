@@ -47,7 +47,11 @@
 #include "definition.h"
 #include "definitionmgr.h"
 #include "definitionclassids.h"
+#if defined(_WIN32)
 #include "wwaudio.h"
+#else
+#include "WWAudio.h"
+#endif
 #include "audiblesound.h"
 #include "htree.h"
 #include "hanim.h"

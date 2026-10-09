@@ -329,7 +329,9 @@ WWINLINE long WWMath::Float_To_Long(float f)
 #else 
 WWINLINE long WWMath::Float_To_Long(float f)
 {
-	return (long) f;
+	// fistp rounds by the current mode (nearest-even by default); lrintf is
+	// its C99 twin. A plain (long) cast would truncate instead.
+	return lrintf(f);
 }
 #endif
 
@@ -341,7 +343,7 @@ WWINLINE long WWMath::Float_To_Long(double f)
 	__asm fistp dword ptr [retval]
 	return retval;
 #else 
-	return (long) f;
+	return lrint(f);
 #endif
 }
 

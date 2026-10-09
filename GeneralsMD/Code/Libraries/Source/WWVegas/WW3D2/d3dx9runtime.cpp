@@ -31,7 +31,7 @@ D3DXCreateTextureFromFileExFunction	D3DXCreateTextureFromFileExA = NULL;
 D3DXFilterTextureFunction			D3DXFilterTexture = NULL;
 D3DXLoadSurfaceFromSurfaceFunction	D3DXLoadSurfaceFromSurface = NULL;
 D3DXGetFVFVertexSizeFunction		D3DXGetFVFVertexSize = NULL;
-
+#ifndef PLATFORM_LINUX
 D3DXMatrixInverseFunction	D3DXMatrixInverse = NULL;
 D3DXMatrixBinaryFunction	D3DXMatrixMultiply = NULL;
 D3DXMatrixUnaryFunction		D3DXMatrixTranspose = NULL;
@@ -40,6 +40,8 @@ D3DXMatrixTripleFunction	D3DXMatrixTranslation = NULL;
 D3DXMatrixAngleFunction		D3DXMatrixRotationZ = NULL;
 D3DXVec4TransformFunction	D3DXVec4Transform = NULL;
 D3DXVec3TransformFunction	D3DXVec3Transform = NULL;
+#endif
+#ifndef PLATFORM_LINUX
 
 // The last D3DX9 release, and the one d3d8to9 binds, so a machine that runs this fork
 // today already has it.  There is no fallback to an earlier d3dx9_NN.dll on purpose:
@@ -69,17 +71,22 @@ static const ErrorName ERROR_NAMES[] =
 	{ D3DERR_DRIVERINTERNALERROR,		"D3DERR_DRIVERINTERNALERROR" },
 	{ D3DERR_INVALIDCALL,				"D3DERR_INVALIDCALL" },
 	{ D3DERR_INVALIDDEVICE,				"D3DERR_INVALIDDEVICE" },
+	{ D3DERR_MOREDATA,					"D3DERR_MOREDATA" },
 	{ D3DERR_NOTAVAILABLE,				"D3DERR_NOTAVAILABLE" },
 	{ D3DERR_NOTFOUND,					"D3DERR_NOTFOUND" },
 	{ D3DERR_OUTOFVIDEOMEMORY,			"D3DERR_OUTOFVIDEOMEMORY" },
 	{ D3DERR_TOOMANYOPERATIONS,			"D3DERR_TOOMANYOPERATIONS" },
+	{ D3DERR_UNSUPPORTEDALPHAARG,		"D3DERR_UNSUPPORTEDALPHAARG" },
+	{ D3DERR_UNSUPPORTEDALPHAOPERATION,	"D3DERR_UNSUPPORTEDALPHAOPERATION" },
+	{ D3DERR_UNSUPPORTEDCOLORARG,		"D3DERR_UNSUPPORTEDCOLORARG" },
+	{ D3DERR_UNSUPPORTEDCOLOROPERATION,	"D3DERR_UNSUPPORTEDCOLOROPERATION" },
+	{ D3DERR_UNSUPPORTEDFACTORVALUE,	"D3DERR_UNSUPPORTEDFACTORVALUE" },
 	{ D3DERR_UNSUPPORTEDTEXTUREFILTER,	"D3DERR_UNSUPPORTEDTEXTUREFILTER" },
 	{ D3DERR_WRONGTEXTUREFORMAT,		"D3DERR_WRONGTEXTUREFORMAT" },
-	{ E_OUTOFMEMORY,					"E_OUTOFMEMORY" },
+	{ E_FAIL,							"E_FAIL" },
 	{ E_INVALIDARG,						"E_INVALIDARG" },
-	{ E_FAIL,							"E_FAIL" }
+	{ E_OUTOFMEMORY,					"E_OUTOFMEMORY" }
 };
-
 static const int ERROR_NAME_COUNT = sizeof(ERROR_NAMES) / sizeof(ERROR_NAMES[0]);
 static const int ERROR_TEXT_SIZE = 32;
 
@@ -135,7 +142,7 @@ bool Bind_D3DX9_Runtime(void)
 	D3DXVec3Transform = (D3DXVec3TransformFunction)
 		GetProcAddress(D3DX9Module, "D3DXVec3Transform");
 
-	BindSucceeded = D3DXAssembleShader != NULL
+	if (D3DXAssembleShader != NULL
 		&& D3DXCompileShader != NULL
 		&& D3DXDisassembleShader != NULL
 		&& D3DXCreateTexture != NULL
@@ -152,19 +159,14 @@ bool Bind_D3DX9_Runtime(void)
 		&& D3DXMatrixTranslation != NULL
 		&& D3DXMatrixRotationZ != NULL
 		&& D3DXVec4Transform != NULL
-		&& D3DXVec3Transform != NULL;
-
-	if (!BindSucceeded) {
-		release_module();
+		&& D3DXVec3Transform != NULL) {
+		atexit(release_module);
+		BindSucceeded = true;
+		return true;
 	}
-	return BindSucceeded;
-}
 
-void Unbind_D3DX9_Runtime(void)
-{
 	release_module();
-	BindAttempted = false;
-	BindSucceeded = false;
+	return false;
 }
 
 static void release_module(void)
@@ -195,12 +197,11 @@ static void release_module(void)
 	}
 }
 
-UINT Get_FVF_Vertex_Size(DWORD fvf)
+void Unbind_D3DX9_Runtime(void)
 {
-	if (!Bind_D3DX9_Runtime()) {
-		return 0;
-	}
-	return D3DXGetFVFVertexSize(fvf);
+	release_module();
+	BindAttempted = false;
+	BindSucceeded = false;
 }
 
 const char * Get_D3D_Error_String(HRESULT result)
@@ -213,4 +214,47 @@ const char * Get_D3D_Error_String(HRESULT result)
 	_snprintf(UnknownErrorText, ERROR_TEXT_SIZE, "0x%08lx", (unsigned long)result);
 	UnknownErrorText[ERROR_TEXT_SIZE - 1] = '\0';
 	return UnknownErrorText;
+}
+
+#else // PLATFORM_LINUX
+
+bool Bind_D3DX9_Runtime(void) { return true; }
+void Unbind_D3DX9_Runtime(void) {}
+const char * Get_D3D_Error_String(HRESULT) { return "D3D_OK"; }
+
+#endif // PLATFORM_LINUX
+
+UINT Get_FVF_Vertex_Size(DWORD fvf)
+{
+#ifndef PLATFORM_LINUX
+	if (!Bind_D3DX9_Runtime()) {
+		return 0;
+	}
+	return D3DXGetFVFVertexSize(fvf);
+#else
+    UINT size = 0;
+    DWORD pos = fvf & D3DFVF_POSITION_MASK;
+    if (pos == D3DFVF_XYZ) size += 3 * sizeof(float);
+    else if (pos == D3DFVF_XYZRHW) size += 4 * sizeof(float);
+    else if (pos == D3DFVF_XYZB1) size += 4 * sizeof(float);
+    else if (pos == D3DFVF_XYZB2) size += 5 * sizeof(float);
+    else if (pos == D3DFVF_XYZB3) size += 6 * sizeof(float);
+    else if (pos == D3DFVF_XYZB4) size += 7 * sizeof(float);
+    else if (pos == D3DFVF_XYZB5) size += 8 * sizeof(float);
+
+    if (fvf & D3DFVF_NORMAL) size += 3 * sizeof(float);
+    if (fvf & 0x020) size += 1 * sizeof(float);
+    if (fvf & D3DFVF_DIFFUSE) size += sizeof(DWORD);
+    if (fvf & D3DFVF_SPECULAR) size += sizeof(DWORD);
+
+    UINT numTex = (fvf & D3DFVF_TEXCOUNT_MASK) >> D3DFVF_TEXCOUNT_SHIFT;
+    for (UINT i = 0; i < numTex; ++i) {
+        DWORD coordSize = (fvf >> (16 + i * 2)) & 3;
+        if (coordSize == 0) size += 2 * sizeof(float);
+        else if (coordSize == 1) size += 3 * sizeof(float);
+        else if (coordSize == 2) size += 4 * sizeof(float);
+        else if (coordSize == 3) size += 1 * sizeof(float);
+    }
+    return size;
+#endif
 }

@@ -291,6 +291,10 @@ void BinkVideoPlayer::notifyVideoPlayerOfNewProvider( Bool nowHasValid )
 //============================================================================
 void BinkVideoPlayer::initializeBinkWithMiles()
 {
+#if defined(LINUX)
+	// DirectSound is unavailable; keep video playback explicitly silent.
+	BinkSetSoundTrack(0, 0);
+#else
 	Int retVal = 0;
 	void *driver = TheAudio->getHandleForBink();	
 	
@@ -302,6 +306,7 @@ void BinkVideoPlayer::initializeBinkWithMiles()
 	{
 		BinkSetSoundTrack ( 0,0 );
 	}
+#endif
 }
 
 //============================================================================

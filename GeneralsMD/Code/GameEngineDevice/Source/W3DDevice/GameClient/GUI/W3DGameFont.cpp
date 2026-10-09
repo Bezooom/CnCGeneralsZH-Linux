@@ -49,9 +49,21 @@
 // USER INCLUDES //////////////////////////////////////////////////////////////
 #include "Common/Debug.h"
 #include "W3DDevice/GameClient/W3DGameFont.h"
+#if defined(_WIN32)
 #include "WW3D2/WW3D.h"
+#else
+#include "WW3D2/ww3d.h"
+#endif
+#if defined(_WIN32)
 #include "WW3D2/AssetMgr.h"
+#else
+#include "WW3D2/assetmgr.h"
+#endif
+#if defined(_WIN32)
 #include "WW3D2/Render2DSentence.h"
+#else
+#include "WW3D2/render2dsentence.h"
+#endif
 #include "GameClient/GlobalLanguage.h"
 
 // DEFINES ////////////////////////////////////////////////////////////////////

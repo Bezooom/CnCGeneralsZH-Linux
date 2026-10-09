@@ -23,8 +23,13 @@
 
 #include <string>
 
+#if defined(_MSC_VER)
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#else
+// Linux: Win32 Registry/file API shims (implemented in wwdownload).
+#include "WinCompat.h"
+#endif
 
 #include "Registry.h"
 #include "urlBuilder.h"
@@ -527,8 +532,18 @@ TEST(prepare_directories_unreachable_root_fails)
 {
 	/* A drive that cannot exist: CreateDirectory fails with something other than
 	   ERROR_ALREADY_EXISTS, so the failure has to propagate. */
+#if defined(_MSC_VER)
 	CHECK(!Prepare_Directories("\\\\?\\Q:\\no_such_volume_for_tests", "a\\patch.bin"));
 
 	/* ...but only when there is a directory to create at all. */
 	CHECK(Prepare_Directories("\\\\?\\Q:\\no_such_volume_for_tests", "patch.bin"));
+#else
+	// Linux: backslashes are ordinary filename characters, so the Windows
+	// spelling above would succeed here. /proc is read-only, which is the
+	// platform's closest "volume that cannot exist" equivalent.
+	CHECK(!Prepare_Directories("/proc/wwdl_no_such_volume_for_tests", "a\\patch.bin"));
+
+	/* ...but only when there is a directory to create at all. */
+	CHECK(Prepare_Directories("/proc/wwdl_no_such_volume_for_tests", "patch.bin"));
+#endif
 }

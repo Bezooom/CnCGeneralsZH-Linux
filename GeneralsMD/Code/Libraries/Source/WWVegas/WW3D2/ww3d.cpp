@@ -108,7 +108,11 @@
 #include "render2d.h"
 #include "bound.h"
 #include "rddesc.h"
+#if defined(_WIN32)
 #include "vector3i.h"
+#else
+#include "Vector3i.h"
+#endif
 #include <cstdio>
 #include "dx8wrapper.h"
 #include "targa.h"

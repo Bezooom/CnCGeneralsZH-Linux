@@ -21,7 +21,13 @@ endif()
 set(WW ${CMAKE_CURRENT_SOURCE_DIR}/Libraries/Source/WWVegas)
 set(COMP ${CMAKE_CURRENT_SOURCE_DIR}/Libraries/Source/Compression)
 
-add_compile_definitions(WIN32 _WINDOWS _CRT_SECURE_NO_WARNINGS _CRT_NONSTDC_NO_WARNINGS)
+if(NOT CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  add_compile_definitions(WIN32 _WINDOWS _CRT_SECURE_NO_WARNINGS _CRT_NONSTDC_NO_WARNINGS)
+else()
+  # Linux native build: no WIN32/_WINDOWS globally (see PORT_TO_LINUX_PLAN.md
+  # acceptance criteria). MSVC-only CRT shims stay Windows-only.
+  add_compile_definitions(_CRT_SECURE_NO_WARNINGS _CRT_NONSTDC_NO_WARNINGS)
+endif()
 
 # EA's own switch for exactly this situation ("Good for startup problems", Debug.h):
 # it turns DEBUG_LOG back on in a Release build so the hundreds of existing log
@@ -68,6 +74,106 @@ if(MSVC)
   add_link_options(/DEBUG)
 endif()
 
+# ===========================================================================
+# Linux / GCC / Clang configuration
+# ===========================================================================
+if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+  # Platform detection
+  if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    # _UNIX activates the tree's existing Unix branches (mutex/thread/rawfile/
+    # wwmemlog/wwprofile/cpudetect and ~70 more). PLATFORM_LINUX marks new
+    # Linux-only shims; keep them distinct and reversible.
+    add_compile_definitions(PLATFORM_LINUX=1 LINUX=1 _LINUX=1 _UNIX=1)
+    set(PLATFORM_LINUX 1)
+  endif()
+
+  # Compiler flags for 2003-era code compatibility
+  add_compile_options(
+    $<$<COMPILE_LANGUAGE:CXX>:-std=c++17>
+    -fms-extensions           # MSVC extensions (anonymous structs, etc.)
+    -fno-strict-aliasing      # Old code violates strict aliasing
+    -Wno-deprecated-declarations
+    -Wno-unused-variable
+    -Wno-unused-parameter
+    -Wno-missing-field-initializers
+    -Wno-format-truncation
+    -fno-omit-frame-pointer   # Keep frame pointers for stack walking
+  )
+
+  # Profiling support: -finstrument-functions for function-level profiling
+  option(ENABLE_PROFILING "Enable function-level profiling (-finstrument-functions)" OFF)
+  if(ENABLE_PROFILING)
+    add_compile_options(-finstrument-functions)
+    add_compile_definitions(HAS_PROFILE=1)
+  endif()
+
+  # Linker flags (mold when present, default linker otherwise)
+  find_program(MOLD_LINKER mold)
+  if(MOLD_LINKER)
+    add_link_options(-fuse-ld=mold)
+  endif()
+  add_link_options(-Wl,--as-needed)
+
+  # Linux system libraries
+  set(LINUX_SYSTEM_LIBS
+    pthread
+    dl
+    rt
+    m
+    unwind
+  )
+
+  # Find required packages
+  find_package(Threads REQUIRED)
+  find_package(Vulkan REQUIRED)
+  
+  # SDL2 - try find_package, fall back to manual
+  find_package(SDL2 QUIET)
+  if(NOT SDL2_FOUND)
+    # Manual SDL2 setup for Ubuntu
+    find_path(SDL2_INCLUDE_DIR SDL.h PATHS /usr/include/SDL2 /usr/include)
+    find_library(SDL2_LIBRARY SDL2)
+    if(SDL2_INCLUDE_DIR AND SDL2_LIBRARY)
+      add_compile_definitions(USE_SDL2=1)
+      set(SDL_LIBRARIES ${SDL2_LIBRARY})
+      set(SDL2_INCLUDE_DIRS ${SDL2_INCLUDE_DIR})
+    else()
+      message(WARNING "SDL2 not found - window/input will not work")
+    endif()
+  else()
+    add_compile_definitions(USE_SDL2=1)
+    set(SDL_LIBRARIES SDL2::SDL2)
+  endif()
+  
+  # Optional multimedia packages - core build works without them
+  find_package(OpenAL QUIET)
+  if(NOT OpenAL_FOUND)
+    message(WARNING "OpenAL not found - audio will not work")
+  endif()
+  
+  find_package(FFmpeg QUIET)
+  if(NOT FFmpeg_FOUND)
+    message(WARNING "FFmpeg not found - video will not work")
+  endif()
+  
+  find_package(ZLIB REQUIRED)
+  
+  # Optional LibUnwind - for stack walking
+  find_package(LibUnwind QUIET)
+  if(NOT LibUnwind_FOUND)
+    find_path(LIBUNWIND_INCLUDE_DIR libunwind.h PATHS /usr/include)
+    find_library(LIBUNWIND_LIBRARY unwind)
+    if(LIBUNWIND_INCLUDE_DIR AND LIBUNWIND_LIBRARY)
+      set(LIBUNWIND_INCLUDE_DIRS ${LIBUNWIND_INCLUDE_DIR})
+      set(LIBUNWIND_LIBRARIES ${LIBUNWIND_LIBRARY})
+    else()
+      message(WARNING "LibUnwind not found - stack walking limited")
+    endif()
+  else()
+    set(LIBUNWIND_LIBRARIES LibUnwind::LibUnwind)
+  endif()
+endif()
+
 # ---- wwdebug --------------------------------------------------------------
 add_library(wwdebug STATIC
   ${WW}/WWDebug/wwdebug.cpp
@@ -110,26 +216,46 @@ target_link_libraries(wwmath PRIVATE wwdebug)
 # zlib 1.1.4 (vendored, per README) minus maketree.c - that one is a table
 # generator with its own main().  Lzhl_tcp.cpp is also skipped (socket layer,
 # nothing in the game calls it).
-add_library(compression STATIC
-  ${COMP}/CompressionManager.cpp
-  ${COMP}/EAC/btreeabout.cpp ${COMP}/EAC/btreedecode.cpp ${COMP}/EAC/btreeencode.cpp
-  ${COMP}/EAC/huffabout.cpp  ${COMP}/EAC/huffdecode.cpp  ${COMP}/EAC/huffencode.cpp
-  ${COMP}/EAC/refabout.cpp   ${COMP}/EAC/refdecode.cpp   ${COMP}/EAC/refencode.cpp
-  ${COMP}/LZHCompress/NoxCompress.cpp
-  ${COMP}/LZHCompress/CompLibSource/Huff.cpp
-  ${COMP}/LZHCompress/CompLibSource/Lz.cpp
-  ${COMP}/LZHCompress/CompLibSource/Lzhl.cpp
-  ${COMP}/ZLib/adler32.c  ${COMP}/ZLib/compress.c ${COMP}/ZLib/crc32.c
-  ${COMP}/ZLib/deflate.c  ${COMP}/ZLib/gzio.c     ${COMP}/ZLib/infblock.c
-  ${COMP}/ZLib/infcodes.c ${COMP}/ZLib/inffast.c  ${COMP}/ZLib/inflate.c
-  ${COMP}/ZLib/inftrees.c ${COMP}/ZLib/infutil.c  ${COMP}/ZLib/trees.c
-  ${COMP}/ZLib/uncompr.c  ${COMP}/ZLib/zutil.c)
-target_include_directories(compression
-  PUBLIC ${COMP} ${CMAKE_CURRENT_SOURCE_DIR}/Libraries/Include
-  PRIVATE ${COMP}/LZHCompress/CompLibHeader)
-# CompressionManager calls z_compress2/z_uncompress and BaseType.h owns 'Byte',
-# so zlib must be built with its Z_PREFIX renames on.
-target_compile_definitions(compression PRIVATE Z_PREFIX)
+if(PLATFORM_LINUX)
+  # Use system zlib on Linux, only build EAC/LZH from source
+  add_library(compression STATIC
+    ${COMP}/CompressionManager.cpp
+    ${COMP}/EAC/btreeabout.cpp ${COMP}/EAC/btreedecode.cpp ${COMP}/EAC/btreeencode.cpp
+    ${COMP}/EAC/huffabout.cpp  ${COMP}/EAC/huffdecode.cpp  ${COMP}/EAC/huffencode.cpp
+    ${COMP}/EAC/refabout.cpp   ${COMP}/EAC/refdecode.cpp   ${COMP}/EAC/refencode.cpp
+    ${COMP}/LZHCompress/NoxCompress.cpp
+    ${COMP}/LZHCompress/CompLibSource/Huff.cpp
+    ${COMP}/LZHCompress/CompLibSource/Lz.cpp
+    ${COMP}/LZHCompress/CompLibSource/Lzhl.cpp
+  )
+  target_include_directories(compression
+    PUBLIC ${COMP} ${CMAKE_CURRENT_SOURCE_DIR}/Libraries/Include ${ZLIB_INCLUDE_DIRS}
+    PRIVATE ${COMP}/LZHCompress/CompLibHeader)
+  target_link_libraries(compression PUBLIC ${ZLIB_LIBRARIES})
+  # No Z_PREFIX on Linux: the system libz exports unprefixed symbols only,
+  # so the z_* call sites below resolve to compress2/uncompress/compressBound.
+  target_compile_definitions(compression PRIVATE ZLIB_LINUX_SYSTEM)
+else()
+  # Windows: build vendored zlib 1.1.4
+  add_library(compression STATIC
+    ${COMP}/CompressionManager.cpp
+    ${COMP}/EAC/btreeabout.cpp ${COMP}/EAC/btreedecode.cpp ${COMP}/EAC/btreeencode.cpp
+    ${COMP}/EAC/huffabout.cpp  ${COMP}/EAC/huffdecode.cpp  ${COMP}/EAC/huffencode.cpp
+    ${COMP}/EAC/refabout.cpp   ${COMP}/EAC/refdecode.cpp   ${COMP}/EAC/refencode.cpp
+    ${COMP}/LZHCompress/NoxCompress.cpp
+    ${COMP}/LZHCompress/CompLibSource/Huff.cpp
+    ${COMP}/LZHCompress/CompLibSource/Lz.cpp
+    ${COMP}/LZHCompress/CompLibSource/Lzhl.cpp
+    ${COMP}/ZLib/adler32.c  ${COMP}/ZLib/compress.c ${COMP}/ZLib/crc32.c
+    ${COMP}/ZLib/deflate.c  ${COMP}/ZLib/gzio.c     ${COMP}/ZLib/infblock.c
+    ${COMP}/ZLib/infcodes.c ${COMP}/ZLib/inffast.c  ${COMP}/ZLib/inflate.c
+    ${COMP}/ZLib/inftrees.c ${COMP}/ZLib/infutil.c  ${COMP}/ZLib/trees.c
+    ${COMP}/ZLib/uncompr.c  ${COMP}/ZLib/zutil.c)
+  target_include_directories(compression
+    PUBLIC ${COMP} ${CMAKE_CURRENT_SOURCE_DIR}/Libraries/Include
+    PRIVATE ${COMP}/LZHCompress/CompLibHeader)
+  target_compile_definitions(compression PRIVATE Z_PREFIX)
+endif()
 
 # Round-trip check over every codec CompressionManager exposes.
 add_executable(compression_selfcheck ${COMP}/test_compression.cpp)
@@ -171,9 +297,40 @@ add_library(wwlib STATIC
   ${WW}/WWLib/wwfile.cpp     ${WW}/WWLib/wwfont.cpp     ${WW}/WWLib/wwstring.cpp
   ${WW}/WWLib/xpipe.cpp      ${WW}/WWLib/xstraw.cpp     ${WW}/WWLib/xsurface.cpp)
 target_include_directories(wwlib PUBLIC ${WW}/WWLib PRIVATE ${WW}/WWMath ${WW}/Wwutil)
+if(PLATFORM_LINUX)
+  # DirectDraw surface stack needs <ddraw.h> from the stripped DirectX SDK
+  # (dsurface.h includes it; misc.h too). Renderer work owns these in a later
+  # phase; nothing in the core gate references them.
+  # keyboard.cpp/msgloop.cpp are the Win32 input pump (VK_*, ToAscii,
+  # PeekMessage). The SDL driver in Phase 3/5 replaces them; nothing in the
+  # core gate references WWKeyboardClass or Windows_Message_Handler.
+  # registry.cpp is the Win32 Registry API on Windows and the XDG INI store (through
+  # Platform/PAL_Registry) on Linux, so it builds on both.
+  # verchk.cpp reads PE version resources; its only users are the wolSetup
+  # tool and (via extern) miscutil's Windows branch. Nothing in the core
+  # gate needs it.
+  # WWCOMUtil.cpp wraps COM IDispatch (oaidl.h) with no users in the tree;
+  # COM has no Linux twin and the browser/COM paths are out of scope.
+  set_source_files_properties(
+    ${WW}/WWLib/convert.cpp ${WW}/WWLib/ddraw.cpp ${WW}/WWLib/dsurface.cpp
+    ${WW}/WWLib/keyboard.cpp ${WW}/WWLib/msgloop.cpp
+    ${WW}/WWLib/verchk.cpp
+    ${WW}/WWLib/WWCOMUtil.cpp
+    PROPERTIES HEADER_FILE_ONLY ON)
+  # random.cpp's Random3 seed tables hold constants above INT_MAX in int
+  # arrays; MSVC wraps them mod 2^32 and GCC folds the same bit patterns.
+  # The tables are consumed as bit patterns, so keep codegen, silence warning.
+  set_source_files_properties(${WW}/WWLib/random.cpp PROPERTIES COMPILE_OPTIONS -Wno-narrowing)
+endif()
 # winmm: timeGetTime/timeBeginPeriod.  version: verchk.cpp's GetFileVersionInfo,
 # which Wwutil drags in for Get_File_Id_String.
-target_link_libraries(wwlib PRIVATE wwdebug PUBLIC winmm version)
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  target_include_directories(wwlib PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/Platform)
+  # RegistryClass reads the store through PAL, which lives in the debug library.
+  target_link_libraries(wwlib PRIVATE wwdebug debuglib PUBLIC pthread dl rt m)
+else()
+  target_link_libraries(wwlib PRIVATE wwdebug PUBLIC winmm version)
+endif()
 
 # ---- wwsaveload -----------------------------------------------------------
 add_library(wwsaveload STATIC
@@ -184,9 +341,75 @@ add_library(wwsaveload STATIC
   ${WW}/WWSaveLoad/saveloadstatus.cpp      ${WW}/WWSaveLoad/saveloadsubsystem.cpp
   ${WW}/WWSaveLoad/twiddler.cpp            ${WW}/WWSaveLoad/wwsaveload.cpp)
 target_include_directories(wwsaveload PUBLIC ${WW}/WWSaveLoad PRIVATE ${WW}/WWLib ${WW}/WWMath ${WW}/Wwutil)
-target_link_libraries(wwsaveload PRIVATE wwdebug wwlib wwmath)
+# NOTE: no wwmath here on purpose. wwsaveload's objects reference no wwmath
+# symbols (verified with nm); linking it would add a wwsaveload->wwmath edge
+# that makes CMake order wwmath's users' link lines wwsaveload-first, which
+# breaks single-pass static resolution because wwmath (cardinalspline) really
+# uses wwsaveload (PersistFactory). Headers still come from the PRIVATE
+# include above.
+target_link_libraries(wwsaveload PRIVATE wwdebug wwlib)
+
+# ---- ffshader -------------------------------------------------------------
+# String generation only: no device, driver or WWLib dependency on Linux.
+# Windows keeps the SDK types and its existing d3d9 link interface.
+if(MSVC OR CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  add_library(ffshader STATIC ${WW}/WW3D2/ffshader.cpp)
+  set_target_properties(ffshader PROPERTIES CXX_STANDARD 17)
+  target_include_directories(ffshader PUBLIC ${WW}/WW3D2)
+  if(MSVC)
+    target_link_libraries(ffshader PUBLIC d3d9)
+  elseif(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(ffshader PRIVATE -Wformat=2 -Werror=format)
+  endif()
+endif()
 
 # ---- d3dx9runtime ---------------------------------------------------------
+# Linux note: the device/renderer stack below (d3dx9runtime through ww3d2) is
+# MSVC-only until the Phase-2 renderer decision (native Vulkan vs DXVK
+# fallback). GameEngine's only need from it was the d3dx9math.h math half,
+# which WWVegas/LinuxDX/d3dx9math.h now provides on Linux instead.
+set(WW3D2_SOURCES
+  ${WW}/WW3D2/FramGrab.cpp ${WW}/WW3D2/aabtree.cpp ${WW}/WW3D2/aabtreebuilder.cpp 
+  ${WW}/WW3D2/agg_def.cpp ${WW}/WW3D2/animatedsoundmgr.cpp ${WW}/WW3D2/animobj.cpp 
+  ${WW}/WW3D2/assetmgr.cpp ${WW}/WW3D2/assetstatus.cpp ${WW}/WW3D2/bitmaphandler.cpp 
+  ${WW}/WW3D2/bmp2d.cpp ${WW}/WW3D2/boxrobj.cpp ${WW}/WW3D2/bwrender.cpp 
+  ${WW}/WW3D2/camera.cpp ${WW}/WW3D2/collect.cpp ${WW}/WW3D2/coltest.cpp 
+  ${WW}/WW3D2/composite.cpp ${WW}/WW3D2/d3dx9runtime.cpp ${WW}/WW3D2/dazzle.cpp ${WW}/WW3D2/ddsfile.cpp 
+  ${WW}/WW3D2/decalmsh.cpp ${WW}/WW3D2/decalsys.cpp ${WW}/WW3D2/distlod.cpp 
+  ${WW}/WW3D2/dx8caps.cpp ${WW}/WW3D2/dx8fvf.cpp ${WW}/WW3D2/dx8indexbuffer.cpp 
+  ${WW}/WW3D2/dx8polygonrenderer.cpp ${WW}/WW3D2/dx8renderer.cpp ${WW}/WW3D2/dx8rendererdebugger.cpp 
+  ${WW}/WW3D2/dx8texman.cpp ${WW}/WW3D2/dx8vertexbuffer.cpp
+  ${WW}/WW3D2/dx8wrapper.cpp ${WW}/WW3D2/dynamesh.cpp ${WW}/WW3D2/ffprobe.cpp
+  ${WW}/WW3D2/ffshadercache.cpp ${WW}/WW3D2/font3d.cpp
+  ${WW}/WW3D2/formconv.cpp ${WW}/WW3D2/hanim.cpp ${WW}/WW3D2/hanimmgr.cpp 
+  ${WW}/WW3D2/hcanim.cpp ${WW}/WW3D2/hlod.cpp ${WW}/WW3D2/hmdldef.cpp 
+  ${WW}/WW3D2/hmorphanim.cpp ${WW}/WW3D2/hrawanim.cpp ${WW}/WW3D2/htree.cpp 
+  ${WW}/WW3D2/htreemgr.cpp ${WW}/WW3D2/intersec.cpp ${WW}/WW3D2/layer.cpp 
+  ${WW}/WW3D2/light.cpp ${WW}/WW3D2/lightenvironment.cpp ${WW}/WW3D2/line3d.cpp 
+  ${WW}/WW3D2/linegrp.cpp ${WW}/WW3D2/mapper.cpp ${WW}/WW3D2/matinfo.cpp 
+  ${WW}/WW3D2/matpass.cpp ${WW}/WW3D2/matrixmapper.cpp ${WW}/WW3D2/mesh.cpp 
+  ${WW}/WW3D2/meshbuild.cpp ${WW}/WW3D2/meshdam.cpp ${WW}/WW3D2/meshgeometry.cpp 
+  ${WW}/WW3D2/meshmatdesc.cpp ${WW}/WW3D2/meshmdl.cpp ${WW}/WW3D2/meshmdlio.cpp 
+  ${WW}/WW3D2/metalmap.cpp ${WW}/WW3D2/missingtexture.cpp ${WW}/WW3D2/motchan.cpp 
+  ${WW}/WW3D2/nullrobj.cpp ${WW}/WW3D2/part_buf.cpp ${WW}/WW3D2/part_emt.cpp 
+  ${WW}/WW3D2/part_ldr.cpp ${WW}/WW3D2/pivot.cpp ${WW}/WW3D2/pointgr.cpp 
+  ${WW}/WW3D2/polyinfo.cpp ${WW}/WW3D2/predlod.cpp ${WW}/WW3D2/prim_anim.cpp 
+  ${WW}/WW3D2/projector.cpp ${WW}/WW3D2/proto.cpp ${WW}/WW3D2/render2d.cpp 
+  ${WW}/WW3D2/render2dsentence.cpp ${WW}/WW3D2/renderobjectrecycler.cpp ${WW}/WW3D2/rendobj.cpp 
+  ${WW}/WW3D2/rinfo.cpp ${WW}/WW3D2/ringobj.cpp ${WW}/WW3D2/scene.cpp 
+  ${WW}/WW3D2/segline.cpp ${WW}/WW3D2/seglinerenderer.cpp ${WW}/WW3D2/shader.cpp 
+  ${WW}/WW3D2/shattersystem.cpp ${WW}/WW3D2/snappts.cpp ${WW}/WW3D2/sortingrenderer.cpp 
+  ${WW}/WW3D2/soundrobj.cpp ${WW}/WW3D2/sphereobj.cpp ${WW}/WW3D2/static_sort_list.cpp 
+  ${WW}/WW3D2/statistics.cpp ${WW}/WW3D2/streak.cpp ${WW}/WW3D2/streakRender.cpp 
+  ${WW}/WW3D2/stripoptimizer.cpp ${WW}/WW3D2/surfaceclass.cpp ${WW}/WW3D2/texfcach.cpp 
+  ${WW}/WW3D2/texproject.cpp ${WW}/WW3D2/texture.cpp ${WW}/WW3D2/texturefilter.cpp 
+  ${WW}/WW3D2/textureloader.cpp ${WW}/WW3D2/texturethumbnail.cpp ${WW}/WW3D2/txt.cpp 
+  ${WW}/WW3D2/vertmaterial.cpp ${WW}/WW3D2/visrasterizer.cpp ${WW}/WW3D2/w3d_dep.cpp 
+  ${WW}/WW3D2/w3d_util.cpp ${WW}/WW3D2/w3dexclusionlist.cpp ${WW}/WW3D2/ww3d.cpp 
+  ${WW}/WW3D2/ww3dformat.cpp
+)
+
+if(MSVC)
 # The D3DX9 entry points the renderer binds at run time, in a library of their own
 # because GameEngine needs the math half without the renderer: BezierSegment carries
 # D3DXMATRIX and DumbProjectileBehavior steers a shell with it.
@@ -195,15 +418,6 @@ add_library(d3dx9runtime STATIC
 set_target_properties(d3dx9runtime PROPERTIES CXX_STANDARD 17)
 target_include_directories(d3dx9runtime PUBLIC ${WW}/WW3D2)
 target_link_libraries(d3dx9runtime PUBLIC d3d9)
-
-# ---- ffshader -------------------------------------------------------------
-# The fixed-function texture stages written out as HLSL, phase 2's replacement for
-# combiners D3D11 does not have.  Its own library because it is string building over
-# a description and nothing else: the test links this alone rather than all of WW3D2.
-add_library(ffshader STATIC ${WW}/WW3D2/ffshader.cpp)
-set_target_properties(ffshader PROPERTIES CXX_STANDARD 17)
-target_include_directories(ffshader PUBLIC ${WW}/WW3D2)
-target_link_libraries(ffshader PUBLIC d3d9)
 
 # ---- ffvertex -------------------------------------------------------------
 # The other half of the same job: the fixed-function vertex pipeline as HLSL.  It
@@ -300,47 +514,7 @@ target_link_libraries(dx11backend PUBLIC dx11device dx11state dx11layout dx11res
 # wwshade is header-only here on purpose: no .dsp links wwshade.lib and its
 # shd*bump* sources need shdpp/NVASM-generated headers.  Revisit at exe link.
 # dx8webbrowser.cpp stays inert (ENABLE_EMBEDDED_BROWSER unset).
-add_library(ww3d2 STATIC
-
-  ${WW}/WW3D2/FramGrab.cpp ${WW}/WW3D2/aabtree.cpp ${WW}/WW3D2/aabtreebuilder.cpp 
-  ${WW}/WW3D2/agg_def.cpp ${WW}/WW3D2/animatedsoundmgr.cpp ${WW}/WW3D2/animobj.cpp 
-  ${WW}/WW3D2/assetmgr.cpp ${WW}/WW3D2/assetstatus.cpp ${WW}/WW3D2/bitmaphandler.cpp 
-  ${WW}/WW3D2/bmp2d.cpp ${WW}/WW3D2/boxrobj.cpp ${WW}/WW3D2/bwrender.cpp 
-  ${WW}/WW3D2/camera.cpp ${WW}/WW3D2/collect.cpp ${WW}/WW3D2/coltest.cpp 
-  ${WW}/WW3D2/composite.cpp ${WW}/WW3D2/dazzle.cpp ${WW}/WW3D2/ddsfile.cpp 
-  ${WW}/WW3D2/decalmsh.cpp ${WW}/WW3D2/decalsys.cpp ${WW}/WW3D2/distlod.cpp 
-  ${WW}/WW3D2/dx8caps.cpp ${WW}/WW3D2/dx8fvf.cpp ${WW}/WW3D2/dx8indexbuffer.cpp 
-  ${WW}/WW3D2/dx8polygonrenderer.cpp ${WW}/WW3D2/dx8renderer.cpp ${WW}/WW3D2/dx8rendererdebugger.cpp 
-  ${WW}/WW3D2/dx8texman.cpp ${WW}/WW3D2/dx8vertexbuffer.cpp ${WW}/WW3D2/dx8webbrowser.cpp 
-  ${WW}/WW3D2/dx8wrapper.cpp ${WW}/WW3D2/dynamesh.cpp ${WW}/WW3D2/ffprobe.cpp
-  ${WW}/WW3D2/ffshadercache.cpp ${WW}/WW3D2/dx11runtime.cpp ${WW}/WW3D2/font3d.cpp
-  ${WW}/WW3D2/formconv.cpp ${WW}/WW3D2/hanim.cpp ${WW}/WW3D2/hanimmgr.cpp 
-  ${WW}/WW3D2/hcanim.cpp ${WW}/WW3D2/hlod.cpp ${WW}/WW3D2/hmdldef.cpp 
-  ${WW}/WW3D2/hmorphanim.cpp ${WW}/WW3D2/hrawanim.cpp ${WW}/WW3D2/htree.cpp 
-  ${WW}/WW3D2/htreemgr.cpp ${WW}/WW3D2/intersec.cpp ${WW}/WW3D2/layer.cpp 
-  ${WW}/WW3D2/light.cpp ${WW}/WW3D2/lightenvironment.cpp ${WW}/WW3D2/line3d.cpp 
-  ${WW}/WW3D2/linegrp.cpp ${WW}/WW3D2/mapper.cpp ${WW}/WW3D2/matinfo.cpp 
-  ${WW}/WW3D2/matpass.cpp ${WW}/WW3D2/matrixmapper.cpp ${WW}/WW3D2/mesh.cpp 
-  ${WW}/WW3D2/meshbuild.cpp ${WW}/WW3D2/meshdam.cpp ${WW}/WW3D2/meshgeometry.cpp 
-  ${WW}/WW3D2/meshmatdesc.cpp ${WW}/WW3D2/meshmdl.cpp ${WW}/WW3D2/meshmdlio.cpp 
-  ${WW}/WW3D2/metalmap.cpp ${WW}/WW3D2/missingtexture.cpp ${WW}/WW3D2/motchan.cpp 
-  ${WW}/WW3D2/nullrobj.cpp ${WW}/WW3D2/part_buf.cpp ${WW}/WW3D2/part_emt.cpp 
-  ${WW}/WW3D2/part_ldr.cpp ${WW}/WW3D2/pivot.cpp ${WW}/WW3D2/pointgr.cpp 
-  ${WW}/WW3D2/polyinfo.cpp ${WW}/WW3D2/predlod.cpp ${WW}/WW3D2/prim_anim.cpp 
-  ${WW}/WW3D2/projector.cpp ${WW}/WW3D2/proto.cpp ${WW}/WW3D2/render2d.cpp 
-  ${WW}/WW3D2/render2dsentence.cpp ${WW}/WW3D2/renderobjectrecycler.cpp ${WW}/WW3D2/rendobj.cpp 
-  ${WW}/WW3D2/rinfo.cpp ${WW}/WW3D2/ringobj.cpp ${WW}/WW3D2/scene.cpp 
-  ${WW}/WW3D2/segline.cpp ${WW}/WW3D2/seglinerenderer.cpp ${WW}/WW3D2/shader.cpp 
-  ${WW}/WW3D2/shattersystem.cpp ${WW}/WW3D2/snappts.cpp ${WW}/WW3D2/sortingrenderer.cpp 
-  ${WW}/WW3D2/soundrobj.cpp ${WW}/WW3D2/sphereobj.cpp ${WW}/WW3D2/static_sort_list.cpp 
-  ${WW}/WW3D2/statistics.cpp ${WW}/WW3D2/streak.cpp ${WW}/WW3D2/streakRender.cpp 
-  ${WW}/WW3D2/stripoptimizer.cpp ${WW}/WW3D2/surfaceclass.cpp ${WW}/WW3D2/texfcach.cpp 
-  ${WW}/WW3D2/texproject.cpp ${WW}/WW3D2/texture.cpp ${WW}/WW3D2/texturefilter.cpp 
-  ${WW}/WW3D2/textureloader.cpp ${WW}/WW3D2/texturethumbnail.cpp ${WW}/WW3D2/txt.cpp 
-  ${WW}/WW3D2/vertmaterial.cpp ${WW}/WW3D2/visrasterizer.cpp ${WW}/WW3D2/w3d_dep.cpp 
-  ${WW}/WW3D2/w3d_util.cpp ${WW}/WW3D2/w3dexclusionlist.cpp ${WW}/WW3D2/ww3d.cpp 
-  ${WW}/WW3D2/ww3dformat.cpp 
-)
+add_library(ww3d2 STATIC ${WW3D2_SOURCES} ${WW}/WW3D2/dx8webbrowser.cpp ${WW}/WW3D2/dx11runtime.cpp)
 target_include_directories(ww3d2
   PUBLIC ${WW}/WW3D2
   PRIVATE ${WW}/WWLib ${WW}/WWMath ${WW}/WWDebug ${WW}/WWSaveLoad ${WW}/Wwutil
@@ -358,20 +532,51 @@ target_link_libraries(ww3d2
 # even though ENABLE_EMBEDDED_BROWSER's block is what holds it, disabling the block
 # would not help.  /MP1 puts just this file back on a single process.
 set_source_files_properties(${WW}/WW3D2/dx8webbrowser.cpp PROPERTIES COMPILE_OPTIONS /MP1)
+endif() # MSVC-only renderer stack (see above)
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  # FramGrab writes AVIs via Windows VFW (vfw32.lib); exclude on Linux.
+  list(REMOVE_ITEM WW3D2_SOURCES
+    ${WW}/WW3D2/FramGrab.cpp
+  )
+  # The D3D8-token-to-HLSL translator is pure string work: no device, no d3dx9_43.dll.
+  # It builds here even though the D3DX entry points it calls stay NULL on Linux, so the
+  # call sites resolve and report D3DERR_INVALIDCALL instead of failing to link.
+  list(APPEND WW3D2_SOURCES ${WW}/WW3D2/d3d8shadertranslate.cpp)
+  add_library(ww3d2_linux_compile OBJECT ${WW3D2_SOURCES})
+  target_include_directories(ww3d2_linux_compile PRIVATE
+    ${WW}/WW3D2 ${WW}/WWLib ${WW}/WWMath ${WW}/WWDebug ${WW}/WWSaveLoad ${WW}/Wwutil
+    ${WW}/wwshade ${WW}/WWAudio ${WW}/Miles6/include ${WW}/LinuxDX
+    ${CMAKE_CURRENT_SOURCE_DIR}/Platform
+    $<TARGET_PROPERTY:gameengine,INCLUDE_DIRECTORIES>)
+  target_compile_definitions(ww3d2_linux_compile PRIVATE
+    $<TARGET_PROPERTY:gameengine,COMPILE_DEFINITIONS>)
+  target_compile_options(ww3d2_linux_compile PRIVATE
+    -O2 -ffunction-sections -fdata-sections -include "${WW}/WWLib/win.h")
+  set_target_properties(ww3d2_linux_compile PROPERTIES CXX_STANDARD 17)
+  add_library(ww3d2 STATIC $<TARGET_OBJECTS:ww3d2_linux_compile>)
+  target_include_directories(ww3d2 PUBLIC ${WW}/WW3D2 PRIVATE ${WW}/WWLib ${WW}/WWMath)
+  # CombinerShader_Key/Generate live in ffshader; the cache cannot resolve them alone.
+  target_link_libraries(ww3d2 PUBLIC ffshader)
+endif()
 
 # Phase 8: 1 kHz EIP sampler that symbolizes against the linker map - the
 # machine has no debugger, so this is how hotspots get names.
+if(MSVC)
 add_executable(eip_sampler ${CMAKE_CURRENT_SOURCE_DIR}/Tools/ProfileSampler/eip_sampler.cpp)
 set_target_properties(eip_sampler PROPERTIES CXX_STANDARD 17)
+endif()
 
 # RENDERER-ROADMAP.md phase 1 checkpoint: a real device, with no translating dll
 # anywhere.  It replaces dx8_smoke, which proved the same thing about the vendored
 # DirectX 8 SDK and the d3d8.dll the renderer used to load; that path is gone, and
 # test_dx8_smoke.cpp stays in the tree unbuilt as the record of what it measured.
 # d3d9.h and d3d9.lib come from the Windows SDK, so this target never sees
-# Libraries/DirectX/Include.
+# Libraries/DirectX/Include.  MSVC-only like the renderer above.
+if(MSVC)
 add_executable(dx9_smoke ${WW}/WW3D2/test_dx9_smoke.cpp)
 target_link_libraries(dx9_smoke PRIVATE d3dx9runtime user32)
+endif()
 
 # ===========================================================================
 # Phase 2 - remaining support libs.  None of these touch DX8.
@@ -392,7 +597,44 @@ add_library(debug STATIC
   ${LIBSRC}/debug/debug_purecall.cpp
   ${LIBSRC}/debug/debug_stack.cpp)
 target_include_directories(debug PUBLIC ${LIBSRC}/debug)
-target_link_libraries(debug PUBLIC dbghelp comctl32 ws2_32)
+
+# Platform abstraction layer
+if(PLATFORM_LINUX)
+  target_sources(debug PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/Platform/PAL_Timing.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/Platform/PAL_FileSystem.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/Platform/PAL_Registry.cpp
+  )
+  # NOTE: GameEngine/Source/Common/System/StackDump_Linux.cpp implements the
+  # GameEngine StackDump API (needs GameEngine includes); it compiles with
+  # the gameengine target in Phase 4, not here.
+  target_include_directories(debug PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/Platform ${WW} ${WW}/LinuxDX ${WW}/WW3D2)
+  
+  # Build list of available system libraries
+  set(DEBUG_SYSTEM_LIBS pthread dl rt m)
+  if(LIBUNWIND_LIBRARIES)
+    list(APPEND DEBUG_SYSTEM_LIBS ${LIBUNWIND_LIBRARIES})
+  endif()
+  if(SDL_LIBRARIES)
+    list(APPEND DEBUG_SYSTEM_LIBS ${SDL_LIBRARIES})
+    if(SDL2_INCLUDE_DIRS)
+      target_include_directories(debug PUBLIC ${SDL2_INCLUDE_DIRS})
+    endif()
+  endif()
+  if(OpenAL_FOUND)
+    list(APPEND DEBUG_SYSTEM_LIBS OpenAL::OpenAL)
+  endif()
+  if(FFmpeg_FOUND)
+    list(APPEND DEBUG_SYSTEM_LIBS FFmpeg::avcodec FFmpeg::avformat FFmpeg::avutil FFmpeg::swscale)
+  endif()
+  
+  target_link_libraries(debug PUBLIC ${DEBUG_SYSTEM_LIBS})
+  # backtrace(3)/dladdr(3) in debug_stack.cpp resolve exe symbols only with
+  # dynamic symbols exported; PUBLIC so consumer test exes inherit it.
+  target_link_options(debug PUBLIC -rdynamic)
+else()
+  target_link_libraries(debug PUBLIC dbghelp comctl32 ws2_32)
+endif()
 # "debug" is also a target_link_libraries config keyword, so it can never be
 # passed as a plain library name.  Link this alias instead.
 add_library(debuglib ALIAS debug)
@@ -406,6 +648,10 @@ add_library(profile STATIC
   ${LIBSRC}/profile/profile_funclevel.cpp ${LIBSRC}/profile/profile_highlevel.cpp
   ${LIBSRC}/profile/profile_result.cpp)
 target_include_directories(profile PUBLIC ${LIBSRC}/profile)
+if(PLATFORM_LINUX)
+  # internal.h pulls Platform/PAL_Timing.h for the precision timer.
+  target_include_directories(profile PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/Platform)
+endif()
 target_link_libraries(profile PUBLIC debuglib)
 
 # ---- wwdownload -----------------------------------------------------------
@@ -415,7 +661,11 @@ add_library(wwdownload STATIC
   ${WW}/WWDownload/Download.cpp ${WW}/WWDownload/FTP.CPP
   ${WW}/WWDownload/registry.cpp ${WW}/WWDownload/urlBuilder.cpp)
 target_include_directories(wwdownload PUBLIC ${WW}/WWDownload ${WW})
-target_link_libraries(wwdownload PUBLIC wsock32 winmm)
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  # Linux: sockets/file APIs live in libc; no extra link libraries.
+else()
+  target_link_libraries(wwdownload PUBLIC wsock32 winmm)
+endif()
 
 # ---- benchmark ------------------------------------------------------------
 # BYTEmark sources are missing; benchmark_stub.c stands in for them.  See the
@@ -428,6 +678,8 @@ target_include_directories(benchmark PUBLIC ${LIBSRC}/Benchmark)
 # expects are MIDL output.  Generate them at build time (MSBuild puts cl.exe,
 # MIDL's preprocessor, on PATH) into a dir laid out so the shipped
 # #include "EABrowserDispatch/BrowserDispatch.h" resolves unchanged.
+# Windows only: MIDL is Windows SDK tool.
+if(MSVC)
 set(EABD_GEN ${CMAKE_CURRENT_BINARY_DIR}/generated/EABrowserDispatch)
 file(MAKE_DIRECTORY ${EABD_GEN})
 # midl.exe ships with the Windows SDK, not on PATH at configure time.
@@ -448,6 +700,19 @@ add_library(eabrowserdispatch STATIC
   ${EABD_GEN}/BrowserDispatch_i.c ${EABD_GEN}/BrowserDispatch.h)
 target_include_directories(eabrowserdispatch
   PUBLIC ${CMAKE_CURRENT_BINARY_DIR}/generated)
+else()
+# Linux: no MIDL. Deploy the checked-in transcription
+# (BrowserDispatch_linux.h) to the same path the MIDL step writes on
+# Windows, so #include "EABrowserDispatch/BrowserDispatch.h" resolves
+# unchanged for GameEngine and the tests.
+file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/generated/EABrowserDispatch)
+configure_file(${LIBSRC}/EABrowserDispatch/BrowserDispatch_linux.h
+  ${CMAKE_CURRENT_BINARY_DIR}/generated/EABrowserDispatch/BrowserDispatch.h COPYONLY)
+add_library(eabrowserdispatch STATIC
+  ${LIBSRC}/EABrowserDispatch/BrowserDispatch_stub.c)
+target_include_directories(eabrowserdispatch
+  PUBLIC ${CMAKE_CURRENT_BINARY_DIR}/generated)
+endif()
 
 # ---- gamespy --------------------------------------------------------------
 # PLAN.md called for hand-written stubs behind the five GameSpy* libs, but the
@@ -461,7 +726,15 @@ set(GS_OPENSSL          OFF CACHE BOOL "" FORCE)
 set(GS_SECURESECONNECT  OFF CACHE BOOL "" FORCE)
 set(GS_BUILD_TESTS      OFF CACHE BOOL "" FORCE)
 set(GS_INCLUDE_VOICE    OFF CACHE BOOL "" FORCE)
-add_subdirectory(${LIBSRC}/GameSpy ${CMAKE_CURRENT_BINARY_DIR}/gamespy)
+
+if(EXISTS ${LIBSRC}/GameSpy/CMakeLists.txt)
+  add_subdirectory(${LIBSRC}/GameSpy ${CMAKE_CURRENT_BINARY_DIR}/gamespy)
+else()
+  message(WARNING "GameSpy SDK not found - multiplayer disabled, using stubs")
+  # Create minimal stub library
+  file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/gamespy_stub.c "// GameSpy stub for Linux\n")
+  add_library(gamespy STATIC ${CMAKE_CURRENT_BINARY_DIR}/gamespy_stub.c)
+endif()
 
 # d3d8to9 is no longer built.  It was a d3d8.dll next to generals.exe that translated
 # every D3D8 call to Direct3D 9, which is how the renderer ran on a modern runtime
@@ -498,6 +771,12 @@ list(REMOVE_ITEM GAMEENGINE_SOURCES
 # includer - the live code went to GameNetwork/GameSpy/ instead.
 list(REMOVE_ITEM GAMEENGINE_SOURCES
   ${GE}/Source/GameNetwork/GameSpyGameInfo.cpp)
+if(PLATFORM_LINUX)
+  # WOL lobby browser: real COM/IE work, out of scope until multiplayer
+  # (Phase 6+). The header still parses (ATL shims) for its includers.
+  list(REMOVE_ITEM GAMEENGINE_SOURCES
+    ${GE}/Source/GameNetwork/WOLBrowser/WebBrowser.cpp)
+endif()
 
 add_library(gameengine STATIC ${GAMEENGINE_SOURCES})
 target_include_directories(gameengine PUBLIC
@@ -511,6 +790,18 @@ target_include_directories(gameengine PUBLIC
   # DumbProjectileBehavior steers a shell with it.  dinput.h now comes out of the
   # Windows SDK like d3d9.h does.
   ${WW}/WW3D2)
+if(PLATFORM_LINUX)
+  # Linux: the renderer stack (ww3d2 et al.) is MSVC-only until Phase 2;
+  # WWVegas/LinuxDX/d3dx9math.h covers the math half gameengine needs.
+  # BEFORE: the real WW3D2/d3dx9math.h (Windows-only, needs <d3d9.h>) sits
+  # on the path too and must not win.
+  # PUBLIC: consumers of gameengine headers (KeyDefs.h -> dinput.h, anything
+  # -> d3dx9math.h, PerfTimer.h/crc.h -> Platform/PAL_Timing.h) need the same
+  # shims, e.g. the test_gameengine TU.
+  target_include_directories(gameengine BEFORE PUBLIC ${WW}/LinuxDX)
+  # PerfTimer.h/crc.h use Platform/PAL_Timing.h (same as profile/debug).
+  target_include_directories(gameengine PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/Platform)
+endif()
 # _RELEASE/_DEBUG pick the game's own build flavour; IG_DEBUG_STACKTRACE and
 # Z_PREFIX are what GameEngine.dsp sets.
 target_compile_definitions(gameengine PUBLIC
@@ -519,10 +810,27 @@ target_compile_definitions(gameengine PUBLIC
 # C++17 for the std::hash_map -> unordered_map alias and string_view hashing in
 # STLTypedefs.h.
 set_target_properties(gameengine PROPERTIES CXX_STANDARD 17)
-target_link_libraries(gameengine PUBLIC
-  ww3d2 wwlib wwmath wwsaveload wwdebug wwutil compression debuglib wwdownload
-  benchmark eabrowserdispatch profile gamespy
-  dinput8 wininet imagehlp imm32)
+# FunctionLexicon.cpp stores function pointers as void* in TableEntry; MSVC
+# accepts the implicit conversion but GCC requires -fpermissive or explicit
+# reinterpret_cast.  The table is an internal callback registry, so the cast
+# is safe - the retriever casts back to the exact same function type.
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  set_source_files_properties(${GE}/Source/Common/System/FunctionLexicon.cpp
+    PROPERTIES COMPILE_FLAGS "-fpermissive")
+endif()
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  # Linux: no ww3d2 (MSVC-only renderer, see above) and no Win32 import libs.
+  # dinput8/wininet/imagehlp/imm32 are input/net/crash/IME surface owned by
+  # Phases 3-5; nothing in the headless gate references them.
+  target_link_libraries(gameengine PUBLIC
+    wwmath wwsaveload wwlib wwdebug wwutil compression debuglib wwdownload
+    benchmark eabrowserdispatch profile gamespy)
+else()
+  target_link_libraries(gameengine PUBLIC
+    ww3d2 wwlib wwmath wwsaveload wwdebug wwutil compression debuglib wwdownload
+    benchmark eabrowserdispatch profile gamespy
+    dinput8 wininet imagehlp imm32)
+endif()
 
 # ===========================================================================
 # Phase 4 - GameEngineDevice + Main -> generals.exe
@@ -531,6 +839,27 @@ set(GED ${CMAKE_CURRENT_SOURCE_DIR}/GameEngineDevice)
 set(STUBS ${CMAKE_CURRENT_SOURCE_DIR}/Stubs)
 
 file(GLOB_RECURSE GAMEENGINEDEVICE_SOURCES ${GED}/Source/*.cpp)
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  # Win32Device is a Windows-specific adapter; exclude from Linux compile gate.
+  # Phase 3.1 (SDL window/input) will provide Linux equivalents.
+  list(REMOVE_ITEM GAMEENGINEDEVICE_SOURCES
+    ${GED}/Source/Win32Device/GameClient/Win32DIMouse.cpp
+    ${GED}/Source/Win32Device/GameClient/Win32Mouse.cpp
+    ${GED}/Source/Win32Device/GameClient/Win32DIKeyboard.cpp
+  )
+  # Compile every device translation unit without linking the device or renderer.
+  add_library(gameenginedevice_linux_compile OBJECT EXCLUDE_FROM_ALL
+    ${GAMEENGINEDEVICE_SOURCES})
+  target_include_directories(gameenginedevice_linux_compile PRIVATE
+    ${GED}/Include ${STUBS} ${CMAKE_CURRENT_SOURCE_DIR}/Main
+    ${WW}/Miles6/include ${WW}/Bink/include
+    $<TARGET_PROPERTY:gameengine,INCLUDE_DIRECTORIES>)
+  target_compile_definitions(gameenginedevice_linux_compile PRIVATE
+    $<TARGET_PROPERTY:gameengine,COMPILE_DEFINITIONS>)
+  target_compile_options(gameenginedevice_linux_compile PRIVATE
+    -include "${WW}/WWLib/win.h")
+  set_target_properties(gameenginedevice_linux_compile PROPERTIES CXX_STANDARD 17)
+endif()
 # On disk but absent from GameEngineDevice.dsp: the DirectInput mouse (the
 # shipping build uses the Win32 message mouse instead).
 list(REMOVE_ITEM GAMEENGINEDEVICE_SOURCES
@@ -553,18 +882,28 @@ add_library(binkstub SHARED
 set_target_properties(binkstub PROPERTIES OUTPUT_NAME binkw32)
 target_include_directories(binkstub PRIVATE ${WW}/Bink/include)
 
-add_library(milesstub SHARED
-  ${WW}/Miles6/stub/miles.c ${WW}/Miles6/stub/miles.def)
+add_library(milesstub SHARED ${WW}/Miles6/stub/miles.c)
+if(NOT CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  target_sources(milesstub PRIVATE ${WW}/Miles6/stub/miles.def)
+endif()
 set_target_properties(milesstub PROPERTIES OUTPUT_NAME mss32)
 target_include_directories(milesstub PRIVATE ${WW}/Miles6/stub ${WW}/Miles6/include)
 
-add_library(gameenginedevice STATIC ${GAMEENGINEDEVICE_SOURCES})
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  add_library(gameenginedevice STATIC $<TARGET_OBJECTS:gameenginedevice_linux_compile>)
+  target_include_directories(gameenginedevice PUBLIC
+    ${GED}/Include ${STUBS} ${CMAKE_CURRENT_SOURCE_DIR}/Main
+    ${WW}/Miles6/include ${WW}/Bink/include)
+  target_link_libraries(gameenginedevice PUBLIC gameengine milesstub binkstub)
+else()
+  add_library(gameenginedevice STATIC ${GAMEENGINEDEVICE_SOURCES})
 
-target_include_directories(gameenginedevice PUBLIC
-  ${GED}/Include ${STUBS} ${CMAKE_CURRENT_SOURCE_DIR}/Main
-  ${WW}/Miles6/include ${WW}/Bink/include)
-set_target_properties(gameenginedevice PROPERTIES CXX_STANDARD 17)
-target_link_libraries(gameenginedevice PUBLIC gameengine ww3d2 milesstub binkstub)
+  target_include_directories(gameenginedevice PUBLIC
+    ${GED}/Include ${STUBS} ${CMAKE_CURRENT_SOURCE_DIR}/Main
+    ${WW}/Miles6/include ${WW}/Bink/include)
+  set_target_properties(gameenginedevice PROPERTIES CXX_STANDARD 17)
+  target_link_libraries(gameenginedevice PUBLIC gameengine ww3d2 milesstub binkstub)
+endif()
 
 # ---- generals.exe ---------------------------------------------------------
 # BuildVersion.h and GeneratedVersion.h are normally written by Tools/
@@ -586,6 +925,26 @@ file(WRITE ${GENERATED}/GeneratedVersion.h
 "#define VERSION_BUILDUSER \"cmake\"\n"
 "#define VERSION_BUILDLOC \"${CMAKE_HOST_SYSTEM_NAME}\"\n")
 
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+add_executable(generals ${CMAKE_CURRENT_SOURCE_DIR}/Main/WinMain.cpp)
+target_include_directories(generals PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}/Main ${GENERATED}
+  ${WW}/WWSaveLoad ${WW}/Wwutil ${WW}/wwshade ${WW}/WWAudio)
+target_compile_options(generals PRIVATE -include "${WW}/WWLib/win.h")
+set_target_properties(generals PROPERTIES CXX_STANDARD 17)
+# gameengine calls the device's factory hooks (CreateCDManager, OSDisplayWarningBox,
+# ReloadAllTextures, MOTDSystem) and the device calls gameengine's subsystems, so the
+# two archives are mutually dependent. A plain left-to-right scan resolves whichever
+# side it saw first and reports the other as undefined, so every archive has to sit
+# inside one group. CMake appends the inherited libraries after the group closes, so
+# they are spelled out here rather than left to the target's own link interface.
+target_link_libraries(generals PRIVATE
+  "-Wl,--start-group"
+  gameenginedevice ww3d2 gameengine wwmath wwsaveload wwlib wwutil wwdebug
+  compression wwdownload benchmark eabrowserdispatch profile debug gamespy ffshader
+  ${DEBUG_SYSTEM_LIBS}
+  "-Wl,--end-group")
+else()
 add_executable(generals WIN32 ${CMAKE_CURRENT_SOURCE_DIR}/Main/WinMain.cpp
                              ${CMAKE_CURRENT_SOURCE_DIR}/Main/RTS.RC)
 target_include_directories(generals PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/Main ${GENERATED})
@@ -608,16 +967,14 @@ target_link_options(generals PRIVATE /MAP)
 target_link_options(generals PRIVATE /LARGEADDRESSAWARE)
 set_target_properties(generals PROPERTIES CXX_STANDARD 17)
 target_link_libraries(generals PRIVATE gameenginedevice
-  winmm dsound wsock32 ole32 oleaut32 uuid)
+  $<$<BOOL:${MSVC}>:winmm dsound wsock32 ole32 oleaut32 uuid>
+  $<$<NOT:$<BOOL:${MSVC}>>:${DEBUG_SYSTEM_LIBS}>)
+endif()
 # The game reads its data relative to the working directory, so it has to sit
 # beside Run/'s .big files to find anything (Phase 5).
 add_custom_command(TARGET generals POST_BUILD
   COMMAND ${CMAKE_COMMAND} -E copy_if_different
           $<TARGET_FILE:generals> ${CMAKE_CURRENT_SOURCE_DIR}/../Run/
-  # The PDB has to sit next to the exe: SymInitialize searches the exe's directory,
-  # and without it the crash log's stack is addresses with no names.
-  COMMAND ${CMAKE_COMMAND} -E copy_if_different
-          $<TARGET_PDB_FILE:generals> ${CMAKE_CURRENT_SOURCE_DIR}/../Run/
   # The fork's INI files: the key bindings and their labels, and the detonation
   # light loaded after EA's FXList.ini.  Run/ is gitignored, so these used to be
   # hand-made files that silently went stale - the tracked copies under Code/Data
@@ -659,6 +1016,15 @@ add_custom_command(TARGET generals POST_BUILD
           ${CMAKE_CURRENT_SOURCE_DIR}/Data/Scenarios
           ${CMAKE_CURRENT_SOURCE_DIR}/../Run/Scenarios)
 
+# Windows/MSVC only: copy PDB for crash debugging
+if(MSVC)
+  add_custom_command(TARGET generals POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_PDB_FILE:generals> ${CMAKE_CURRENT_SOURCE_DIR}/../Run/
+    COMMENT "Copy PDB for crash debugging"
+  )
+endif()
+
 # ===========================================================================
 # Tests.  Run with:  ctest --test-dir build -C Release --output-on-failure
 # ===========================================================================
@@ -686,8 +1052,11 @@ target_include_directories(test_wwlib PRIVATE ${WW}/WWLib ${WW}/WWMath ${WW}/WWS
 # generals.exe is linked /LARGEADDRESSAWARE, and that flag changes what
 # GlobalMemoryStatus saturates its 32-bit fields to (0xFFFFFFFF, not 0x7FFFFFFF).
 # cpudetect_memory_fits_in_the_signed_int_its_callers_use only means anything in a
-# binary that sees the same value the game does.
-target_link_options(test_wwlib PRIVATE /LARGEADDRESSAWARE)
+# binary that sees the same value the game does. MSVC-only: GNU ld has no
+# such flag (64-bit Linux processes see the full address space already).
+if(MSVC)
+  target_link_options(test_wwlib PRIVATE /LARGEADDRESSAWARE)
+endif()
 
 add_lib_test(test_wwsaveload wwsaveload wwlib wwmath wwdebug)
 target_include_directories(test_wwsaveload PRIVATE ${WW}/WWSaveLoad ${WW}/WWLib ${WW}/WWMath ${WW}/WWDebug ${WW}/Wwutil)
@@ -697,11 +1066,54 @@ target_include_directories(test_wwutil PRIVATE ${WW}/Wwutil ${WW}/WWLib ${WW}/WW
 
 add_lib_test(test_compression compression)
 
-add_lib_test(test_ww3d2 ww3d2 wwsaveload wwlib wwmath wwdebug)
-target_include_directories(test_ww3d2 PRIVATE
-  ${WW}/WW3D2 ${WW}/WWLib ${WW}/WWMath ${WW}/WWDebug ${WW}/WWSaveLoad ${WW}/Wwutil)
+# The standalone string generator also runs headlessly on Linux.
+if(TARGET ffshader)
+  add_lib_test(test_ffshader ffshader)
+endif()
 
-add_lib_test(test_ffshader ffshader)
+# Headless Linux registry gate: real backend, strings and allocator, no registry mock.
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  add_lib_test(test_registry_linux)
+  set_target_properties(test_registry_linux PROPERTIES CXX_STANDARD 17)
+  target_include_directories(test_registry_linux PRIVATE
+    $<TARGET_PROPERTY:gameengine,INCLUDE_DIRECTORIES> ${CMAKE_CURRENT_SOURCE_DIR}/Platform)
+  # Release allocator without game-wide logging/device dependencies.
+  target_compile_definitions(test_registry_linux PRIVATE _RELEASE)
+  target_sources(test_registry_linux PRIVATE
+    ${GE}/Source/Common/System/registry.cpp
+    ${GE}/Source/Common/System/AsciiString.cpp
+    ${GE}/Source/Common/System/GameMemory.cpp
+    ${GE}/Source/Common/System/MemoryInit.cpp
+    ${GE}/Source/Common/System/CriticalSection.cpp
+    ${GE}/Source/Common/System/JobSystem.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/Platform/PAL_Registry.cpp)
+  # Legacy PreRTS emits unused device vtables; do not pull the whole engine for them.
+  target_compile_options(test_registry_linux PRIVATE -ffunction-sections -fdata-sections)
+  target_link_options(test_registry_linux PRIVATE -Wl,--gc-sections)
+  target_link_libraries(test_registry_linux PRIVATE Threads::Threads)
+  # RegistryClass is the WWLib adapter over the same store; this gate drives the class
+  # itself, so a change to the adapter cannot hide behind the game-engine API.
+  add_lib_test(test_registry_class_linux wwlib wwmath wwsaveload debuglib)
+  set_target_properties(test_registry_class_linux PROPERTIES CXX_STANDARD 17)
+  target_include_directories(test_registry_class_linux PRIVATE
+    ${WW}/WWLib ${WW}/WWMath ${WW}/WWSaveLoad ${WW}/Wwutil ${WW}/WWDebug ${CMAKE_CURRENT_SOURCE_DIR}/Platform)
+  target_compile_definitions(test_registry_class_linux PRIVATE _RELEASE)
+  target_link_libraries(test_registry_class_linux PRIVATE Threads::Threads)
+  set_tests_properties(test_registry_class_linux PROPERTIES LABELS "linux;pal" TIMEOUT 10)
+endif()
+
+# Renderer tests: MSVC-only with the renderer stack above.
+add_lib_test(test_ww3d2 ww3d2 wwsaveload wwdebug wwlib wwmath)
+target_sources(test_ww3d2 PRIVATE ${TESTS}/wwdownload_debug_stubs.cpp)
+target_include_directories(test_ww3d2 PRIVATE
+  ${WW}/WW3D2 ${WW}/WWLib ${WW}/WWMath ${WW}/WWDebug ${WW}/WWSaveLoad ${WW}/Wwutil ${WW}/LinuxDX)
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  target_compile_options(test_ww3d2 PRIVATE -ffunction-sections -fdata-sections)
+  target_link_options(test_ww3d2 PRIVATE -Wl,--gc-sections)
+  target_link_libraries(test_ww3d2 PRIVATE -Wl,--start-group ww3d2 wwsaveload debuglib ffshader wwdebug wwlib wwmath -Wl,--end-group pthread dl rt m)
+endif()
+
+if(MSVC)
 add_lib_test(test_dx11device dx11device)
 add_lib_test(test_dx11state dx11state)
 add_lib_test(test_dx11layout dx11layout)
@@ -721,9 +1133,13 @@ add_lib_test(test_dx11texture dx11texture dx11device user32)
 # Both runtimes in one binary, so where a triangle edge lands is a measurement rather than a reading
 # of two sets of documentation that describe the same thing in different words.
 add_lib_test(test_pixelcentre dx11backend dx11resource dx11device d3d9 user32)
+endif() # MSVC-only renderer tests (see above)
 
 add_lib_test(test_wwdownload wwdownload)
 target_include_directories(test_wwdownload PRIVATE ${WW}/WWDownload)
+# DownloadDebug.h's DebugLog/DebugCrash live in GameEngine (Phase 4); stand-ins
+# for the test link only, mirroring test_gameengine_stubs.cpp.
+target_sources(test_wwdownload PRIVATE ${TESTS}/wwdownload_debug_stubs.cpp)
 
 add_lib_test(test_debug debuglib)
 
@@ -750,6 +1166,7 @@ target_compile_definitions(test_gameengine PRIVATE
 # too so one command covers everything.
 add_test(NAME wwmath_selfcheck COMMAND wwmath_selfcheck)
 add_test(NAME compression_selfcheck COMMAND compression_selfcheck)
+if(MSVC)
 # dx9_smoke creates a device the way the renderer does, with nothing next to it to
 # translate anything, and puts the D3D8 calls that have no D3D9 counterpart through their
 # replacements.  "-msaa 4" adds the multisampled back buffer and the plain render target
@@ -757,14 +1174,63 @@ add_test(NAME compression_selfcheck COMMAND compression_selfcheck)
 # for the screen filters.
 add_test(NAME dx9_smoke COMMAND dx9_smoke)
 add_test(NAME dx9_smoke_msaa COMMAND dx9_smoke -msaa 4)
+endif()
+
+# Native unavailable multimedia contracts: public-header C and C++ consumers
+# link the actual stub DSOs, without game data, Windows shims or device targets.
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  foreach(stub IN ITEMS binkstub milesstub)
+    foreach(lang IN ITEMS c cpp)
+      set(smoke ${stub}_smoke_${lang})
+      add_executable(${smoke} ${TESTS}/${stub}_smoke.${lang})
+      target_include_directories(${smoke} PRIVATE
+        ${WW}/Bink/include ${WW}/Miles6/include)
+      target_link_libraries(${smoke} PRIVATE ${stub})
+      set_target_properties(${smoke} PROPERTIES
+        C_STANDARD 11 C_STANDARD_REQUIRED YES C_EXTENSIONS NO
+        CXX_STANDARD 17 CXX_STANDARD_REQUIRED YES CXX_EXTENSIONS NO)
+      if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang" AND
+         CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        target_compile_options(${smoke} PRIVATE -Wall -Wextra -Werror)
+      endif()
+      add_test(NAME ${smoke} COMMAND ${smoke})
+      set_tests_properties(${smoke} PROPERTIES LABELS "linux;multimedia;stub" TIMEOUT 10)
+    endforeach()
+  endforeach()
+
+  # Milestone M2.1: Native Vulkan offscreen triangle rendering smoke test
+  find_package(Vulkan QUIET)
+  if(Vulkan_FOUND)
+    add_executable(test_vk_smoke ${TESTS}/test_vk_smoke.cpp)
+    target_link_libraries(test_vk_smoke PRIVATE Vulkan::Vulkan)
+    set_target_properties(test_vk_smoke PROPERTIES CXX_STANDARD 17)
+    add_test(NAME test_vk_smoke COMMAND test_vk_smoke)
+    set_tests_properties(test_vk_smoke PROPERTIES LABELS "linux;vulkan;renderer" TIMEOUT 15)
+
+    # Milestone M2.2: Full Graphics Pipeline Test
+    add_executable(test_vk_pipeline ${TESTS}/test_vk_pipeline.cpp)
+    target_link_libraries(test_vk_pipeline PRIVATE Vulkan::Vulkan)
+    set_target_properties(test_vk_pipeline PROPERTIES CXX_STANDARD 17)
+    add_test(NAME test_vk_pipeline COMMAND test_vk_pipeline)
+    set_tests_properties(test_vk_pipeline PROPERTIES LABELS "linux;vulkan;renderer" TIMEOUT 15)
+  endif()
+
+  # PAL contract unit tests
+  add_lib_test(test_pal debuglib)
+  set_target_properties(test_pal PROPERTIES CXX_STANDARD 17)
+  target_include_directories(test_pal PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/Platform)
+  set_tests_properties(test_pal PROPERTIES LABELS "linux;pal" TIMEOUT 10)
+endif()
 
 # bink_smoke validates the hand-reconstructed Bink ABI against the real
 # BINKW32.DLL the game ships - it loads that DLL by path, so it does not link
 # binkstub and it has to run from Run/.  Without game data it prints "skip".
-add_executable(bink_smoke ${TESTS}/bink_smoke.c)
-target_include_directories(bink_smoke PRIVATE ${WW}/Bink/include)
-add_test(NAME bink_smoke COMMAND bink_smoke
-         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/../Run)
+if(WIN32)
+  add_executable(bink_smoke ${TESTS}/bink_smoke.c)
+  target_include_directories(bink_smoke PRIVATE ${WW}/Bink/include)
+  add_test(NAME bink_smoke COMMAND bink_smoke
+           WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/../Run)
+endif()
 
 # Tools/bigfile.py reads and writes the game's BIG archives (that is how the shipped INIs
 # come out for editing).  Its selfcheck round-trips synthetic files, so it needs no game
@@ -810,7 +1276,9 @@ endif()
 if(RELEASE_DEBUG_LOGGING)
   target_compile_definitions(gameengine PRIVATE RELEASE_DEBUG_LOGGING)
   target_compile_definitions(gameenginedevice PRIVATE RELEASE_DEBUG_LOGGING)
-  target_compile_definitions(generals PRIVATE RELEASE_DEBUG_LOGGING)
+  if(TARGET generals)
+    target_compile_definitions(generals PRIVATE RELEASE_DEBUG_LOGGING)
+  endif()
 endif()
 
 # THREADING-ROADMAP.md section 0: the measurement build.  EA's PerfGather call sites are all
@@ -827,11 +1295,9 @@ option(PERF_TIMERS "Compile EA's PerfGather scopes in (measurement build, not fo
 if(PERF_TIMERS)
   target_compile_definitions(gameengine PRIVATE PERF_TIMERS)
   target_compile_definitions(gameenginedevice PRIVATE PERF_TIMERS)
-  target_compile_definitions(generals PRIVATE PERF_TIMERS)
-  # A measurement build is not the build anyone plays, and its post-build step copies into the
-  # same Run/ directory the shipping one does.  Renaming the output keeps the two side by side -
-  # which is also the only way to measure one against the other without rebuilding in between
-  # (ai-batch.ps1 -Exe takes the name).
-  set_target_properties(generals PROPERTIES OUTPUT_NAME generals_perf)
+  if(TARGET generals)
+    target_compile_definitions(generals PRIVATE PERF_TIMERS)
+    set_target_properties(generals PROPERTIES OUTPUT_NAME generals_perf)
+  endif()
   message(STATUS "PERF_TIMERS ON - measurement build, timers cost real time; exe is generals_perf.exe")
 endif()

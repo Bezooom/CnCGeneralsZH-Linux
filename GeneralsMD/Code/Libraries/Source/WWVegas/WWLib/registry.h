@@ -47,6 +47,9 @@
 #include "vector.h"
 #include "wwstring.h"
 #include "widestring.h"
+#ifdef PLATFORM_LINUX
+#include <string>
+#endif
 
 class INIClass;
 
@@ -110,13 +113,20 @@ public:
 
 private:
 
+#ifdef _WIN32
 	static void Delete_Registry_Values(HKEY key);
 	static void Save_Registry_Tree(char *path, INIClass *ini);
 	static void Save_Registry_Values(HKEY key, char *path, INIClass *ini);
+#endif
 
 
 	int	Key;
 	bool	IsValid;
+#ifdef PLATFORM_LINUX
+	// The Win32 Registry has no Linux twin: the store is one INI file and the
+	// sub_key this instance was built with becomes its section name.
+	std::string section;
+#endif
 
 	//
 	// Use this to make the registry 'read only'. Useful for running multiple copies of the app.

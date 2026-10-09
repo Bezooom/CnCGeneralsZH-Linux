@@ -37,6 +37,7 @@
 #include "Common/ModelState.h"
 #include "GameLogic/ArmorSet.h"
 
+template<>
 const char* ModelConditionFlags::s_bitNameList[] = 
 {	
 	"TOPPLED", 
@@ -174,6 +175,7 @@ const char* ModelConditionFlags::s_bitNameList[] =
 	NULL
 };
  
+template<>
 const char* ArmorSetFlags::s_bitNameList[] = 
 {
 	"VETERAN",

@@ -47,10 +47,17 @@
 //-----------------------------------------------------------------------------
 
 
+#if defined(_WIN32)
 #include "W3DDevice/GameClient/heightmap.h"
+#else
+#include "W3DDevice/GameClient/HeightMap.h"
+#endif
 
 #ifndef USE_FLAT_HEIGHT_MAP // Flat height map uses flattened textures. jba. [3/20/2003]
 
+#if !defined(_WIN32)
+#include "WWLib/mmsys.h"
+#endif
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -89,9 +96,21 @@
 #include "W3DDevice/GameClient/W3DShadow.h"
 #include "W3DDevice/GameClient/W3DWater.h"
 #include "W3DDevice/GameClient/W3DShroud.h"
+#if defined(_WIN32)
 #include "WW3D2/DX8Wrapper.h"
+#else
+#include "WW3D2/dx8wrapper.h"
+#endif
+#if defined(_WIN32)
 #include "WW3D2/Light.h"
+#else
+#include "WW3D2/light.h"
+#endif
+#if defined(_WIN32)
 #include "WW3D2/Scene.h"
+#else
+#include "WW3D2/scene.h"
+#endif
 #include "W3DDevice/GameClient/W3DPoly.h"
 #include "W3DDevice/GameClient/W3DCustomScene.h"
 

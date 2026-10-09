@@ -537,7 +537,13 @@ TEST(get_file_id_string_strips_the_directory)
 	write_temp_file("abc");
 
 	char with_dot[128];
+#if defined(PLATFORM_LINUX) || defined(__linux__) || defined(_UNIX)
+	// Backslash is not a separator on Linux (".\\" would be a different
+	// filename); "./" exercises the same strip-the-directory path.
+	sprintf(with_dot, "./%s", TEMP_FILE);
+#else
 	sprintf(with_dot, ".\\%s", TEMP_FILE);
+#endif
 
 	StringClass id;
 	cMiscUtil::Get_File_Id_String(with_dot, id);

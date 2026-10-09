@@ -139,7 +139,7 @@ enum SaveCode
 	SC_ERROR,
 };
 
-enum SnapshotType {
+enum SnapshotType : int {
 	SNAPSHOT_SAVELOAD,
 	SNAPSHOT_DEEPCRC_LOGICONLY,
 	SNAPSHOT_DEEPCRC,

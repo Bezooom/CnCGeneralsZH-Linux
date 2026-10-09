@@ -40,24 +40,57 @@
 // USER INCLUDES //////////////////////////////////////////////////////////////
 #include "always.h"
 #include "GameClient/View.h"
+#if defined(_WIN32)
 #include "WW3D2/Camera.h"
+#else
+#include "WW3D2/camera.h"
+#endif
+#if defined(_WIN32)
 #include "WW3D2/Light.h"
+#else
+#include "WW3D2/light.h"
+#endif
+#if defined(_WIN32)
 #include "WW3D2/DX8Wrapper.h"
+#else
+#include "WW3D2/dx8wrapper.h"
+#include "WW3D2/dx11runtime.h"
+#endif
+#if defined(_WIN32)
 #include "WW3D2/HLod.h"
+#else
+#include "WW3D2/hlod.h"
+#endif
 #include "WW3D2/mesh.h"
 #include "WW3D2/meshmdl.h"
 #include "Lib/BaseType.h"
 #include "W3DDevice/GameClient/W3DGranny.h"
+#if defined(_WIN32)
 #include "W3DDevice/GameClient/Heightmap.h"
+#else
+#include "W3DDevice/GameClient/HeightMap.h"
+#endif
 #include "d3dx9math.h"
+#if defined(_WIN32)
 #include "common/GlobalData.h"
+#else
+#include "Common/GlobalData.h"
+#endif
+#if defined(_WIN32)
 #include "common/drawmodule.h"
+#else
+#include "Common/DrawModule.h"
+#endif
 #include "W3DDevice/GameClient/W3DVolumetricShadow.h"
 #include "W3DDevice/GameClient/W3DShadow.h"
 #include "WW3D2/statistics.h"
 #include "Common/PerfTimer.h"
 #include "GameLogic/TerrainLogic.h"
+#if defined(_WIN32)
 #include "WW3D2/DX8Caps.h"
+#else
+#include "WW3D2/dx8caps.h"
+#endif
 #include "GameClient/Drawable.h"
 #include "wwshade/shdmesh.h"
 #include "wwshade/shdsubmesh.h"
@@ -284,11 +317,11 @@ class W3DShadowGeometryMesh
 	friend class W3DVolumetricShadow;
 	
 public:
-	W3DShadowGeometryMesh::W3DShadowGeometryMesh( void );
+	W3DShadowGeometryMesh( void );
 #ifdef DO_TERRAIN_SHADOW_VOLUMES
 	virtual
 #endif
-	W3DShadowGeometryMesh::~W3DShadowGeometryMesh( void );
+	~W3DShadowGeometryMesh( void );
 
 	/// @todo: Cache/Store face normals someplace so they are not recomputed when lights move.
 	const Vector3& GetPolygonNormal(long dwPolyNormId) const
@@ -1536,7 +1569,9 @@ void W3DVolumetricShadow::RenderMeshVolume(Int meshIndex, Int lightIndex, const 
 	// backend is told separately, which is all it needs.
 	Matrix4x4 mWorldTransposed = mWorld.Transpose();
 	m_pDev->SetTransform(D3DTS_WORLD,(_D3DMATRIX *)&mWorldTransposed);
+ #ifdef _WIN32
 	Direct3D11_Mirror_Transform(D3DTS_WORLD,(const float *)&mWorldTransposed);
+ #endif
 
 	W3DBufferManager::W3DVertexBufferSlot *vbSlot=m_shadowVolumeVB[lightIndex][ meshIndex ];
 	if (!vbSlot)
@@ -1550,7 +1585,9 @@ void W3DVolumetricShadow::RenderMeshVolume(Int meshIndex, Int lightIndex, const 
 	// The stream is set behind DX8Wrapper's back above, so the Direct3D 11 backend is told about it
 	// here.  Unconditionally, not only when the buffer changes: the backend's stream is set by
 	// everything else that draws between two shadow volumes.
+ #ifdef _WIN32
 	Direct3D11_Mirror_Stream_Source(vbSlot->m_VB->m_DX8VertexBuffer->Get_DX11_Twin(), vertexSize, 0);
+ #endif
 
 	DEBUG_ASSERTCRASH(vbSlot->m_size >= numVerts,("Overflowing Shadow Vertex Buffer Slot"));
 
@@ -1562,14 +1599,20 @@ void W3DVolumetricShadow::RenderMeshVolume(Int meshIndex, Int lightIndex, const 
 
 	// D3D9 takes the base vertex index on the draw call, not here.
 	m_pDev->SetIndices(ibSlot->m_IB->m_DX8IndexBuffer->Get_DX8_Index_Buffer());
+ #ifdef _WIN32
 	Direct3D11_Mirror_Indices(ibSlot->m_IB->m_DX8IndexBuffer->Get_DX11_Twin());
+ #endif
 
 	if (DX8Wrapper::_Is_Triangle_Draw_Enabled())
 	{
 		Debug_Statistics::Record_DX8_Polys_And_Vertices(numPolys,numVerts,ShaderClass::_PresetOpaqueShader);
+  #ifdef _WIN32
 		if (!Direct3D11_Present_Is_Enabled())
+  #endif
 			m_pDev->DrawIndexedPrimitive(D3DPT_TRIANGLELIST,vbSlot->m_start,0,numVerts,ibSlot->m_start,numPolys);
+  #ifdef _WIN32
 		Direct3D11_Draw_Indexed_Triangles(numIndex,ibSlot->m_start,vbSlot->m_start);
+  #endif
 	}
 
 }
@@ -1692,26 +1735,36 @@ void W3DVolumetricShadow::RenderDynamicMeshVolume(Int meshIndex, Int lightIndex,
 
 	// D3D9 takes the base vertex index on the draw call, not here.
 	m_pDev->SetIndices(shadowIndexBufferD3D);
+ #ifdef _WIN32
 	Direct3D11_Mirror_Indices(shadowIndexTwin);
+ #endif
 
 	Matrix4x4 mWorld(*meshXform);
 	Matrix4x4 mWorldTransposed = mWorld.Transpose();
 
 	m_pDev->SetTransform(D3DTS_WORLD,(_D3DMATRIX *)&mWorldTransposed);
+ #ifdef _WIN32
 	Direct3D11_Mirror_Transform(D3DTS_WORLD,(const float *)&mWorldTransposed);
+ #endif
 
 	if (shadowVertexBufferD3D != lastActiveVertexBuffer)
 	{	m_pDev->SetStreamSource(0,shadowVertexBufferD3D,0,vertexStride);
 		lastActiveVertexBuffer = shadowVertexBufferD3D;
 	}
+ #ifdef _WIN32
 	Direct3D11_Mirror_Stream_Source(shadowVertexTwin, vertexStride, 0);
+ #endif
 
 	if (DX8Wrapper::_Is_Triangle_Draw_Enabled())
 	{
 		Debug_Statistics::Record_DX8_Polys_And_Vertices(numPolys,numVerts,ShaderClass::_PresetOpaqueShader);
+  #ifdef _WIN32
 		if (!Direct3D11_Present_Is_Enabled())
+  #endif
 			m_pDev->DrawIndexedPrimitive(D3DPT_TRIANGLELIST,nShadowStartBatchVertex,0,numVerts,nShadowStartBatchIndex,numPolys);
+  #ifdef _WIN32
 		Direct3D11_Draw_Indexed_Triangles(numIndex,nShadowStartBatchIndex,nShadowStartBatchVertex);
+  #endif
 	}
 
 	nShadowVertsInBuf += numVerts;
@@ -1857,12 +1910,14 @@ void W3DVolumetricShadow::RenderMeshVolumeBounds(Int meshIndex, Int lightIndex, 
 	//todo: replace this with mesh transform
 	Matrix4x4 mWorld(1);	//identity since boxes are pre-transformed to world space.
 
-	m_pDev->SetTransform(D3DTS_WORLD,(_D3DMATRIX *)&mWorld.Transpose());
+	m_pDev->SetTransform(D3DTS_WORLD,(_D3DMATRIX *)&mWorld);
 	
 	m_pDev->SetStreamSource(0,shadowVertexBufferD3D,0,sizeof(SHADOW_DYNAMIC_VOLUME_VERTEX));
 	m_pDev->SetFVF(SHADOW_DYNAMIC_VOLUME_FVF);
 
+ #ifdef _WIN32
 	if (!Direct3D11_Present_Is_Enabled())
+ #endif
 		m_pDev->DrawIndexedPrimitive(D3DPT_TRIANGLELIST,nShadowStartBatchVertex,0,numVerts,nShadowStartBatchIndex,numPolys);
 
 	nShadowVertsInBuf += numVerts;
@@ -2376,7 +2431,11 @@ void W3DVolumetricShadow::updateMeshVolume(Int meshIndex, Int lightIndex, MeshCl
 		// system change, not the translations
 		//
 		Real det;
+#ifdef _WIN32
 		D3DXMatrixInverse((D3DXMATRIX*)&worldToObject, &det, (D3DXMATRIX*)&objectToWorld);
+#else
+		worldToObject = objectToWorld;
+#endif
 
 		// find out light position in object space
 		Matrix4x4::Transform_Vector(worldToObject,lightPosWorld,&lightPosObject);
@@ -4119,7 +4178,9 @@ Bool W3DVolumetricShadowManager::ReAcquireResources(void)
 	)))
 		return FALSE;
 
+ #ifdef _WIN32
 	shadowIndexTwin = Direct3D11_Twin_Index_Buffer(SHADOW_INDEX_SIZE*sizeof(WORD), true);
+ #endif
 
 	if (shadowVertexBufferD3D == NULL)
 	{	// Create vertex buffer
@@ -4135,8 +4196,10 @@ Bool W3DVolumetricShadowManager::ReAcquireResources(void)
 		)))
 			return FALSE;
 
+  #ifdef _WIN32
 		shadowVertexTwin = Direct3D11_Twin_Vertex_Buffer(
 			SHADOW_VERTEX_SIZE*sizeof(SHADOW_DYNAMIC_VOLUME_VERTEX), true);
+  #endif
 	}
 
 	if (TheW3DBufferManager)

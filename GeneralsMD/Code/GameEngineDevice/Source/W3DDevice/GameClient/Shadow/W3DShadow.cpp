@@ -34,17 +34,41 @@
 // USER INCLUDES //////////////////////////////////////////////////////////////
 #include "always.h"
 #include "GameClient/View.h"
+#if defined(_WIN32)
 #include "WW3D2/Camera.h"
+#else
+#include "WW3D2/camera.h"
+#endif
+#if defined(_WIN32)
 #include "WW3D2/Light.h"
+#else
+#include "WW3D2/light.h"
+#endif
+#if defined(_WIN32)
 #include "WW3D2/DX8Wrapper.h"
+#else
+#include "WW3D2/dx8wrapper.h"
+#endif
+#if defined(_WIN32)
 #include "WW3D2/HLod.h"
+#else
+#include "WW3D2/hlod.h"
+#endif
 #include "WW3D2/mesh.h"
 #include "WW3D2/meshmdl.h"
 #include "Lib/BaseType.h"
 #include "W3DDevice/GameClient/W3DGranny.h"
+#if defined(_WIN32)
 #include "W3DDevice/GameClient/Heightmap.h"
+#else
+#include "W3DDevice/GameClient/HeightMap.h"
+#endif
 #include "d3dx9math.h"
+#if defined(_WIN32)
 #include "common/GlobalData.h"
+#else
+#include "Common/GlobalData.h"
+#endif
 #include "W3DDevice/GameClient/W3DVolumetricShadow.h"
 #include "W3DDevice/GameClient/W3DProjectedShadow.h"
 #include "W3DDevice/GameClient/W3DShadow.h"

@@ -219,10 +219,10 @@ Bool GetLocalChatConnectionAddress(AsciiString serverName, UnsignedShort serverP
 	/*
 	** Get the function pointers into the .dll
 	*/
-	SnmpExtensionInitPtr = (int (__stdcall *)(unsigned long,void ** ,AsnObjectIdentifier *)) GetProcAddress(mib_ii_dll, "SnmpExtensionInit");
-	SnmpExtensionQueryPtr = (int (__stdcall *)(unsigned char,SnmpVarBindList *,long *,long *)) GetProcAddress(mib_ii_dll, "SnmpExtensionQuery");
-	SnmpUtilMemAllocPtr = (void *(__stdcall *)(unsigned long)) GetProcAddress(snmpapi_dll, "SnmpUtilMemAlloc");
-	SnmpUtilMemFreePtr = (void (__stdcall *)(void *)) GetProcAddress(snmpapi_dll, "SnmpUtilMemFree");
+	SnmpExtensionInitPtr = reinterpret_cast<decltype(SnmpExtensionInitPtr)>(GetProcAddress(mib_ii_dll, "SnmpExtensionInit"));
+	SnmpExtensionQueryPtr = reinterpret_cast<decltype(SnmpExtensionQueryPtr)>(GetProcAddress(mib_ii_dll, "SnmpExtensionQuery"));
+	SnmpUtilMemAllocPtr = reinterpret_cast<decltype(SnmpUtilMemAllocPtr)>(GetProcAddress(snmpapi_dll, "SnmpUtilMemAlloc"));
+	SnmpUtilMemFreePtr = reinterpret_cast<decltype(SnmpUtilMemFreePtr)>(GetProcAddress(snmpapi_dll, "SnmpUtilMemFree"));
 	if (SnmpExtensionInitPtr == NULL || SnmpExtensionQueryPtr == NULL || SnmpUtilMemAllocPtr == NULL || SnmpUtilMemFreePtr == NULL) {
 		DEBUG_LOG(("Failed to get proc addresses for linked functions\n"));
 		FreeLibrary(snmpapi_dll);

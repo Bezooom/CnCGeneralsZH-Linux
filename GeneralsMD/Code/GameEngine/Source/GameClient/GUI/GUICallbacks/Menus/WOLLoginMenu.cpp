@@ -33,7 +33,7 @@
 
 #include "Common/STLTypedefs.h"
 
-#include "Common/File.h"
+#include "Common/file.h"
 #include "Common/FileSystem.h"
 #include "Common/GameEngine.h"
 #include "Common/GameSpyMiscPreferences.h"
@@ -117,13 +117,13 @@ static AsciiString obfuscate( AsciiString in )
 {
 	char *buf = NEW char[in.getLength() + 1];
 	strcpy(buf, in.str());
-	static const char *xor = "1337Munkee";
+	static const char *xorKey = "1337Munkee";
 	char *c = buf;
-	const char *c2 = xor;
+	const char *c2 = xorKey;
 	while (*c)
 	{
 		if (!*c2)
-			c2 = xor;
+			c2 = xorKey;
 		if (*c != *c2)
 			*c = *c++ ^ *c2++;
 		else

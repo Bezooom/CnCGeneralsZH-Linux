@@ -38,7 +38,11 @@
 #ifndef _SYSTIMER_H
 
 #include "always.h"
+#if defined(PLATFORM_LINUX) || defined(_UNIX) || defined(__linux__)
+#include <time.h>
+#else
 #include <windows.h>
+#endif
 #include "mmsys.h"
 
 #define TIMEGETTIME SystemTime.Get

@@ -54,6 +54,9 @@
 // USER INCLUDES //////////////////////////////////////////////////////////////
 #include "Lib/BaseType.h"
 #include "Common/GameMemory.h"
+#if !defined(_MSC_VER)
+#include <stdint.h> // uintptr_t for WindowMsgData below
+#endif
 #include "GameClient/Image.h"
 #include "GameClient/DisplayString.h"
 #include "GameClient/WinInstanceData.h"
@@ -75,10 +78,25 @@ enum { WIN_COLOR_UNDEFINED = GAME_COLOR_UNDEFINED };
 
 // WindowMsgData --------------------------------------------------------------
 //-----------------------------------------------------------------------------
+// Window message parameters carry pointers as often as integers
+// ((WindowMsgData)&obj is the GUI-wide idiom). 32 bits truncates those
+// above 4GB, so on 64-bit targets this is pointer-sized. Transient
+// in-memory messages only; nothing serializes WindowMsgData.
+#if defined(_MSC_VER)
 typedef UnsignedInt WindowMsgData;
+#else
+typedef uintptr_t WindowMsgData;
+#endif
 
 //-----------------------------------------------------------------------------
-enum WindowMsgHandledType { MSG_IGNORED, MSG_HANDLED };
+enum WindowMsgHandledType : int {
+// NOTE (Linux port): this enum arrived truncated (no body, no closing
+// brace), like PathfindLayerEnum in GameType.h. Reconstructed from use:
+// handlers return MSG_IGNORED/MSG_HANDLED and callers compare
+// `== MSG_HANDLED`, so any two distinct values preserve behavior.
+	MSG_IGNORED = 0,
+	MSG_HANDLED = 1
+};
 
 // callback types -------------------------------------------------------------
 typedef void (*GameWinMsgBoxFunc)( void ); //used for the Message box callbacks.

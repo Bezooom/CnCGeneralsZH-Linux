@@ -27,12 +27,18 @@
 #include <stdio.h>
 #ifdef _UNIX
 #include "osdep.h"
+#include "win.h"
+#if defined(__linux__) || defined(PLATFORM_LINUX)
+#include <sys/sysinfo.h>
+#include <unistd.h>
+#else
 #include <linux/kernel.h>
 #include <linux/sys.h>
 
 extern "C" {
 	int sysinfo(struct sysinfo *info);
 }
+#endif
 
 #else
 

@@ -69,7 +69,7 @@ struct SpareSocketStruct {
 	UnsignedShort port;
 };
 
-enum FirewallDetectionState {
+enum FirewallDetectionState : int {
 	DETECTIONSTATE_IDLE,
 	DETECTIONSTATE_BEGIN,
 	DETECTIONSTATE_TEST1,

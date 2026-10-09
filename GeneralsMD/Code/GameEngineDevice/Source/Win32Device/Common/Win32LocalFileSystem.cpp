@@ -26,13 +26,19 @@
 // Bryan Cleveland, August 2002
 ////////////////////////////////////////////////////////////
 
+#if defined(_WIN32)
 #include <windows.h>
+#endif
 #include "Common/AsciiString.h"
 #include "Common/GameMemory.h"
 #include "Common/PerfTimer.h"
 #include "Win32Device/Common/Win32LocalFileSystem.h"
 #include "Win32Device/Common/Win32LocalFile.h"
+#if defined(_WIN32)
 #include <io.h>
+#else
+#include <unistd.h>
+#endif
 
 Win32LocalFileSystem::Win32LocalFileSystem() : LocalFileSystem() 
 {

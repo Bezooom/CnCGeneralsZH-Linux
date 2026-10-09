@@ -45,11 +45,31 @@
 #include "W3DDevice/GameClient/Module/W3DLaserDraw.h"
 #include "W3DDevice/GameClient/W3DDisplay.h"
 #include "W3DDevice/GameClient/W3DScene.h"
+#if defined(_WIN32)
 #include "WW3D2/RInfo.h"
+#else
+#include "WW3D2/rinfo.h"
+#endif
+#if defined(_WIN32)
 #include "WW3D2/Camera.h"
+#else
+#include "WW3D2/camera.h"
+#endif
+#if defined(_WIN32)
 #include "WW3D2/Segline.h"
+#else
+#include "WW3D2/segline.h"
+#endif
+#if defined(_WIN32)
 #include "WWMath/Vector3.h"
+#else
+#include "WWMath/vector3.h"
+#endif
+#if defined(_WIN32)
 #include "WW3D2/AssetMgr.h"
+#else
+#include "WW3D2/assetmgr.h"
+#endif
 
 
 #ifdef _INTERNAL

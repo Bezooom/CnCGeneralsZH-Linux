@@ -256,6 +256,10 @@ template <class T> class SimpleDynVecClass : public SimpleVecClass<T>
 {
 public:
 
+	using SimpleVecClass<T>::Vector;
+	using SimpleVecClass<T>::VectorMax;
+	using SimpleVecClass<T>::Length;
+
 	SimpleDynVecClass(int size = 0);
 	virtual ~SimpleDynVecClass(void);
 

@@ -38,7 +38,7 @@
 #define DEFINE_WEAPONRELOAD_NAMES
 #define DEFINE_WEAPONPREFIRE_NAMES
 
-#include "Common/CRC.h"
+#include "Common/crc.h"
 #include "Common/CRCDebug.h"
 #include "Common/GameAudio.h"
 #include "Common/GameState.h"
@@ -1530,7 +1530,7 @@ void WeaponTemplate::dealDamageInternal(ObjectID sourceID, ObjectID victimID, co
 				//if( body )
 				//{
 				//	Real curVictimHealth = curVictim->getBodyModule()->getHealth();
-				//	damageInfo.in.m_amount = __max( damageInfo.in.m_amount, curVictimHealth );
+				//	damageInfo.in.m_amount = max( damageInfo.in.m_amount, curVictimHealth );
 				//}
 			}
 

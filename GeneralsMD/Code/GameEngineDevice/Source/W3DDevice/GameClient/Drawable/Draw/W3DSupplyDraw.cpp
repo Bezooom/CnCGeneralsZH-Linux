@@ -27,6 +27,9 @@
 // Desc: Draw module reacts to SupplyStatus setting by hiding an equal number of the specified bone array.
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 
+#if !defined(_WIN32)
+#include <climits>
+#endif
 #include "Common/Xfer.h"
 #include "GameClient/Drawable.h"
 #include "W3DDevice/GameClient/Module/W3DSupplyDraw.h"

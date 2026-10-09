@@ -41,7 +41,11 @@
 
 #include "texture.h"
 
+#ifdef _WIN32
 #include <d3d9.h>
+#else
+#include "ww3d_d3d9.h"
+#endif
 #include <stdio.h>
 #include "d3dx9runtime.h"
 #include "dx8wrapper.h"

@@ -19,9 +19,14 @@
 // FILE: W3DSnow.h /////////////////////////////////////////////////////////
 
 #include "W3DDevice/GameClient/W3DSnow.h"
+#if defined(_WIN32)
 #include "W3DDevice/GameClient/heightmap.h"
+#else
+#include "W3DDevice/GameClient/HeightMap.h"
+#endif
 #include "GameClient/View.h"
 #include "WW3D2/dx8wrapper.h"
+#include "WW3D2/dx11runtime.h"
 #include "WW3D2/rinfo.h"
 #include "WW3D2/camera.h"
 #include "WW3D2/assetmgr.h"

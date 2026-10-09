@@ -43,7 +43,11 @@
 #include "targa.h"
 #include "dx8wrapper.h"
 #include "dx8caps.h"
+#ifdef _WIN32
 #include <d3d9.h>
+#else
+#include "ww3d_d3d9.h"
+#endif
 
  /*
 	WW3D_FORMAT_UNKNOWN=0,

@@ -31,7 +31,7 @@
 #ifndef D3DX9RUNTIME_H
 #define D3DX9RUNTIME_H
 
-#include <d3d9.h>
+#include "ww3d_d3d9.h"
 
 // D3DX filter and default values, from the DirectX SDK's d3dx9tex.h.  They are plain
 // constants: the DLL reads them, it does not define them.
@@ -42,6 +42,7 @@
 #define D3DX_FILTER_TRIANGLE	(4 << 0)
 #define D3DX_FILTER_BOX			(5 << 0)
 
+#ifdef _WIN32
 typedef interface ID3DXBuffer * LPD3DXBUFFER;
 typedef interface ID3DXInclude * LPD3DXINCLUDE;
 
@@ -53,7 +54,15 @@ DECLARE_INTERFACE_(ID3DXBuffer, IUnknown)
 	STDMETHOD_(LPVOID, GetBufferPointer)(THIS) PURE;
 	STDMETHOD_(DWORD, GetBufferSize)(THIS) PURE;
 };
+#else
+struct ID3DXBuffer;
+struct ID3DXInclude;
+using LPD3DXBUFFER = ID3DXBuffer*;
+using LPD3DXINCLUDE = ID3DXInclude*;
+struct PALETTEENTRY;
+#endif
 
+#define D3DXMACRO_DEFINED
 struct D3DXMACRO
 {
 	LPCSTR Name;

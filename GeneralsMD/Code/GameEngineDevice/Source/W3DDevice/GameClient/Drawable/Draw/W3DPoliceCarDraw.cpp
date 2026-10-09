@@ -36,8 +36,16 @@
 #include "GameClient/GameClient.h"
 #include "W3DDevice/GameClient/Module/W3DPoliceCarDraw.h"
 #include "W3DDevice/GameClient/W3DDisplay.h"
+#if defined(_WIN32)
 #include "common/RandomValue.h"
+#else
+#include "Common/RandomValue.h"
+#endif
+#if defined(_WIN32)
 #include "WW3D2/HAnim.h"
+#else
+#include "WW3D2/hanim.h"
+#endif
 #include "W3DDevice/GameClient/W3DScene.h"
 
 // PRIVATE FUNCTIONS //////////////////////////////////////////////////////////////////////////////

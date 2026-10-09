@@ -60,7 +60,11 @@
 //#include "common/GameFileSystem.h"
 #include "Common/FileSystem.h" // for LOAD_TEST_ASSETS
 #include "Lib/BaseType.h"
+#if defined(_WIN32)
 #include "common/GameType.h"
+#else
+#include "Common/GameType.h"
+#endif
 #include "Common/AsciiString.h"
 
 //-----------------------------------------------------------------------------

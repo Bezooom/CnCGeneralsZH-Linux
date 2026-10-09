@@ -32,14 +32,14 @@
 #ifndef __NAT_H
 #define __NAT_H
 
-#include "Lib\BaseType.h"
+#include "Lib/BaseType.h"
 #include "GameNetwork/NetworkInterface.h"
 #include "GameNetwork/FirewallHelper.h"
 
 class Transport;
 class GameSlot;
 
-enum NATStateType {
+enum NATStateType : int {
 	NATSTATE_IDLE,
 	NATSTATE_DOCONNECTIONPATHS,
 	NATSTATE_WAITFORSTATS,
@@ -47,7 +47,7 @@ enum NATStateType {
 	NATSTATE_FAILED
 };
 
-enum NATConnectionState {
+enum NATConnectionState : int {
 	NATCONNECTIONSTATE_NOSTATE,
 	NATCONNECTIONSTATE_WAITINGTOBEGIN,
 //	NATCONNECTIONSTATE_NETGEARDELAY,

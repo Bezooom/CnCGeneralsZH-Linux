@@ -42,6 +42,13 @@
 #include "rawfile.h"
 #include "win.h"
 #include "bittype.h"
+#if defined(PLATFORM_LINUX) || defined(__linux__) || defined(_UNIX)
+#include <sys/stat.h>
+#include <unistd.h>
+#include <dirent.h>
+#include <string.h>
+#include <stdio.h>
+#endif
 
 /*
 **
@@ -318,11 +325,31 @@ MixFileFactoryClass::Flush_Changes (void)
 	//
 	//	Get the path of the mix file
 	//
+#if defined(PLATFORM_LINUX) || defined(__linux__) || defined(_UNIX)
+	StringClass path;
+	{
+		const char *name = (const char *)MixFilename;
+		const char *slash = strrchr(name, '/');
+		const char *backslash = strrchr(name, '\\');
+		if (backslash != NULL && (slash == NULL || backslash > slash))
+			slash = backslash;
+		if (slash != NULL) {
+			char dir[1024];
+			size_t len = (size_t)(slash - name) + 1;
+			if (len >= sizeof(dir))
+				len = sizeof(dir) - 1;
+			memcpy(dir, name, len);
+			dir[len] = '\0';
+			path = dir;
+		}
+	}
+#else
 	char drive[_MAX_DRIVE] = { 0 };
 	char dir[_MAX_DIR] = { 0 };
 	::_splitpath (MixFilename, drive, dir, NULL, NULL);
 	StringClass path	= drive;
 	path					+= dir;
+#endif
 
 	//
 	//	Try to find a temp filename
@@ -369,8 +396,13 @@ MixFileFactoryClass::Flush_Changes (void)
 	//
 	//	Delete the old mix file and rename the new one
 	//
+#if defined(PLATFORM_LINUX) || defined(__linux__) || defined(_UNIX)
+	::remove(MixFilename);
+	::rename(full_path, MixFilename);
+#else
 	::DeleteFile (MixFilename);
 	::MoveFile (full_path, MixFilename);
+#endif
 
 	//
 	//	Reset the lists
@@ -397,7 +429,11 @@ MixFileFactoryClass::Get_Temp_Filename (const char *path, StringClass &full_path
 	//
 	for (int index = 0; index < 20; index ++) {
 		full_path.Format ("%s%.2d.dat", (const char *)temp_path, index + 1);
+#if defined(PLATFORM_LINUX) || defined(__linux__) || defined(_UNIX)
+		if (access(full_path, F_OK) != 0) {
+#else
 		if (GetFileAttributes (full_path) == 0xFFFFFFFF) {
+#endif
 			retval = true;
 			break;
 		}
@@ -655,6 +691,37 @@ void	MixFileCreator::Add_File( const char * filename, FileClass *file )
 */
 void	Add_Files( const char * dir, MixFileCreator & mix )
 {
+#if defined(PLATFORM_LINUX) || defined(__linux__) || defined(_UNIX)
+	// Linux twin of the FindFirstFile walk below; same recursion, '/' separators.
+	StringClass base;
+	base.Format("data/makemix/%s", dir);
+	WWDEBUG_SAY(( "Adding files from %s\n", base ));
+	DIR *dp = opendir(base);
+	if (dp == NULL)
+		return;
+	struct dirent *entry;
+	while ((entry = readdir(dp)) != NULL) {
+		if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0)
+			continue;
+		StringClass full;
+		full.Format("%s/%s", (const char *)base, entry->d_name);
+		struct stat st;
+		if (stat(full, &st) != 0)
+			continue;
+		if (S_ISDIR(st.st_mode)) {
+			StringClass sub;
+			sub.Format("%s%s/", dir, entry->d_name);
+			Add_Files(sub, mix);
+		} else {
+			StringClass name;
+			name.Format("%s%s", dir, entry->d_name);
+			StringClass source;
+			source.Format("makemix/%s", (const char *)name);
+			mix.Add_File(source, name);
+		}
+	}
+	closedir(dp);
+#else
 	BOOL bcontinue = TRUE;
 	HANDLE hfile_find;
 	WIN32_FIND_DATA find_info = {0};
@@ -680,11 +747,16 @@ void	Add_Files( const char * dir, MixFileCreator & mix )
 //			WWDEBUG_SAY(( "Adding file from %s %s\n", source, name ));
 		}
 	}
+#endif
 }
 
 void	Setup_Mix_File( void )
 {
+#if defined(PLATFORM_LINUX) || defined(__linux__) || defined(_UNIX)
+	_SimpleFileFactory.Set_Sub_Directory( "DATA/" );
+#else
 	_SimpleFileFactory.Set_Sub_Directory( "DATA\\" );
+#endif
 //	_SimpleFileFactory.Set_Strip_Path( true );
 
 	WWDEBUG_SAY(( "Mix File Create .....\n" ));

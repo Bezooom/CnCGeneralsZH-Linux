@@ -32,9 +32,13 @@
 
 #include "Common/XferCRC.h"
 #include "Common/XferDeepCRC.h"
-#include "Common/CRC.h"
+#include "Common/crc.h"
 #include "Common/Snapshot.h"
-#include "winsock2.h" // for htonl
+#if defined(_MSC_VER)
+#include <winsock2.h> // for htonl
+#else
+#include <arpa/inet.h> // for htonl
+#endif
 
 //-------------------------------------------------------------------------------------------------
 //-------------------------------------------------------------------------------------------------

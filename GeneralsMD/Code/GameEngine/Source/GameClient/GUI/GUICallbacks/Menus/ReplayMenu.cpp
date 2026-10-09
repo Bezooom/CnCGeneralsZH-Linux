@@ -36,10 +36,10 @@
 #include "Common/GameEngine.h"
 #include "Common/GameState.h"
 #include "Common/Recorder.h"
-#include "Common/Version.h"
+#include "Common/version.h"
 #include "GameClient/WindowLayout.h"
 #include "GameClient/Gadget.h"
-#include "GameClient/GadgetListbox.h"
+#include "GameClient/GadgetListBox.h"
 #include "GameClient/Shell.h"
 #include "GameClient/KeyDefs.h"
 #include "GameClient/GameWindowManager.h"
@@ -672,7 +672,11 @@ void copyReplay( void )
 	SHGetPathFromIDList(pidl,path);
 	AsciiString newFilename;
 	newFilename.set(path);
+#if defined(_MSC_VER)
 	newFilename.concat("\\");
+#else
+	newFilename.concat("/");
+#endif
 	newFilename.concat(translate);
 	if(CopyFile(filename.str(),newFilename.str(), FALSE) == 0)
 	{

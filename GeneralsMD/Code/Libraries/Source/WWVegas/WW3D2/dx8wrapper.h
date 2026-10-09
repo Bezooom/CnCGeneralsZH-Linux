@@ -48,9 +48,11 @@
 
 #include "always.h"
 #include "dllist.h"
-#include <d3d9.h>
+#include "ww3d_d3d9.h"
+#if defined(_WIN32) || defined(PLATFORM_LINUX)
 #include "d3dx9runtime.h"
 #include "d3dx9math.h"
+#endif
 #include "matrix4.h"
 #include "statistics.h"
 #include "wwstring.h"
@@ -59,7 +61,9 @@
 #include "vector4.h"
 #include "cpudetect.h"
 #include "dx8caps.h"
+#if defined(_WIN32) || defined(PLATFORM_LINUX)
 #include "dx11runtime.h"
+#endif
 
 #include "texture.h"
 #include "dx8vertexbuffer.h"
@@ -778,6 +782,9 @@ protected:
 	friend class DX8VertexBufferClass;
 };
 
+// Native backend implementation. On other platforms the declarations above
+// remain link requirements; compiling a consumer does not supply a renderer.
+#if defined(_WIN32) || defined(PLATFORM_LINUX)
 // shader system updates KJM v
 WWINLINE void DX8Wrapper::Set_Vertex_Format(DWORD fvf)
 {
@@ -1122,18 +1129,12 @@ WWINLINE unsigned int DX8Wrapper::Convert_Color(const Vector4& color)
 
 WWINLINE unsigned int DX8Wrapper::Convert_Color(const Vector3& color,float alpha)
 {
+#if defined(_MSC_VER) && !defined(PLATFORM_LINUX)
 	const float scale = 255.0;
 	unsigned int col;
 
-	// Multiply r, g, b and a components (0.0,...,1.0) by 255 and convert to integer. Or the integer values togerher
-	// such that 32 bit ingeger has AAAAAAAARRRRRRRRGGGGGGGGBBBBBBBB.
 	__asm
 	{
-		// This block is inlined wherever colors are converted, and VS2022 keeps live
-		// values in ANY of these registers across it -- SegLineRendererClass::Render
-		// held its point count in EAX and its transform reference in EBX, and both
-		// came back as color bytes (the fast_float_trunc lesson, one register wider).
-		// Hand back every register the way it was found; col carries the result out.
 		push	eax
 		push	ecx
 		push	edx
@@ -1207,16 +1208,18 @@ not_changed:
 		pop	eax
 	}
 	return col;
+#else
+	unsigned int a = (unsigned int)(alpha * 255.0f);
+	unsigned int r = (unsigned int)(color.X * 255.0f);
+	unsigned int g = (unsigned int)(color.Y * 255.0f);
+	unsigned int b = (unsigned int)(color.Z * 255.0f);
+	return ((a & 0xff) << 24) | ((r & 0xff) << 16) | ((g & 0xff) << 8) | (b & 0xff);
+#endif
 }
-
-// ----------------------------------------------------------------------------
-//
-// Clamp color vertor to [0...1] range
-//
-// ----------------------------------------------------------------------------
 
 WWINLINE void DX8Wrapper::Clamp_Color(Vector4& color)
 {
+#if defined(_MSC_VER) && !defined(PLATFORM_LINUX)
 	if (!CPUDetectClass::Has_CMOV_Instruction()) {
 		for (int i=0;i<4;++i) {
 			float f=(color[i]<0.0f) ? 0.0f : color[i];
@@ -1227,49 +1230,47 @@ WWINLINE void DX8Wrapper::Clamp_Color(Vector4& color)
 
 	__asm
 	{
-		// Same contract as Convert_Color above: leave every register as found.
 		push	edx
 		push	ebx
 		push	esi
 		push	edi
 
 		mov	esi,dword ptr color
-
 		mov edx,0x3f800000
 
 		mov edi,dword ptr[esi]
 		mov ebx,edi
 		sar edi,31
-		not edi			// mask is now zero if negative value
+		not edi
 		and edi,ebx
-		cmp edi,edx		// if no less than 1.0 set to 1.0
+		cmp edi,edx
 		cmovnb edi,edx
 		mov dword ptr[esi],edi
 
 		mov edi,dword ptr[esi+4]
 		mov ebx,edi
 		sar edi,31
-		not edi			// mask is now zero if negative value
+		not edi
 		and edi,ebx
-		cmp edi,edx		// if no less than 1.0 set to 1.0
+		cmp edi,edx
 		cmovnb edi,edx
 		mov dword ptr[esi+4],edi
 
 		mov edi,dword ptr[esi+8]
 		mov ebx,edi
 		sar edi,31
-		not edi			// mask is now zero if negative value
+		not edi
 		and edi,ebx
-		cmp edi,edx		// if no less than 1.0 set to 1.0
+		cmp edi,edx
 		cmovnb edi,edx
 		mov dword ptr[esi+8],edi
 
 		mov edi,dword ptr[esi+12]
 		mov ebx,edi
 		sar edi,31
-		not edi			// mask is now zero if negative value
+		not edi
 		and edi,ebx
-		cmp edi,edx		// if no less than 1.0 set to 1.0
+		cmp edi,edx
 		cmovnb edi,edx
 		mov dword ptr[esi+12],edi
 
@@ -1278,7 +1279,14 @@ WWINLINE void DX8Wrapper::Clamp_Color(Vector4& color)
 		pop	ebx
 		pop	edx
 	}
+#else
+	for (int i=0;i<4;++i) {
+		float f=(color[i]<0.0f) ? 0.0f : color[i];
+		color[i]=(f>1.0f) ? 1.0f : f;
+	}
+#endif
 }
+
 
 // ----------------------------------------------------------------------------
 //
@@ -1661,6 +1669,6 @@ WWINLINE RenderStateStruct& RenderStateStruct::operator= (const RenderStateStruc
 
 	return *this;
 }
-
+#endif // _WIN32 native backend inline implementation
 
 #endif

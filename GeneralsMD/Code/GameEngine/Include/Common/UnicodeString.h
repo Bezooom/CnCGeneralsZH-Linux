@@ -55,6 +55,21 @@
 #include "Common/Debug.h"
 #include "Common/Errors.h"
 
+#if !defined(_MSC_VER)
+#include <wchar.h>
+#include <wctype.h>
+// towlower loop: wcscasecmp needs _GNU_SOURCE under -std=c++17.
+static inline int unicode_wcsicmp(const wchar_t *a, const wchar_t *b)
+{
+  while (*a != 0 && towlower(*a) == towlower(*b)) {
+    ++a;
+    ++b;
+  }
+  return (int)(towlower(*a) - towlower(*b));
+}
+#define _wcsicmp unicode_wcsicmp
+#endif
+
 class AsciiString;
 
 // -----------------------------------------------------

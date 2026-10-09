@@ -22,7 +22,7 @@
 // $Revision: #1 $
 // $DateTime: 2003/07/03 11:55:26 $
 //
-// ©2003 Electronic Arts
+// ï¿½2003 Electronic Arts
 //
 // Precompiled header (module internal)
 //////////////////////////////////////////////////////////////////////////////
@@ -32,12 +32,18 @@
 #ifndef _PCH_H // Include guard
 #define _PCH_H
 
-#include "debug.h"
-
+#if defined(_MSC_VER)
 // we need windows.h at too many places...
 #define STRICT
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#else
+// Linux: minimal Win32 surface used across the library (see debug_linux.h).
+// Comes first so the public headers below see the shims.
+#include "debug_linux.h"
+#endif
+
+#include "debug.h"
 
 #include "internal.h"
 #include "internal_io.h"

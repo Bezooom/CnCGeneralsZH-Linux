@@ -22,14 +22,29 @@
 // $Revision: #2 $
 // $DateTime: 2005/01/19 15:02:33 $
 //
-// ©2003 Electronic Arts
+// ï¿½2003 Electronic Arts
 //
 // Stack walker
 //////////////////////////////////////////////////////////////////////////////
 #include "_pch.h"
+
+#if !defined(_MSC_VER)
+// Linux: DbgHelp does not exist; backtrace(3) captures the chain and
+// dladdr(3) resolves module+symbol (needs -rdynamic at the final link).
+#include <execinfo.h>
+#include <dlfcn.h>
+#include <stdio.h>
+#include <string.h>
+#else
 #include "dbghelp.h"
+#endif
 
 // Definitions to allow run-time linking to the dbghelp.dll functions.
+
+#if !defined(_MSC_VER)
+// Linux: no dbghelp; InitDbghelp/IsOldDbghelp/GetDbghelpHandle are
+// answered with constants below.
+#else
 
 #define DBGHELP(name,ret,par) typedef ret (WINAPI *name##Type) par;
 #include "debug_stack.inl"
@@ -120,6 +135,7 @@ static void InitDbghelp(void)
       g_oldDbghelp=true;
   }
 }
+#endif // !defined(_MSC_VER)
 
 //////////////////////////////////////////////////////////////////////////////
 
@@ -138,12 +154,105 @@ DebugStackwalk::Signature& DebugStackwalk::Signature::operator=(const Signature&
   return *this;
 }
 
-unsigned DebugStackwalk::Signature::GetAddress(int n) const
+uintptr_t DebugStackwalk::Signature::GetAddress(int n) const
 {
   DFAIL_IF_MSG(n<0||n>=MAX_ADDR,n << "/" << MAX_ADDR) return 0;
   return m_addr[n];
 }
 
+#if !defined(_MSC_VER)
+// Linux GetSymbol twin: module+symbol via dladdr, same one-line shape as
+// the Windows form (<addr> <module>+NN, <sym>+NN). No line numbers without
+// an addr2line round-trip, so the file part reports unknown.
+static const char *debug_basename(const char *path)
+{
+  const char *slash = strrchr(path, '/');
+  return slash ? slash + 1 : path;
+}
+
+void DebugStackwalk::Signature::GetSymbol(uintptr_t addr, char *buf, unsigned bufSize)
+{
+  DFAIL_IF(!buf) return;
+  DFAIL_IF(bufSize<64||bufSize>=0x80000000) return;
+
+  Dl_info info;
+  *buf = 0;
+  if (dladdr((void *)addr, &info) && info.dli_fname)
+  {
+    const char *mod = debug_basename(info.dli_fname);
+    unsigned long modRel = (unsigned long)(addr - (uintptr_t)info.dli_fbase);
+    if (info.dli_sname)
+    {
+      unsigned long symRel = (unsigned long)(addr - (uintptr_t)info.dli_saddr);
+      snprintf(buf, bufSize, "%016lx %s+0x%lx, %s+0x%lx, (unknown):0+0x0",
+               (unsigned long)addr, mod, modRel, info.dli_sname, symRel);
+    }
+    else
+    {
+      snprintf(buf, bufSize, "%016lx %s+0x%lx, (unknown)+0x0, (unknown):0+0x0",
+               (unsigned long)addr, mod, modRel);
+    }
+  }
+  else
+  {
+    snprintf(buf, bufSize, "%016lx (unknown module)", (unsigned long)addr);
+  }
+}
+
+void DebugStackwalk::Signature::GetSymbol(uintptr_t addr,
+                                          char *bufMod, unsigned sizeMod, unsigned *relMod,
+                                          char *bufSym, unsigned sizeSym, unsigned *relSym,
+                                          char *bufFile, unsigned sizeFile, unsigned *linePtr, unsigned *relLine)
+{
+  if (bufMod) *bufMod = 0;
+  if (relMod) *relMod = 0;
+  if (bufSym) *bufSym = 0;
+  if (relSym) *relSym = 0;
+
+  if (bufFile) *bufFile = 0;
+  if (linePtr) *linePtr = 0;
+  if (relLine) *relLine = 0;
+
+  DFAIL_IF(bufMod&&sizeMod<16) return;
+  DFAIL_IF(bufSym&&sizeSym<16) return;
+  DFAIL_IF(bufFile&&sizeFile<16) return;
+
+  Dl_info info;
+  if (!dladdr((void *)addr, &info) || !info.dli_fname)
+  {
+    if (bufMod)
+      strcpy(bufMod, "(unknown mod)");
+    if (bufSym)
+      strcpy(bufSym, "(unknown)");
+    return;
+  }
+
+  if (bufMod)
+  {
+    const char *mod = debug_basename(info.dli_fname);
+    strncpy(bufMod, mod, sizeMod);
+    bufMod[sizeMod-1] = 0;
+  }
+  if (relMod)
+    *relMod = (unsigned)(addr - (uintptr_t)info.dli_fbase);
+
+  if (bufSym)
+  {
+    if (info.dli_sname)
+    {
+      strncpy(bufSym, info.dli_sname, sizeSym);
+      bufSym[sizeSym-1] = 0;
+      if (relSym)
+        *relSym = (unsigned)(addr - (uintptr_t)info.dli_saddr);
+    }
+    else
+      strcpy(bufSym, "(unknown)");
+  }
+
+  if (bufFile)
+    strcpy(bufFile, "(unknown)");
+}
+#else
 void DebugStackwalk::Signature::GetSymbol(unsigned addr, char *buf, unsigned bufSize) 
 {
   DFAIL_IF(!buf) return;
@@ -304,6 +413,7 @@ void DebugStackwalk::Signature::GetSymbol(unsigned addr,
     }
   }
 }
+#endif // !defined(_MSC_VER)
 
 Debug& operator<<(Debug &dbg, const DebugStackwalk::Signature &sig)
 {
@@ -323,8 +433,12 @@ Debug& operator<<(Debug &dbg, const DebugStackwalk::Signature &sig)
 
 DebugStackwalk::DebugStackwalk(void)
 {
+#if defined(_MSC_VER)
   // it doesn't harm to do this here
   InitDbghelp();
+#else
+  // Linux: nothing to initialize (backtrace/dladdr need no setup).
+#endif
 }
 
 DebugStackwalk::~DebugStackwalk()
@@ -333,14 +447,39 @@ DebugStackwalk::~DebugStackwalk()
 
 void *DebugStackwalk::GetDbghelpHandle(void)
 {
+#if defined(_MSC_VER)
   return g_dbghelp;
+#else
+  return NULL;
+#endif
 }
 
 bool DebugStackwalk::IsOldDbghelp(void)
 {
+#if defined(_MSC_VER)
   return g_oldDbghelp;
+#else
+  return false;
+#endif
 }
 
+#if !defined(_MSC_VER)
+// Linux stack walk: backtrace(3) captures return addresses directly.
+// Frame 0 is StackWalk itself, so it is skipped like the seeded frame
+// the Windows version skips (skipFirst).
+int DebugStackwalk::StackWalk(Signature &sig, struct _CONTEXT *ctx)
+{
+  (void)ctx; // always captures the current chain on Linux
+  void *frames[Signature::MAX_ADDR + 1];
+  int depth = backtrace(frames, sizeof(frames) / sizeof(frames[0]));
+
+  sig.m_numAddr = 0;
+  for (int k = 1; k < depth && sig.m_numAddr < Signature::MAX_ADDR; ++k)
+    sig.m_addr[sig.m_numAddr++] = (uintptr_t)frames[k];
+
+  return sig.m_numAddr;
+}
+#else
 int DebugStackwalk::StackWalk(Signature &sig, struct _CONTEXT *ctx)
 {
   InitDbghelp();
@@ -400,3 +539,5 @@ int DebugStackwalk::StackWalk(Signature &sig, struct _CONTEXT *ctx)
 
 	return sig.m_numAddr;
 }
+
+#endif // !defined(_MSC_VER)

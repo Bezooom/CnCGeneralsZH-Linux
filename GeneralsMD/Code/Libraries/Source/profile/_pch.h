@@ -22,7 +22,7 @@
 // $Revision: #1 $
 // $DateTime: 2003/07/03 11:55:26 $
 //
-// ©2003 Electronic Arts
+// ï¿½2003 Electronic Arts
 //
 // Precompiled header (module internal)
 //////////////////////////////////////////////////////////////////////////////
@@ -32,9 +32,16 @@
 #ifndef _PCH_H // Include guard
 #define _PCH_H
 
+#if defined(_MSC_VER)
 #define WIN32_LEAN_AND_MEAN
 #define STRICT
 #include <windows.h>
+#else
+// Linux: minimal Win32 surface used across the library.
+#include "profile_linux.h"
+// (windows.h used to drag in the C string/memory headers everywhere.)
+#include <string.h>
+#endif
 
 #include "profile.h"
 #include "internal.h"

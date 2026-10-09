@@ -28,7 +28,9 @@
 
 #include "PreRTS.h"	// This must go first in EVERY cpp file int the GameEngine
 
+#if defined(_MSC_VER)
 #include <winsock.h>	// This one has to be here. Prevents collisions with windsock2.h
+#endif
 
 #include "GameNetwork/GameSpy/PingThread.h"
 #include "mutex.h"
@@ -248,7 +250,9 @@ AsciiString Pinger::getPingString( Int timeout )
 void PingThreadClass::Thread_Function()
 {
 	try {
+#if defined(_MSC_VER)
 	_set_se_translator( DumpExceptionInfo ); // Hook that allows stack trace.
+#endif
 	PingRequest req;
 
 	WSADATA wsaData;
@@ -463,10 +467,9 @@ Int PingThreadClass::doPing(UnsignedInt IP, Int timeout)
    /*
     * Get pointers to ICMP.DLL functions
     */
-   lpfnIcmpCreateFile = (void * (__stdcall *)(void))GetProcAddress( (HINSTANCE)hICMP_DLL, "IcmpCreateFile");
-   lpfnIcmpCloseHandle = (int (__stdcall *)(void *))GetProcAddress( (HINSTANCE)hICMP_DLL, "IcmpCloseHandle");
-   lpfnIcmpSendEcho = (unsigned long (__stdcall *)(void *, unsigned long, void *, unsigned short,
-                       void *, void *, unsigned long, unsigned long))GetProcAddress( (HINSTANCE)hICMP_DLL, "IcmpSendEcho" );
+   lpfnIcmpCreateFile = reinterpret_cast<decltype(lpfnIcmpCreateFile)>(GetProcAddress( (HINSTANCE)hICMP_DLL, "IcmpCreateFile"));
+   lpfnIcmpCloseHandle = reinterpret_cast<decltype(lpfnIcmpCloseHandle)>(GetProcAddress( (HINSTANCE)hICMP_DLL, "IcmpCloseHandle"));
+   lpfnIcmpSendEcho = reinterpret_cast<decltype(lpfnIcmpSendEcho)>(GetProcAddress( (HINSTANCE)hICMP_DLL, "IcmpSendEcho" ));
 
    if ((!lpfnIcmpCreateFile) ||
          (!lpfnIcmpCloseHandle) ||

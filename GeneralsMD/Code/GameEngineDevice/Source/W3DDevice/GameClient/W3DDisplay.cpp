@@ -35,8 +35,12 @@ static void drawFramerateBar(void);
 
 // SYSTEM INCLUDES ////////////////////////////////////////////////////////////
 #include <stdlib.h>
+#if defined(_WIN32)
+#ifdef _WIN32
 #include <windows.h>
+#endif
 #include <io.h>
+#endif
 #include <time.h>
 #include "stringex.h"
 
@@ -81,29 +85,97 @@ static void drawFramerateBar(void);
 #include "W3DDevice/GameClient/W3DScene.h"
 #include "W3DDevice/GameClient/W3DTerrainTracks.h"
 #include "W3DDevice/GameClient/W3DWater.h"
+#if defined(_WIN32)
 #include "W3DDevice/GameClient/W3DVideoBuffer.h"
+#else
+#include "W3DDevice/GameClient/W3DVideobuffer.h"
+#endif
 #include "W3DDevice/GameClient/W3DShaderManager.h"
 #include "W3DDevice/GameClient/W3DDebugDisplay.h"
 #include "W3DDevice/GameClient/W3DDisplayString.h"
 #include "W3DDevice/GameClient/W3DProjectedShadow.h"
 #include "W3DDevice/GameClient/W3DShroud.h"
+#if defined(_WIN32)
 #include "WWMath/WWMath.h"
+#else
+#include "WWMath/wwmath.h"
+#endif
+#if defined(_WIN32)
 #include "WWLib/Registry.h"
+#else
+#include "WWLib/registry.h"
+#endif
+#if defined(_WIN32)
 #include "WW3D2/WW3D.h"
+#else
+#include "WW3D2/ww3d.h"
+#endif
+#if defined(_WIN32)
 #include "WW3D2/PredLod.h"
+#else
+#include "WW3D2/predlod.h"
+#endif
+#if defined(_WIN32)
 #include "WW3D2/Part_Emt.h"
+#else
+#include "WW3D2/part_emt.h"
+#endif
+#if defined(_WIN32)
 #include "WW3D2/Part_Ldr.h"
+#else
+#include "WW3D2/part_ldr.h"
+#endif
+#if defined(_WIN32)
 #include "WW3D2/DX8Caps.h"
+#else
+#include "WW3D2/dx8caps.h"
+#endif
+#if defined(_WIN32)
 #include "WW3D2/WW3DFormat.h"
+#else
+#include "WW3D2/ww3dformat.h"
+#endif
 #include "WW3D2/agg_def.h"
+#if defined(_WIN32)
 #include "WW3D2/Render2DSentence.h"
+#else
+#include "WW3D2/render2dsentence.h"
+#endif
+#if defined(_WIN32)
 #include "WW3D2/SortingRenderer.h"
+#else
+#include "WW3D2/sortingrenderer.h"
+#endif
+#if defined(_WIN32)
 #include "WW3D2/Textureloader.h"
+#else
+#include "WW3D2/textureloader.h"
+#endif
+#if defined(_WIN32)
 #include "WW3D2/DX8WebBrowser.h"
+#else
+#include "WW3D2/dx8webbrowser.h"
+#endif
+#if defined(_WIN32)
 #include "WW3D2/Mesh.h"
+#else
+#include "WW3D2/mesh.h"
+#endif
+#if defined(_WIN32)
 #include "WW3D2/HLOD.h"
+#else
+#include "WW3D2/hlod.h"
+#endif
+#if defined(_WIN32)
 #include "WW3D2/Meshmatdesc.h"
+#else
+#include "WW3D2/meshmatdesc.h"
+#endif
+#if defined(_WIN32)
 #include "WW3D2/Meshmdl.h"
+#else
+#include "WW3D2/meshmdl.h"
+#endif
 #include "WW3D2/rddesc.h"
 #include "targa.h"
 #include "Lib/BaseType.h"
@@ -113,8 +185,9 @@ static void drawFramerateBar(void);
 #ifdef DUMP_PERF_STATS
 #include "GameLogic/PartitionManager.h"
 #endif
-
+#ifdef _WIN32
 #include "WinMain.h"
+#endif
 
 #ifdef _INTERNAL
 // for occasional debugging...
@@ -384,14 +457,24 @@ W3DAssetManager *W3DDisplay::m_assetManager = NULL;
 inline Int64 getPerformanceCounter()
 {
 	Int64 tmp;
+#ifdef _WIN32
 	QueryPerformanceCounter((LARGE_INTEGER*)&tmp);
+#else
+	struct timespec ts;
+	clock_gettime(CLOCK_MONOTONIC, &ts);
+	tmp = (Int64)ts.tv_sec * 10000000 + ts.tv_nsec / 100;
+#endif
 	return tmp;
 }
 
 inline Int64 getPerformanceCounterFrequency()
 {
 	Int64 tmp;
+#ifdef _WIN32
 	QueryPerformanceFrequency((LARGE_INTEGER*)&tmp);
+#else
+	tmp = 10000000;
+#endif
 	return tmp;
 }
 
@@ -713,6 +796,7 @@ void Reset_D3D_Device(bool active)
 //=============================================================================
 static void applyWindowFrame( Int mode )
 {
+#ifdef _WIN32
 	extern HWND ApplicationHWnd;
 	extern Bool ApplicationIsBorderless;
 
@@ -737,6 +821,9 @@ static void applyWindowFrame( Int mode )
 	::SetWindowPos( ApplicationHWnd,
 									( mode == WINDOW_MODE_WINDOWED ) ? HWND_TOP : HWND_TOPMOST,
 									0, 0, 0, 0, SWP_NOSIZE | SWP_FRAMECHANGED | move );
+#else
+	(void)mode;
+#endif
 }
 
 //=============================================================================
@@ -746,6 +833,7 @@ static void applyWindowFrame( Int mode )
 //=============================================================================
 static void sizeWindowToClient( Int mode, Int width, Int height )
 {
+#ifdef _WIN32
 	extern HWND ApplicationHWnd;
 
 	if( ApplicationHWnd == NULL || ( TheGlobalData && TheGlobalData->m_headless ) )
@@ -773,6 +861,9 @@ static void sizeWindowToClient( Int mode, Int width, Int height )
 	::SetWindowPos( ApplicationHWnd,
 									( mode == WINDOW_MODE_WINDOWED ) ? HWND_TOP : HWND_TOPMOST,
 									x, y, outerW, outerH, SWP_NOACTIVATE );
+#else
+	(void)mode; (void)width; (void)height;
+#endif
 }
 
 //=============================================================================
@@ -1028,7 +1119,13 @@ void W3DDisplay::init( void )
 	{
 		SortingRendererClass::SetMinVertexBufferSize(1);
 	}
-	if (WW3D::Init( ApplicationHWnd ) != WW3D_ERROR_OK)
+	if (WW3D::Init(
+#ifdef _WIN32
+		ApplicationHWnd
+#else
+		NULL
+#endif
+		) != WW3D_ERROR_OK)
 		throw ERROR_INVALID_D3D;	//failed to initialize.  User probably doesn't have DX 8.1
 
 	WW3D::Set_Prelit_Mode( WW3D::PRELIT_MODE_LIGHTMAP_MULTI_PASS );
@@ -1130,9 +1227,13 @@ void W3DDisplay::init( void )
 	// now, so there is one answer here and no translating dll to name; -d3d12 was d3d8to9's opt-in
 	// and does nothing until RENDERER-ROADMAP.md's phase 5 puts a real Direct3D 12 backend behind
 	// the same seam.
-	DEBUG_LOG(("W3DDisplay::init - renderer runtime: %s\n",
-						 GetModuleHandleA("d3d9.dll") ? "Direct3D 9 (native)"
-						                              : "no Direct3D 9 runtime loaded"));
+		DEBUG_LOG(("W3DDisplay::init - renderer runtime: %s\n",
+#ifdef _WIN32
+						 GetModuleHandleA("d3d9.dll") ? "Direct3D 9 (native)" : "no Direct3D 9 runtime loaded"
+#else
+						 "no Direct3D 9 runtime loaded"
+#endif
+						 ));
 	// multisampling is opt-in with "-msaa" / "-msaa N" and silently degrades to whatever the
 	// device supports, so log what was actually granted
 	DEBUG_LOG(("W3DDisplay::init - multisampling: %ux\n", DX8Wrapper::Get_MultiSample_Level()));
@@ -1642,6 +1743,7 @@ void W3DDisplay::gatherDebugStats( void )
 
 		// display the keyboard modifier and mouse states.
 		unibuffer.format( L"States: " );
+#ifdef _WIN32
 		if( TheKeyboard->isShift() )
 		{
 			unibuffer.concat( L"Shift(" );
@@ -1681,6 +1783,9 @@ void W3DDisplay::gatherDebugStats( void )
 			}
 			unibuffer.concat( L") " );
 		}
+#else
+		unibuffer.concat( L"States: (n/a)" );
+#endif
 
 		const MouseIO *mouseStatus = TheMouse->getMouseStatus();
 
@@ -2061,11 +2166,15 @@ extern Real TheUIDrawMS;
 
 static Real w3dElapsedMS( const Int64 &from, const Int64 &to )
 {
+#ifdef _WIN32
 	Int64 freq;
 	QueryPerformanceFrequency( (LARGE_INTEGER *)&freq );
 	if( freq < 1 )
 		return 0.0f;
 	return (Real)((double)(to - from) * 1000.0 / (double)freq);
+#else
+	return (Real)(to - from);
+#endif
 }
 #endif
 
@@ -2075,9 +2184,11 @@ void W3DDisplay::draw( void )
 	static UnsignedInt syncTime = 0;
 
 	extern HWND ApplicationHWnd;
+#ifdef _WIN32
 	if (ApplicationHWnd && ::IsIconic(ApplicationHWnd)) {
 		return;
 	}
+#endif
 
 	// -nodevice: there is no device to begin a scene on.  The load screen asks for a draw of its
 	// own while a map loads, so this is reached before the first frame and not only from the loop.
@@ -2361,11 +2472,19 @@ AGAIN:
 				// draw all views of the world
 #ifdef DEBUG_LOGGING
 				Int64 tSceneStart, tSceneEnd, tUIEnd;
+#ifdef _WIN32
 				QueryPerformanceCounter( (LARGE_INTEGER *)&tSceneStart );
+#else
+				tSceneStart = 0;
+#endif
 #endif
 				drawViews();
 #ifdef DEBUG_LOGGING
+#ifdef _WIN32
 				QueryPerformanceCounter( (LARGE_INTEGER *)&tSceneEnd );
+#else
+				tSceneEnd = 0;
+#endif
 #endif
 
 				// W3DView::draw has normally run the chain already, at the point where the world
@@ -2377,7 +2496,11 @@ AGAIN:
 				// draw the user interface
 				TheInGameUI->DRAW();
 #ifdef DEBUG_LOGGING
+#ifdef _WIN32
 				QueryPerformanceCounter( (LARGE_INTEGER *)&tUIEnd );
+#else
+				tUIEnd = 0;
+#endif
 				TheSceneDrawMS = w3dElapsedMS( tSceneStart, tSceneEnd );
 				TheUIDrawMS = w3dElapsedMS( tSceneEnd, tUIEnd );
 #endif
@@ -2463,12 +2586,14 @@ AGAIN:
 				TheGraphDraw->render();
 				TheGraphDraw->clear();
 #endif
+#ifdef _WIN32
 				if (s_screenShotPending)
 				{
 					s_screenShotPending = FALSE;
 					saveScreenShot();
 				}
 				captureVideoFrame();
+#endif
 				// render is all done!
 				WW3D::End_Render();
 
@@ -3535,76 +3660,80 @@ void W3DDisplay::setShroudLevel( Int x, Int y, CellShroudStatus setting )
 //=============================================================================
 ///Utility function to dump data into a .BMP file
 static void CreateBMPFile(LPTSTR pszFile, char *image, Int width, Int height)
-{ 
-     HANDLE hf;                 // file handle 
-    BITMAPFILEHEADER hdr;       // bitmap file-header 
-    PBITMAPINFOHEADER pbih;     // bitmap info-header 
-    LPBYTE lpBits;              // memory pointer 
-    DWORD dwTotal;              // total count of bytes 
-    DWORD cb;                   // incremental count of bytes 
-    BYTE *hp;                   // byte pointer 
-    DWORD dwTmp; 
+{
+#ifdef _WIN32
+     HANDLE hf;                 // file handle
+     BITMAPFILEHEADER hdr;       // bitmap file-header
+     PBITMAPINFOHEADER pbih;     // bitmap info-header
+     LPBYTE lpBits;              // memory pointer
+     DWORD dwTotal;              // total count of bytes
+     DWORD cb;                   // incremental count of bytes
+     BYTE *hp;                   // byte pointer
+     DWORD dwTmp;
 
-    PBITMAPINFO pbmi; 
+     PBITMAPINFO pbmi;
 
-    pbmi = (PBITMAPINFO) LocalAlloc(LPTR,sizeof(BITMAPINFOHEADER));
-    pbmi->bmiHeader.biSize = sizeof(BITMAPINFOHEADER); 
-    pbmi->bmiHeader.biWidth = width; 
-    pbmi->bmiHeader.biHeight = height; 
-    pbmi->bmiHeader.biPlanes = 1; 
-    pbmi->bmiHeader.biBitCount = 24;
-    pbmi->bmiHeader.biCompression = BI_RGB;
-    pbmi->bmiHeader.biSizeImage = (pbmi->bmiHeader.biWidth + 7) /8 * pbmi->bmiHeader.biHeight * 24;
-    pbmi->bmiHeader.biClrImportant = 0; 
+     pbmi = (PBITMAPINFO) LocalAlloc(LPTR,sizeof(BITMAPINFOHEADER));
+     pbmi->bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+     pbmi->bmiHeader.biWidth = width;
+     pbmi->bmiHeader.biHeight = height;
+     pbmi->bmiHeader.biPlanes = 1;
+     pbmi->bmiHeader.biBitCount = 24;
+     pbmi->bmiHeader.biCompression = BI_RGB;
+     pbmi->bmiHeader.biSizeImage = (pbmi->bmiHeader.biWidth + 7) /8 * pbmi->bmiHeader.biHeight * 24;
+     pbmi->bmiHeader.biClrImportant = 0;
 
 
-    pbih = (PBITMAPINFOHEADER) pbmi; 
-    lpBits = (LPBYTE) image;
+     pbih = (PBITMAPINFOHEADER) pbmi;
+     lpBits = (LPBYTE) image;
 
-    // Create the .BMP file. 
-    hf = CreateFile(pszFile, 
-                   GENERIC_READ | GENERIC_WRITE, 
-                   (DWORD) 0, 
-                    NULL, 
-                   CREATE_ALWAYS, 
-                   FILE_ATTRIBUTE_NORMAL, 
-                   (HANDLE) NULL); 
-    if (hf == INVALID_HANDLE_VALUE) 
+     // Create the .BMP file.
+     hf = CreateFile(pszFile,
+                    GENERIC_READ | GENERIC_WRITE,
+                    (DWORD) 0,
+                     NULL,
+                    CREATE_ALWAYS,
+                    FILE_ATTRIBUTE_NORMAL,
+                    (HANDLE) NULL);
+     if (hf == INVALID_HANDLE_VALUE)
 		return;
-    hdr.bfType = 0x4d42;        // 0x42 = "B" 0x4d = "M" 
-    // Compute the size of the entire file. 
-    hdr.bfSize = (DWORD) (sizeof(BITMAPFILEHEADER) + 
-                 pbih->biSize + pbih->biClrUsed 
-                 * sizeof(RGBQUAD) + pbih->biSizeImage); 
-    hdr.bfReserved1 = 0; 
-    hdr.bfReserved2 = 0; 
+     hdr.bfType = 0x4d42;        // 0x42 = "B" 0x4d = "M"
+     // Compute the size of the entire file.
+     hdr.bfSize = (DWORD) (sizeof(BITMAPFILEHEADER) +
+                  pbih->biSize + pbih->biClrUsed
+                  * sizeof(RGBQUAD) + pbih->biSizeImage);
+     hdr.bfReserved1 = 0;
+     hdr.bfReserved2 = 0;
 
-    // Compute the offset to the array of color indices. 
-    hdr.bfOffBits = (DWORD) sizeof(BITMAPFILEHEADER) + 
-                    pbih->biSize + pbih->biClrUsed 
-                    * sizeof (RGBQUAD); 
+     // Compute the offset to the array of color indices.
+     hdr.bfOffBits = (DWORD) sizeof(BITMAPFILEHEADER) +
+                     pbih->biSize + pbih->biClrUsed
+                     * sizeof (RGBQUAD);
 
-    // Copy the BITMAPFILEHEADER into the .BMP file. 
-    if (!WriteFile(hf, (LPVOID) &hdr, sizeof(BITMAPFILEHEADER), 
-        (LPDWORD) &dwTmp,  NULL)) 
-		return;
-
-    // Copy the BITMAPINFOHEADER and RGBQUAD array into the file. 
-    if (!WriteFile(hf, (LPVOID) pbih, sizeof(BITMAPINFOHEADER) + pbih->biClrUsed * sizeof (RGBQUAD),(LPDWORD) &dwTmp, NULL)) 
+     // Copy the BITMAPFILEHEADER into the .BMP file.
+     if (!WriteFile(hf, (LPVOID) &hdr, sizeof(BITMAPFILEHEADER),
+         (LPDWORD) &dwTmp,  NULL))
 		return;
 
-    // Copy the array of color indices into the .BMP file. 
-    dwTotal = cb = pbih->biSizeImage; 
-    hp = lpBits; 
-    if (!WriteFile(hf, (LPSTR) hp, (int) cb, (LPDWORD) &dwTmp,NULL)) 
+     // Copy the BITMAPINFOHEADER and RGBQUAD array into the file.
+     if (!WriteFile(hf, (LPVOID) pbih, sizeof(BITMAPINFOHEADER) + pbih->biClrUsed * sizeof (RGBQUAD),(LPDWORD) &dwTmp, NULL))
 		return;
 
-    // Close the .BMP file. 
-     if (!CloseHandle(hf))
+     // Copy the array of color indices into the .BMP file.
+     dwTotal = cb = pbih->biSizeImage;
+     hp = lpBits;
+     if (!WriteFile(hf, (LPSTR) hp, (int) cb, (LPDWORD) &dwTmp,NULL))
+		return;
+
+     // Close the .BMP file.
+      if (!CloseHandle(hf))
 		 return;
 
-    // Free memory. 
+     // Free memory.
 	LocalFree( (HLOCAL) pbmi);
+#else
+     (void)pszFile; (void)image; (void)width; (void)height;
+#endif
 }
 
 // A system-memory copy of the back buffer (32-bit, not multisampled), NULL when that is
@@ -3613,6 +3742,7 @@ static void CreateBMPFile(LPTSTR pszFile, char *image, Int width, Int height)
 // a DXGI flip swap chain that desktop captures do not see - the old code saved black.
 static IDirect3DSurface9 *captureBackBuffer(void)
 {
+#ifdef _WIN32
 	IDirect3DDevice9 *dev = DX8Wrapper::_Get_D3D_Device();
 	IDirect3DSurface9 *bb = NULL;
 	if (dev == NULL || FAILED(dev->GetBackBuffer(PRIMARY_SWAP_CHAIN, 0, D3DBACKBUFFER_TYPE_MONO, &bb)) || bb == NULL)
@@ -3655,6 +3785,9 @@ static IDirect3DSurface9 *captureBackBuffer(void)
 	if (copy == NULL)
 		DEBUG_LOG(("takeScreenShot - the back buffer could not be read, falling back to a desktop capture\n"));
 	return copy;
+#else
+	return NULL;
+#endif
 }
 
 ///Save Screen Capture to a file - deferred to the end of the next rendered frame
@@ -3667,6 +3800,7 @@ void W3DDisplay::takeScreenShot(void)
 	* a device that has gone away gives.  Runs before End_Render, while the back buffers still hold it. */
 static Bool writeFrameBMP(char *pathname)
 {
+#ifdef _WIN32
 	// With -dx11present the picture on the screen is the Direct3D 11 one, so that is what a
 	// screenshot has to be: reading the D3D9 back buffer here would photograph a frame nobody saw
 	// and quietly compare the old renderer against itself.  This runs before End_Render, while the
@@ -3830,10 +3964,15 @@ static Bool writeFrameBMP(char *pathname)
 
 	delete [] image;
 	return TRUE;
+#else
+	(void)pathname;
+	return FALSE;
+#endif
 }
 
 static void saveScreenShot(void)
 {
+#ifdef _WIN32
 	char leafname[256];
 	char pathname[1024];
 
@@ -3858,6 +3997,8 @@ static void saveScreenShot(void)
 	UnicodeString ufileName;
 	ufileName.translate(leafname);
 	TheInGameUI->message(TheGameText->fetch("GUI:ScreenCapture"), ufileName.str());
+#else
+#endif
 }
 
 //=============================================================================
@@ -3887,6 +4028,7 @@ static void buildVideoFramePath(char *pathname, size_t size, Int index)
 // frames are numbered from 0 without a gap, so the first name that is not there is the end of them
 static void deleteVideoFrames(void)
 {
+#ifdef _WIN32
 	char pathname[_MAX_PATH];
 	for (Int index = 0; ; ++index)
 	{
@@ -3894,10 +4036,14 @@ static void deleteVideoFrames(void)
 		if (!DeleteFileA(pathname))
 			return;
 	}
+#else
+	(void)buildVideoFramePath;
+#endif
 }
 
 static void finishVideo(void)
 {
+#ifdef _WIN32
 	if (!s_videoStarted || s_videoFinished)
 		return;
 	s_videoFinished = TRUE;
@@ -3955,10 +4101,14 @@ static void finishVideo(void)
 	deleteVideoFrames();
 	RemoveDirectoryA(s_videoDirectory);
 	DEBUG_LOG(("VIDEO: wrote %s\n", moviePath));
+#else
+	(void)s_videoStarted; (void)s_videoFinished;
+#endif
 }
 
 static void captureVideoFrame(void)
 {
+#ifdef _WIN32
 	if (TheGlobalData->m_videoEndFrame <= 0 || s_videoFinished || TheGameLogic == NULL
 			|| !TheGameLogic->isInGame() || TheGameLogic->isInShellGame())
 		return;
@@ -4004,6 +4154,9 @@ static void captureVideoFrame(void)
 		++s_videoFramesWritten;
 	else
 		++s_videoFramesMissed;
+#else
+	(void)TheGlobalData; (void)s_videoFinished; (void)TheGameLogic; (void)s_videoStarted;
+#endif
 }
 
 /** Start/Stop campturing an AVI movie*/

@@ -32,7 +32,7 @@
 #include "GameNetwork/DisconnectManager.h"
 #include "GameNetwork/StallJudgement.h"
 #include "GameNetwork/NetworkInterface.h"
-#include "GameNetwork/NetworkUtil.h"
+#include "GameNetwork/networkutil.h"
 #include "GameNetwork/GameSpy/PingThread.h"
 #include "GameNetwork/GameSpy/GSConfig.h"
 

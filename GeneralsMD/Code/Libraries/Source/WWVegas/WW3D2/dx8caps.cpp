@@ -42,8 +42,12 @@
 #include "dx8wrapper.h"
 #include "formconv.h"
 #pragma warning (disable : 4201)		// nonstandard extension - nameless struct
+#if defined(_WIN32)
 #include <windows.h>
 #include <mmsystem.h>
+#else
+#include "mmsys.h"
+#endif
 
 static StringClass CapsWorkString;
 

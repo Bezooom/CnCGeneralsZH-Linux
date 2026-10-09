@@ -43,7 +43,9 @@
 #include <assert.h>
 
 // Disable warning about exception handling not being enabled. It's used as part of STL - in a part of STL we don't use.
+#if defined(_MSC_VER)
 #pragma warning(disable : 4530)
+#endif
 
 /*
 ** Define for debug memory allocation to include __FILE__ and __LINE__ for every memory allocation.
@@ -54,29 +56,34 @@
 #ifdef _MSC_VER
 #ifdef STEVES_NEW_CATCHER
 
-	#include	<crtdbg.h>
-	#include <stdlib.h>
-	#include <malloc.h>
+#include	<crtdbg.h>
+#include <stdlib.h>
+#include <malloc.h>
 
-	#define   malloc(s)         _malloc_dbg(s, _NORMAL_BLOCK, __FILE__, __LINE__)
-	#define   calloc(c, s)      _calloc_dbg(c, s, _NORMAL_BLOCK, __FILE__, __LINE__)
-	#define   realloc(p, s)     _realloc_dbg(p, s, _NORMAL_BLOCK, __FILE__, __LINE__)
-	#define   _expand(p, s)     _expand_dbg(p, s, _NORMAL_BLOCK, __FILE__, __LINE__)
-	#define   free(p)           _free_dbg(p, _NORMAL_BLOCK)
-	#define   _msize(p)         _msize_dbg(p, _NORMAL_BLOCK)
+#define   malloc(s)         _malloc_dbg(s, _NORMAL_BLOCK, __FILE__, __LINE__)
+#define   calloc(c, s)      _calloc_dbg(c, s, _NORMAL_BLOCK, __FILE__, __LINE__)
+#define   realloc(p, s)     _realloc_dbg(p, s, _NORMAL_BLOCK, __FILE__, __LINE__)
+#define   _expand(p, s)     _expand_dbg(p, s, _NORMAL_BLOCK, __FILE__, __LINE__)
+#define   free(p)           _free_dbg(p, _NORMAL_BLOCK)
+#define   _msize(p)         _msize_dbg(p, _NORMAL_BLOCK)
 
-	void* __cdecl operator new(unsigned int s);
+void* __cdecl operator new(unsigned int s);
 
 #endif	//STEVES_NEW_CATCHER
 #endif	//_MSC_VER
 #endif	//_DEBUG
 
-#if 1 // (gth) killing the Generals Memory Manager!
+// =============================================================================
+// Memory management - "killing the Generals Memory Manager" (gth)
+// =============================================================================
+
+#if 1
 
 #ifndef _OPERATOR_NEW_DEFINED_
+#define _OPERATOR_NEW_DEFINED_
 
-	#define _OPERATOR_NEW_DEFINED_
-
+#if defined(_MSC_VER)
+	// MSVC-specific operator new/delete with __cdecl calling convention
 	extern void * __cdecl operator new		(size_t size);
 	extern void __cdecl operator delete		(void *p);
 
@@ -93,12 +100,20 @@
 	// additional overloads for 'placement new'
 	//inline void* __cdecl operator new							(size_t s, void *p) { return p; }
 	//inline void __cdecl operator delete						(void *, void *p)		{ }
-#if !defined(_MSC_VER) || _MSC_VER < 1300	// VC7+ <new> already defines array placement new/delete
+#if !defined(_MSC_VER) || _MSC_VER < 1300	// VC7+ <new> already defines array placement new
 	inline void* __cdecl operator new[]						(size_t s, void *p) { return p; }
 	inline void __cdecl operator delete[]					(void *, void *p)		{ }
 #endif
-
+#else
+	// GCC/Clang: standard placement new from <new> is sufficient
+	// Array placement new (C++14) - only if not already defined
+	#if __cplusplus < 201402L
+	inline void* operator new[](size_t, void* p) noexcept { return p; }
+	inline void operator delete[](void*, void*) noexcept {}
+	#endif
 #endif
+
+#endif // _OPERATOR_NEW_DEFINED_
 
 #if (defined(_DEBUG) || defined(_INTERNAL)) 
 	#define MSGW3DNEW(MSG)					new( MSG, 0 )
@@ -157,33 +172,138 @@ public:
 };
 // ----------------------------------------------------------------------------
 
-#else
+#else // #if 1 - alternative memory manager (disabled)
 
-	#define MSGW3DNEW(MSG)					new
-	#define MSGW3DNEWARRAY(MSG)			new
-	#define W3DNEW									new
-	#define W3DNEWARRAY							new
+// Memory manager disabled - use plain new/delete
+#define MSGW3DNEW(MSG)					new
+#define MSGW3DNEWARRAY(MSG)			new
+#define W3DNEW									new
+#define W3DNEWARRAY							new
 
-	#define W3DMPO_GLUE(ARGCLASS)
+#define W3DMPO_GLUE(ARGCLASS)
 
-	class W3DMPO { };
+// Minimal W3DMPO for compatibility
+class W3DMPO { };
 
 #endif // (gth) removing the generals memory stuff from W3D
 
 
+// =============================================================================
+// Compiler-specific inlining
+// =============================================================================
 // Jani: MSVC doesn't necessarily inline code with inline keyword. Using __forceinline results better inlining
 // and also prints out a warning if inlining wasn't possible. __forceinline is MSVC specific.
 #if defined(_MSC_VER)
 #define WWINLINE __forceinline
+#elif defined(__GNUC__) || defined(__clang__)
+#define WWINLINE __attribute__((always_inline)) inline
 #else
 #define WWINLINE inline
+#endif
+
+// Cross-platform calling convention
+#ifndef __cdecl
+#define __cdecl
+#endif
+#ifndef _cdecl
+#define _cdecl
+#endif
+
+// MSVC CRT string-compare names used across WWLib/WWMath; map to POSIX.
+#if !defined(_MSC_VER)
+#include <strings.h>
+#include <string.h>
+#include <ctype.h>
+#ifndef stricmp
+#define stricmp strcasecmp
+#endif
+#ifndef strnicmp
+#define strnicmp strncasecmp
+#endif
+#ifndef strcmpi
+#define strcmpi strcasecmp
+#endif
+// strupr/strlwr modify in place and return the input, like the MSVC originals.
+// NOTE: no _strupr/_strlwr aliases here - the GameSpy SDK declares those
+// itself (C linkage), and a macro would hijack its declarations.
+static inline char* strupr(char* s)
+{
+	if (s != NULL) {
+		for (char* p = s; *p != '\0'; ++p)
+			*p = (char)toupper((unsigned char)*p);
+	}
+	return s;
+}
+static inline char* strlwr(char* s)
+{
+	if (s != NULL) {
+		for (char* p = s; *p != '\0'; ++p)
+			*p = (char)tolower((unsigned char)*p);
+	}
+	return s;
+}
+// _lrotl is an MSVC CRT intrinsic; crc.h/crc.cpp rotate the accumulator with
+// it. Full-width rotate stays self-consistent on LP64 (long is 64-bit there,
+// 32-bit on Windows). Network/save compat with Windows-built values is a
+// later-phase concern (multiplayer is out of scope per PLAN).
+// NOTE: GCC's ia32intrin.h #defines _lrotl to __rolq, so undef it first -
+// depending on header order the macro may or may not be active here.
+#ifdef _lrotl
+#undef _lrotl
+#endif
+static inline unsigned long _lrotl(unsigned long value, unsigned int shift)
+{
+	const unsigned int bits = (unsigned int)(sizeof(unsigned long) * 8);
+	shift &= (bits - 1u);
+	return shift ? (unsigned long)((value << shift) | (value >> (bits - shift))) : value;
+}
+// _snprintf/_alloca are MSVC spellings; snprintf/alloca are their C99 twins
+// (_snprintf's missing NUL guarantee is not relied on at the call sites).
+#include <stdio.h>
+#include <alloca.h>
+#include <stdarg.h>
+#include <wchar.h>
+#ifndef _snprintf
+#define _snprintf snprintf
+#endif
+#ifndef _alloca
+#define _alloca alloca
+#endif
+// _vsnprintf/_vsnwprintf with MSVC semantics: NUL-termination is NOT
+// guaranteed and truncation returns -1 (vsnprintf would return the needed
+// size instead). Call sites branch on "< 0" and hand the return to Write,
+// so the mapping must preserve the contract, not just the name.
+static inline int ww_msvc_vsnprintf(char *buf, size_t n, const char *fmt, va_list ap)
+{
+	if (n == 0)
+		return -1;
+	int r = vsnprintf(buf, n, fmt, ap);
+	return (r < 0 || (size_t)r >= n) ? -1 : r;
+}
+static inline int ww_msvc_vsnwprintf(wchar_t *buf, size_t n, const wchar_t *fmt, va_list ap)
+{
+	if (n == 0)
+		return -1;
+	int r = vswprintf(buf, n, fmt, ap);
+	return (r < 0 || (size_t)r >= n) ? -1 : r;
+}
+#ifndef _vsnprintf
+#define _vsnprintf ww_msvc_vsnprintf
+#endif
+#ifndef _vsnwprintf
+#define _vsnwprintf ww_msvc_vsnwprintf
+#endif
+// No DBWIN-style viewer on Linux; keep the diagnostics on stderr.
+#ifndef OutputDebugString
+static inline void OutputDebugString(const char *s) { if (s) fprintf(stderr, "%s", s); }
+#endif
 #endif
 
 /*
 ** Define the MIN and MAX macros.
 ** NOTE: Joe used to #include <minmax.h> in the various compiler header files.  This
 ** header defines 'min' and 'max' macros which conflict with the surrender code so
-** I'm relpacing all occurances of 'min' and 'max with 'MIN' and 'MAX'.  For code which
+** I'm replacing all occurances of 'min' and 'max with 'MIN' and 'MAX'.  For code which
 ** is out of our domain (e.g. Max sdk) I'm declaring template functions for 'min' and 'max'
 */
 #define NOMINMAX
@@ -204,6 +324,7 @@ public:
 #undef max
 #endif
 
+// min/max templates for code that uses std::min/max style (e.g. Max SDK)
 template <class T> T min(T a,T b)
 {
 	if (a<b) {
@@ -242,7 +363,7 @@ template <class T> T max(T a,T b)
 
 
 #ifndef	NULL
-	#define	NULL		0
+#define	NULL		0
 #endif
 
 /**********************************************************************
@@ -257,5 +378,4 @@ template <class T> T max(T a,T b)
 #define size_of(typ,id) sizeof(((typ*)0)->id)
 #endif
 
-
-#endif
+#endif // ALWAYS_H

@@ -39,8 +39,9 @@
 #ifndef FFVERTEX_H
 #define FFVERTEX_H
 
+#ifdef _WIN32
 #include <d3d9.h>
-
+#endif
 #include <string>
 
 // The engine's widest vertex format carries four coordinate sets and the water uses all four

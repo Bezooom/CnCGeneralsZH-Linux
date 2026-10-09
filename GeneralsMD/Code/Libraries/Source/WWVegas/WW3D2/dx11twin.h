@@ -35,6 +35,7 @@
 #ifndef DX11TWIN_H
 #define DX11TWIN_H
 
+#ifndef PLATFORM_LINUX
 struct ID3D11Buffer;
 struct ID3D11Device;
 struct ID3D11DeviceContext;
@@ -42,58 +43,35 @@ struct ID3D11DeviceContext;
 class DX11BufferTwinClass
 {
 public:
-	// Takes the mirror block and the buffer; the context is borrowed and outlives the twin.
 	DX11BufferTwinClass(unsigned char * mirror, unsigned byte_count, ID3D11Buffer * buffer,
 		ID3D11DeviceContext * context, bool dynamic);
 	~DX11BufferTwinClass();
 
-	// The block a lock hands out.  Offsets into it are byte offsets into the buffer.
 	unsigned char * Mirror() const { return Mirror_Bytes; }
 	unsigned Byte_Count() const { return Byte_Total; }
 	ID3D11Buffer * Buffer() const { return D3D11Buffer; }
+	ID3D11DeviceContext * Context() const { return D3D11Context; }
+	bool Dynamic() const { return IsDynamic; }
 
-	// Copy one range of the mirror into the D3D11 buffer.  A count of zero means to the end, which
-	// is what D3D9's own lock means by it.
-	//
-	// A static buffer is written with UpdateSubresource; a dynamic one is mapped, because a partial
-	// UpdateSubresource cannot rename the buffer and so waits for every draw still reading it.  The
-	// engine locks its dynamic buffers several hundred times a frame, and that wait was a second a
-	// frame on Tournament Desert.  discard is D3D9's own D3DLOCK_DISCARD, passed through: it says
-	// the rest of the buffer is not worth keeping, which is what lets the driver rename.
-	void Upload(unsigned byte_offset, unsigned byte_count, bool discard);
+	void Write_Range(unsigned byte_offset, unsigned byte_count, bool discard);
 
 private:
-	DX11BufferTwinClass(const DX11BufferTwinClass &);
-	DX11BufferTwinClass & operator=(const DX11BufferTwinClass &);
-
 	unsigned char * Mirror_Bytes;
 	unsigned Byte_Total;
 	ID3D11Buffer * D3D11Buffer;
-	ID3D11DeviceContext * Context;
-	bool Dynamic;
+	ID3D11DeviceContext * D3D11Context;
+	bool IsDynamic;
 };
 
-// Null when the device refused the buffer.  The caller owns what comes back.  dynamic is the
-// engine's own USAGE_DYNAMIC for this buffer and decides how an upload is written.
 DX11BufferTwinClass * DX11Twin_Create_Vertex_Buffer(ID3D11Device * device,
 	ID3D11DeviceContext * context, unsigned byte_count, bool dynamic);
 DX11BufferTwinClass * DX11Twin_Create_Index_Buffer(ID3D11Device * device,
 	ID3D11DeviceContext * context, unsigned byte_count, bool dynamic);
 
-/*
-** One redirected lock, held for as long as the buffer's own lock object is.
-**
-** Begin answers the pointer the lock should hand out, or null when there is no twin and the caller
-** keeps the D3D9 pointer it already has.  End writes the range into the D3D9 memory and then into
-** the D3D11 buffer, and has to run before the D3D9 unlock while that pointer is still mapped.
-*/
 class DX11BufferLockClass
 {
 public:
 	DX11BufferLockClass();
-
-	// lock_flags is the D3DLOCK_* set the caller handed Direct3D 9, so the upload can be written
-	// the same way the D3D9 lock was.
 	void * Begin(DX11BufferTwinClass * twin, void * d3d9_memory, unsigned byte_offset,
 		unsigned byte_count, unsigned lock_flags);
 	void End();
@@ -105,5 +83,27 @@ private:
 	unsigned ByteCount;
 	bool Discard;
 };
+#else
+class DX11BufferTwinClass
+{
+public:
+	~DX11BufferTwinClass() {}
+};
+
+class DX11BufferLockClass
+{
+public:
+	DX11BufferLockClass() : Twin(nullptr), D3D9Memory(nullptr), ByteOffset(0), ByteCount(0), Discard(false) {}
+	void * Begin(DX11BufferTwinClass * twin, void * d3d9_memory, unsigned, unsigned, unsigned) { return d3d9_memory; }
+	void End() {}
+
+private:
+	DX11BufferTwinClass * Twin;
+	void * D3D9Memory;
+	unsigned ByteOffset;
+	unsigned ByteCount;
+	bool Discard;
+};
+#endif
 
 #endif // DX11TWIN_H

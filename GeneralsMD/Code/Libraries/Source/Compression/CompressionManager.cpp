@@ -24,8 +24,25 @@
 #include "Compression.h"
 #include "LZHCompress/NoxCompress.h"
 extern "C" {
+#if defined(PLATFORM_LINUX) || defined(__linux__)
+#if defined(ZLIB_LINUX_SYSTEM)
+// System zconf.h typedefs Byte; the game has its own Byte (BaseType.h).
+#define Byte sys_Byte
+#endif
+#include <zlib.h>
+#if defined(ZLIB_LINUX_SYSTEM)
+#undef Byte
+#endif
+#else
 #include "ZLib/zlib.h"
+#endif
 }
+#if defined(ZLIB_LINUX_SYSTEM)
+// System libz exports unprefixed symbols only; map the z_* call sites below.
+#define z_compress2 compress2
+#define z_uncompress uncompress
+#define z_compressBound compressBound
+#endif
 #include "EAC/codex.h"
 #include "EAC/btreecodex.h"
 #include "EAC/huffcodex.h"

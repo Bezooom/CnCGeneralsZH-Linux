@@ -34,7 +34,11 @@
 #include <stdio.h>
 
 #include "Lib/BaseType.h"
+#if defined(_WIN32)
 #include "WWLib/RefCount.h"
+#else
+#include "WWLib/refcount.h"
+#endif
 #include "Common/AsciiString.h"
 
 typedef struct {

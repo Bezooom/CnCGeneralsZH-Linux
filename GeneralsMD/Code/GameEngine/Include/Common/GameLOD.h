@@ -36,13 +36,14 @@
 #ifndef _GAME_LOD_H_
 #define _GAME_LOD_H_
 
-enum ParticlePriorityType;
+enum ParticlePriorityType : int;
+struct FieldParse;
 
 #define MAX_LOD_PRESETS_PER_LEVEL	32	//number of hardware configs preset for each low,medium,high
 #define MAX_BENCH_PROFILES	16
 
 //Make sure this enum stays in sync with GameLODNames[]
-enum StaticGameLODLevel
+enum StaticGameLODLevel : int
 {
 	STATIC_GAME_LOD_UNKNOWN=-1,
 	STATIC_GAME_LOD_LOW,

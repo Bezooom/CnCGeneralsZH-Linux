@@ -28,7 +28,9 @@
 
 #include "PreRTS.h"	// This must go first in EVERY cpp file int the GameEngine
 
+#if defined(_MSC_VER)
 #include <winsock.h>	// This one has to be here. Prevents collisions with winsock2.h
+#endif
 
 #include "GameNetwork/GameSpy/GameResultsThread.h"
 #include "mutex.h"
@@ -210,7 +212,9 @@ Bool GameResultsQueue::areGameResultsBeingSent( void )
 void GameResultsThreadClass::Thread_Function()
 {
 	try {
+#if defined(_MSC_VER)
 	_set_se_translator( DumpExceptionInfo ); // Hook that allows stack trace.
+#endif
 	GameResultsRequest req;
 
 	WSADATA wsaData;

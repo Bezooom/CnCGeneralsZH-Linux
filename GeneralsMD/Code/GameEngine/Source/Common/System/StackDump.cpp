@@ -26,6 +26,12 @@
 
 #if defined(_DEBUG) || defined(_INTERNAL) || defined(IG_DEBUG_STACKTRACE)
 
+#if defined(_UNIX)
+// Linux: StackDump.cpp uses Windows SEH/DBGHELP which is not available.
+// The debuglib target provides Linux stack walking via backtrace(3)/dladdr(3).
+// This file is disabled on Linux; callers should use DebugStackwalk from debuglib instead.
+#else
+
 #pragma pack(push, 8)
 
 #pragma comment(linker, "/defaultlib:Dbghelp.lib")
@@ -574,5 +580,7 @@ void DumpExceptionInfo( unsigned int u, EXCEPTION_POINTERS* e_info )
 
 #pragma pack(pop)
 
-#endif
+#endif // _DEBUG || _INTERNAL || IG_DEBUG_STACKTRACE
+
+#endif // _UNIX
 

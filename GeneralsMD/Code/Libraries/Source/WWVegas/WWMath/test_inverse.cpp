@@ -35,7 +35,10 @@ static void check_roundtrip(const Matrix3D & m, const char * what)
 int main(void)
 {
 	// Rotation about an arbitrary axis plus a translation - the general affine case.
-	Matrix3D rot(Vector3(0.3f, -0.7f, 0.65f), 1.1f);
+	// Matrix3D::Set asserts a unit axis (within 0.001), so normalize first.
+	Vector3 axis(0.3f, -0.7f, 0.65f);
+	axis.Normalize();
+	Matrix3D rot(axis, 1.1f);
 	rot.Set_Translation(Vector3(12.0f, -4.5f, 3.25f));
 	check_roundtrip(rot, "rotate+translate");
 

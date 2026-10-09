@@ -47,7 +47,7 @@
 #include "Common/UnitTimings.h"
 #include "Common/Xfer.h"
 #include "Common/XferCRC.h"
-#include "Lib/Trig.h"
+#include "Lib/trig.h"
 
 #include "GameClient/ControlBar.h"
 #include "GameClient/Drawable.h"

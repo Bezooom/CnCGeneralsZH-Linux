@@ -59,13 +59,13 @@
 class SHAEngine
 {
 	public:
-		SHAEngine(void) : IsCached(false), Length(0), PartialCount(0) {
-			Acc.Long[0] = (unsigned long)SA;
-			Acc.Long[1] = (unsigned long)SB;
-			Acc.Long[2] = (unsigned long)SC;
-			Acc.Long[3] = (unsigned long)SD;
-			Acc.Long[4] = (unsigned long)SE;
-		};
+	SHAEngine(void) : IsCached(false), Length(0), PartialCount(0) {
+		Acc.Long[0] = (unsigned)SA;
+		Acc.Long[1] = (unsigned)SB;
+		Acc.Long[2] = (unsigned)SC;
+		Acc.Long[3] = (unsigned)SD;
+		Acc.Long[4] = (unsigned)SE;
+	};
 
 		void Init(void) {
 			new ((void*)this) SHAEngine;
@@ -74,14 +74,18 @@ class SHAEngine
 		// Fetch result as if source data were to stop now.
 		int Result(void * result) const;
 
-		void Hash(void const * data, long length);
+		void Hash(void const * data, int length);
 
 		static int Digest_Size(void) {return(sizeof(SHADigest));}
 
 	private:
 
+		/* SHA-1 works on 32-bit words. The original code spelled the word
+		   type `long`, which is 32 bits on Windows but 64 on LP64 Linux --
+		   the digest union then overlapped its neighbours. `int` is 32
+		   bits on both, so the bit patterns agree everywhere. */
 		typedef union {
-			unsigned long Long[5];
+			int Long[5];
 			unsigned char Char[20];
 		} SHADigest;
 
@@ -107,41 +111,41 @@ class SHAEngine
 			K3=0x8f1bbcdcL,		// t=40..59		5^(1/2)/4
 			K4=0xca62c1d6L,		// t=60..79		10^(1/2)/4
 
-			// Source data is grouped into blocks of this size.
-			SRC_BLOCK_SIZE=16*sizeof(long),
+		// Source data is grouped into blocks of this size.
+		SRC_BLOCK_SIZE=16*sizeof(int),
 
-			// Internal processing data is grouped into blocks this size.
-			PROC_BLOCK_SIZE=80*sizeof(long)
-		};
+		// Internal processing data is grouped into blocks this size.
+		PROC_BLOCK_SIZE=80*sizeof(int)
+	};
 
-		long Get_Constant(int index) const {
+	int Get_Constant(int index) const {
 			if (index < 20) return K1;
 			if (index < 40) return K2;
 			if (index < 60) return K3;
 			return K4;
 		};
 
-		// Used for 0..19
-		long Function1(long X, long Y, long Z) const {
-			return(Z ^ ( X & ( Y ^ Z ) ) );
-		};
+	// Used for 0..19
+	int Function1(int X, int Y, int Z) const {
+		return(Z ^ ( X & ( Y ^ Z ) ) );
+	};
 
-		// Used for 20..39
-		long Function2(long X, long Y, long Z) const {
-			return( X ^ Y ^ Z );
-		};
+	// Used for 20..39
+	int Function2(int X, int Y, int Z) const {
+		return( X ^ Y ^ Z );
+	};
 
-		// Used for 40..59
-		long Function3(long X, long Y, long Z) const {
-			return( (X & Y) | (Z & (X | Y) ) );
-		};
+	// Used for 40..59
+	int Function3(int X, int Y, int Z) const {
+		return( (X & Y) | (Z & (X | Y) ) );
+	};
 
-		// Used for 60..79
-		long Function4(long X, long Y, long Z) const {
-			return( X ^ Y ^ Z );
-		};
+	// Used for 60..79
+	int Function4(int X, int Y, int Z) const {
+		return( X ^ Y ^ Z );
+	};
 
-		long Do_Function(int index, long X, long Y, long Z) const {
+	int Do_Function(int index, int X, int Y, int Z) const {
 			if (index < 20) return Function1(X, Y, Z);
 			if (index < 40) return Function2(X, Y, Z);
 			if (index < 60) return Function3(X, Y, Z);
@@ -151,23 +155,23 @@ class SHAEngine
 		// Process a full source data block.
 		void Process_Block(void const * source, SHADigest & acc) const;
 
-		// Processes a partially filled source accumulator buffer.
-		void Process_Partial(void const * & data, long & length);
+	// Processes a partially filled source accumulator buffer.
+	void Process_Partial(void const * & data, int & length);
 
 		/*
 		**	This is the running accumulator values. These values
 		**	are updated by a block processing step that occurs
 		**	every 512 bits of source data.
 		*/
-		SHADigest Acc;
+	SHADigest Acc;
 
-		/*
-		**	This is the running length of the source data
-		**	processed so far. This total is used to modify the
-		**	resulting hash value as if it were appended to the end
-		**	of the source data.
-		*/
-		long Length;
+	/*
+	**	This is the running length of the source data
+	**	processed so far. This total is used to modify the
+	**	resulting hash value as if it were appended to the end
+	**	of the source data.
+	*/
+	int Length;
 
 		/*
 		**	This holds any partial source block. Partial source blocks are

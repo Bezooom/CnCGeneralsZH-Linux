@@ -47,8 +47,12 @@
 
 #include "PreRTS.h"	// This must go first in EVERY cpp file int the GameEngine
 
+#if defined(_MSC_VER)
 #include "Windows.h"
 #include "mbstring.h"
+#else
+#include <wctype.h>
+#endif
 
 #include "Common/Debug.h"
 #include "Common/Language.h"
@@ -85,6 +89,45 @@ extern Int	IMECandidateWindowLineSpacing;
 //----------------------------------------------------------------------------
 //         Private Types                                                     
 //----------------------------------------------------------------------------
+
+#if defined(_UNIX)
+// Linux has no IMM32 input-method stack and the headless build never receives
+// IME window messages, so the manager is an inert null backend satisfying the
+// interface.  The Win32 implementation below is untouched.
+class IMEManager : public IMEManagerInterface
+{
+public:
+	void attach(GameWindow *) {}
+	void detatch(void) {}
+	void enable(void) {}
+	void disable(void) {}
+	Bool isEnabled(void) { return FALSE; }
+	Bool isAttachedTo(GameWindow *) { return FALSE; }
+	GameWindow *getWindow(void) { return NULL; }
+	Bool isComposing(void) { return FALSE; }
+	void getCompositionString(UnicodeString &string) { string.clear(); }
+	Int getCompositionCursorPosition(void) { return 0; }
+	Int getIndexBase(void) { return 0; }
+	Int getCandidateCount() { return 0; }
+	UnicodeString *getCandidate(Int) { return NULL; }
+	Int getSelectedCandidateIndex() { return 0; }
+	Int getCandidatePageSize() { return 0; }
+	Int getCandidatePageStart() { return 0; }
+	Bool serviceIMEMessage(void *, UnsignedInt, Int, Int) { return FALSE; }
+	Int result(void) { return 0; }
+	void init(void) {}
+	void reset(void) {}
+	void update(void) {}
+};
+
+IMEManagerInterface *TheIMEManager = NULL;
+
+IMEManagerInterface *CreateIMEManagerInterface( void )
+{
+	return NEW IMEManager;
+}
+
+#else
 
 //===============================
 // IMEManager 
@@ -1613,3 +1656,5 @@ void IMEManager::updateStatusWindow( void )
 
 }
 
+
+#endif // _UNIX - Win32 IMM32 implementation above

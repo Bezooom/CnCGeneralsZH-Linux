@@ -261,7 +261,17 @@ WideStringClass::Format_Args (const WCHAR *format, const va_list & arg_list )
 	//
 	//	Format the string
 	//
+#if defined(_MSC_VER)
 	int retval = _vsnwprintf (temp_buffer, 512, format, arg_list);
+#else
+	// vswprintf always terminates (C99); the spare slot stays spare.
+	// va_copy takes va_list by value; the const on our parameter is cast
+	// off (it is only read, never written through).
+	va_list args;
+	va_copy (args, const_cast<va_list &> (arg_list));
+	int retval = vswprintf (temp_buffer, 512 + 1, format, args);
+	va_end (args);
+#endif
 	
 	//
 	//	Copy the string into our buffer
@@ -298,7 +308,12 @@ WideStringClass::Format (const WCHAR *format, ...)
 	//
 	//	Format the string
 	//
+#if defined(_MSC_VER)
 	int retval = _vsnwprintf (temp_buffer, 512, format, arg_list);
+#else
+	// vswprintf always terminates (C99); the spare slot stays spare.
+	int retval = vswprintf (temp_buffer, 512 + 1, format, arg_list);
+#endif
 	
 	//
 	//	Copy the string into our buffer
@@ -328,6 +343,7 @@ bool WideStringClass::Convert_From (const char *text)
 {
 	if (text != NULL) {
 		
+#if defined(_MSC_VER)
 		int length;
 
 		length = MultiByteToWideChar (CP_ACP, 0, text, -1, NULL, 0);
@@ -342,6 +358,16 @@ bool WideStringClass::Convert_From (const char *text)
 			// Success.
 			return (true);
 		}
+#else
+		// Linux: no codepages; game strings are single-byte, widen 1:1.
+		// (Full UTF-8 decoding is a Phase 5 polish item.)
+		size_t length = strlen (text) + 1;
+		Uninitialised_Grow ((int)length);
+		Store_Length ((int)length - 1);
+		for (size_t i = 0; i < length; ++i)
+			m_Buffer[i] = (WCHAR)(unsigned char)text[i];
+		return (true);
+#endif
    }
 
 	// Failure.

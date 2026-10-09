@@ -61,6 +61,13 @@ struct LegacyDDSCAPS2
 	unsigned Caps4; 
 };
 
+#ifndef DDSCAPS2_CUBEMAP
+#define DDSCAPS2_CUBEMAP 0x00000200
+#endif
+#ifndef DDSCAPS2_VOLUME
+#define DDSCAPS2_VOLUME  0x00200000
+#endif
+
 // ----------------------------------------------------------------------------
 //
 // This structure represents the old DX7 pixel format structure. It is needed

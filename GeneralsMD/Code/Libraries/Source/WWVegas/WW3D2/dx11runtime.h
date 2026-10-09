@@ -34,7 +34,11 @@
 #ifndef DX11RUNTIME_H
 #define DX11RUNTIME_H
 
+#ifdef _WIN32
 #include <windows.h>
+#endif
+
+#ifndef PLATFORM_LINUX
 
 class DX11BackendClass;
 class DX11BufferTwinClass;
@@ -256,5 +260,77 @@ const char * Direct3D11_Pipeline_Report(unsigned index);
 unsigned Direct3D11_Foreign_Report_Count();
 const char * Direct3D11_Foreign_Report(unsigned index);
 const char * Direct3D11_First_Compiler_Error();
+#else
+class DX11BackendClass;
+class DX11BufferTwinClass;
+class DX11DeviceClass;
+
+inline void Direct3D11_Enable(bool) {}
+inline bool Direct3D11_Is_Enabled() { return false; }
+inline bool Direct3D11_Create(HWND, unsigned, unsigned) { return false; }
+inline void Direct3D11_Release() {}
+inline bool Direct3D11_Is_Active() { return false; }
+inline DX11DeviceClass * Direct3D11_Device() { return nullptr; }
+inline DX11BackendClass * Direct3D11_Backend() { return nullptr; }
+
+inline void Direct3D11_Mirror_Render_State(unsigned, unsigned) {}
+inline void Direct3D11_Mirror_Texture_Stage_State(unsigned, unsigned, unsigned) {}
+inline void Direct3D11_Mirror_Sampler_State(unsigned, unsigned, unsigned) {}
+inline void Direct3D11_Mirror_Transform(unsigned, const float[16]) {}
+inline void Direct3D11_Mirror_Material(const float[4], const float[4], const float[4], const float[4], float) {}
+inline void Direct3D11_Mirror_Light(unsigned, unsigned, const float[4], const float[4], const float[4], const float[4], const float[4], const float[4]) {}
+inline void Direct3D11_Mirror_Light_Disabled(unsigned) {}
+
+inline DX11BufferTwinClass * Direct3D11_Twin_Vertex_Buffer(unsigned, bool) { return nullptr; }
+inline DX11BufferTwinClass * Direct3D11_Twin_Index_Buffer(unsigned, bool) { return nullptr; }
+inline void Direct3D11_Mirror_Texture(unsigned, struct IDirect3DBaseTexture9 *) {}
+inline void Direct3D11_Mark_Surface_Dirty(struct IDirect3DSurface9 *) {}
+inline void Direct3D11_Mirror_Render_Target(struct IDirect3DSurface9 *) {}
+inline void Direct3D11_Mirror_Surface_Copy(struct IDirect3DSurface9 *, struct IDirect3DSurface9 *, const struct tagRECT *, const struct tagPOINT *) {}
+inline void Direct3D11_Begin_Scene() {}
+inline void Direct3D11_Mirror_Clear(bool, bool, float, float, float, float) {}
+inline void Direct3D11_End_Scene(bool) {}
+inline void Direct3D11_Dump_Programs_To(const char *) {}
+inline void Direct3D11_Present_Enable(bool) {}
+inline bool Direct3D11_Present_Is_Enabled() { return false; }
+inline void Direct3D11_Set_VSync(bool) {}
+inline bool Direct3D11_Post_Chain(const char *) { return false; }
+inline const char * Direct3D11_Post_Diagnostic() { return ""; }
+inline void Direct3D11_Finish_Scene() {}
+inline void Direct3D11_Finish_Frame() {}
+inline unsigned char * Direct3D11_Capture_Back_Buffer(unsigned &, unsigned &, unsigned &) { return nullptr; }
+inline void Direct3D11_Release_Capture(unsigned char *) {}
+inline void Direct3D11_Mirror_Stream_Source(DX11BufferTwinClass *, unsigned, unsigned) {}
+inline void Direct3D11_Mirror_Indices(DX11BufferTwinClass *) {}
+inline void Direct3D11_Mirror_Vertex_Format(unsigned) {}
+inline void Direct3D11_Mirror_Pixel_Shader(const void *) {}
+inline void Direct3D11_Mirror_Vertex_Shader(const void *) {}
+inline void Direct3D11_Register_Engine_Shader(const void *, const char *) {}
+inline void Direct3D11_Mirror_Vertex_Shader_Constant(unsigned, const float *, unsigned) {}
+inline bool Direct3D11_Draw_Indexed_Triangles(unsigned, unsigned, unsigned) { return false; }
+inline bool Direct3D11_Draw_Indexed_Strip(unsigned, unsigned, unsigned) { return false; }
+inline void Direct3D11_Twin_Statistics(unsigned &, unsigned long long &) {}
+inline void Direct3D11_Texture_Statistics(unsigned &, unsigned &, unsigned &) {}
+inline const char * Direct3D11_Texture_First_Refusal() { return nullptr; }
+inline unsigned Direct3D11_Texture_Note_Count() { return 0; }
+inline const char * Direct3D11_Texture_Note(unsigned) { return nullptr; }
+inline unsigned Direct3D11_Texture_Copy_Shape_Count() { return 0; }
+inline const char * Direct3D11_Texture_Copy_Shape(unsigned) { return nullptr; }
+inline void Direct3D11_Statistics(unsigned &, unsigned long long &, unsigned long long &) {}
+inline void Direct3D11_Take_Frame_Cost(double &, unsigned &, double &, unsigned &) {}
+inline void Direct3D11_Refusals(unsigned long long &, unsigned long long &, unsigned long long &, unsigned long long &, unsigned long long &, unsigned long long &, unsigned long long &) {}
+inline unsigned Direct3D11_Refused_Description_Count() { return 0; }
+inline const char * Direct3D11_Refused_Description(unsigned) { return nullptr; }
+inline void Direct3D11_Target_Statistics(unsigned long long &, unsigned long long &, unsigned long long &) {}
+inline bool Direct3D11_Draw_User_Strip(const void *, unsigned, unsigned) { return false; }
+inline const char * Direct3D11_Diagnostic() { return ""; }
+inline unsigned Direct3D11_Target_Trace_Count() { return 0; }
+inline const char * Direct3D11_Target_Trace(unsigned) { return nullptr; }
+inline unsigned Direct3D11_Pipeline_Report_Count() { return 0; }
+inline const char * Direct3D11_Pipeline_Report(unsigned) { return nullptr; }
+inline unsigned Direct3D11_Foreign_Report_Count() { return 0; }
+inline const char * Direct3D11_Foreign_Report(unsigned) { return nullptr; }
+inline const char * Direct3D11_First_Compiler_Error() { return nullptr; }
+#endif
 
 #endif // DX11RUNTIME_H

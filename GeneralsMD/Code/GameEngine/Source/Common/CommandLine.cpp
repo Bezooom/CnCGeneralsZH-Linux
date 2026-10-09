@@ -30,11 +30,11 @@
 #include "Common/CRCDebug.h"
 #include "Common/LocalFileSystem.h"
 #include "Common/OptionsCatalog.h"
-#include "Common/Version.h"
+#include "Common/version.h"
 #include "GameClient/TerrainVisual.h" // for TERRAIN_LOD_MIN definition
 #include "GameClient/GameText.h"
 #include "GameNetwork/GameInfo.h" // for the SlotState -autoskirmish hands the AI slots
-#include "GameNetwork/NetworkUtil.h" // for ResolveIP, which -lanip parses its address with
+#include "GameNetwork/networkutil.h" // for ResolveIP, which -lanip parses its address with
 #include "Common/FileSystem.h"
 #include "Common/RandomMapGenerator.h" // for -randommap
 

@@ -32,7 +32,7 @@
 #ifndef FFPROBE_H
 #define FFPROBE_H
 
-#include <d3d9.h>
+#include "ww3d_d3d9.h"
 
 // Off until W3DDisplay turns it on, which the game always does.  Reading forty states back per
 // draw call is not free.

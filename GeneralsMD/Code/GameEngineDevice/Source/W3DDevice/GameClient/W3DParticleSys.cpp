@@ -26,15 +26,27 @@
 // W3D Particle System implementation
 // Author: Michael S. Booth, November 2001
 
+#if defined(_WIN32)
 #include "common/GlobalData.h"
+#else
+#include "Common/GlobalData.h"
+#endif
 #include "GameClient/Color.h"
 #include "W3DDevice/GameClient/W3DParticleSys.h"
 #include "W3DDevice/GameClient/W3DAssetManager.h"
 #include "W3DDevice/GameClient/W3DDisplay.h"
+#if defined(_WIN32)
 #include "W3DDevice/GameClient/heightmap.h"
+#else
+#include "W3DDevice/GameClient/HeightMap.h"
+#endif
 #include "W3DDevice/GameClient/W3DSmudge.h"
 #include "W3DDevice/GameClient/W3DSnow.h"
+#if defined(_WIN32)
 #include "WW3D2/Camera.h"
+#else
+#include "WW3D2/camera.h"
+#endif
 
 #ifdef _INTERNAL
 // for occasional debugging...

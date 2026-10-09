@@ -36,9 +36,21 @@
 #include "Common/DrawModule.h"
 #include "GameClient/ParticleSys.h"
 #include "W3DDevice/GameClient/Module/W3DModelDraw.h"
+#if defined(_WIN32)
 #include "WW3D2/HAnim.h"
+#else
+#include "WW3D2/hanim.h"
+#endif
+#if defined(_WIN32)
 #include "WW3D2/RendObj.h"
+#else
+#include "WW3D2/rendobj.h"
+#endif
+#if defined(_WIN32)
 #include "WW3D2/Part_Emt.h"
+#else
+#include "WW3D2/part_emt.h"
+#endif
 
 //-------------------------------------------------------------------------------------------------
 class W3DTankDrawModuleData : public W3DModelDrawModuleData

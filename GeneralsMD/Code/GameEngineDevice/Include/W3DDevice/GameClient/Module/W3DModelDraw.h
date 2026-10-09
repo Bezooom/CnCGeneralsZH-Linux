@@ -50,7 +50,11 @@ public:
 };
 
 #else
+#if defined(_WIN32)
 #include "WW3D2/RendObj.h"
+#else
+#include "WW3D2/rendobj.h"
+#endif
 #endif
 #include "Common/SparseMatchFinder.h"
 #include "GameClient/ParticleSys.h"
@@ -62,7 +66,9 @@ class RenderObjClass;
 class Shadow;
 class TerrainTracksRenderObjClass;
 class HAnimClass;
+#if defined(_WIN32)
 enum GameLODLevel;
+#endif
 //-------------------------------------------------------------------------------------------------
 /** The default client update module */
 //-------------------------------------------------------------------------------------------------

@@ -50,7 +50,11 @@
 #include "W3DDevice/GameClient/TerrainTex.h"
 #include "W3DDevice/GameClient/WorldHeightMap.h"
 #include "W3DDevice/GameClient/TileData.h"
+#if defined(_WIN32)
 #include "common/GlobalData.h"
+#else
+#include "Common/GlobalData.h"
+#endif
 #include "WW3D2/dx8wrapper.h"
 #include "d3dx9runtime.h"
 

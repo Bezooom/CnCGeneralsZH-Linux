@@ -39,13 +39,22 @@
 #include "ini.h"
 #include "inisup.h"
 #include <assert.h>
+#ifdef _WIN32
 #include <windows.h>
+#else
+#include "PAL_Registry.h"
+#include <cstring>
+#include <fstream>
+#include <string>
+#include <vector>
+#endif
 
 //#include "wwdebug.h"
 
 bool RegistryClass::IsLocked = false;
 
 
+#ifdef _WIN32
 bool RegistryClass::Exists(const char* sub_key)
 {
 	HKEY hKey;
@@ -733,6 +742,266 @@ void RegistryClass::Delete_Registry_Tree(char *path)
 		}
 	}
 }
+#else
+
+/*
+** Linux. There is no Win32 Registry here, so the store is the single INI file the
+** game engine already uses (Platform/PAL_Registry): one section per sub_key, values
+** typed by prefix. A RegistryClass may only touch the section it was built with,
+** which is what a registry key means on Windows.
+*/
+
+namespace {
+
+std::vector<std::string> scope(const std::string &section)
+{
+	return std::vector<std::string>{section};
+}
+
+// The Win32 store keeps wide values as UTF-16; an INI file has no encoding of its
+// own, so the wide accessors round-trip as UTF-8. Nothing in the tree writes a wide
+// key on one platform and reads it on the other.
+std::string utf8(const WCHAR *text)
+{
+	std::string out;
+	for (; text != NULL && *text != 0; ++text) {
+		unsigned int cp = static_cast<unsigned int>(*text);
+		if (cp < 0x80) out.push_back(static_cast<char>(cp));
+		else if (cp < 0x800) {
+			out.push_back(static_cast<char>(0xC0 | (cp >> 6)));
+			out.push_back(static_cast<char>(0x80 | (cp & 0x3F)));
+		} else {
+			out.push_back(static_cast<char>(0xE0 | (cp >> 12)));
+			out.push_back(static_cast<char>(0x80 | ((cp >> 6) & 0x3F)));
+			out.push_back(static_cast<char>(0x80 | (cp & 0x3F)));
+		}
+	}
+	return out;
+}
+
+}  // namespace
+
+RegistryClass::RegistryClass(const char *sub_key, bool create) : Key(0), IsValid(false), section(sub_key)
+{
+	// create=true opens, and so creates, a key on Windows. Here the file and its
+	// section only appear on the first write, so a created-but-never-written key is
+	// valid by construction and Exists() reports it once something has been stored.
+	IsValid = (!IsLocked && create) || pal::SectionExists(section, scope(section));
+}
+
+RegistryClass::~RegistryClass(void)
+{
+}
+
+bool RegistryClass::Exists(const char *sub_key)
+{
+	return pal::SectionExists(sub_key, std::vector<std::string>{sub_key});
+}
+
+int RegistryClass::Get_Int(const char *name, int def_value)
+{
+	assert(IsValid);
+	std::string stored;
+	unsigned int number;
+	if (!pal::ReadValue(section, name, "DWORD:", scope(section), stored) || !pal::ParseDword(stored, number))
+		return def_value;
+	return static_cast<int>(number);
+}
+
+void RegistryClass::Set_Int(const char *name, int value)
+{
+	assert(IsValid);
+	if (IsLocked) return;
+	pal::WriteValue(section, name, "DWORD:" + std::to_string(static_cast<unsigned int>(value)), scope(section));
+}
+
+bool RegistryClass::Get_Bool(const char *name, bool def_value)
+{
+	return Get_Int(name, def_value) != 0;
+}
+
+void RegistryClass::Set_Bool(const char *name, bool value)
+{
+	Set_Int(name, value ? 1 : 0);
+}
+
+float RegistryClass::Get_Float(const char *name, float def_value)
+{
+	assert(IsValid);
+	std::string stored;
+	std::vector<unsigned char> bytes;
+	if (!pal::ReadValue(section, name, "BINARY:", scope(section), stored) ||
+		!pal::DecodeHex(stored, bytes) || bytes.size() != sizeof(float))
+		return def_value;
+	float result;
+	std::memcpy(&result, bytes.data(), sizeof(float));
+	return result;
+}
+
+void RegistryClass::Set_Float(const char *name, float value)
+{
+	assert(IsValid);
+	if (IsLocked) return;
+	unsigned char bytes[sizeof(float)];
+	std::memcpy(bytes, &value, sizeof(float));
+	pal::WriteValue(section, name, "BINARY:" + pal::EncodeHex(bytes, sizeof(float)), scope(section));
+}
+
+int RegistryClass::Get_Bin_Size(const char *name)
+{
+	assert(IsValid);
+	std::string stored;
+	std::vector<unsigned char> bytes;
+	if (!pal::ReadValue(section, name, "BINARY:", scope(section), stored) || !pal::DecodeHex(stored, bytes))
+		return 0;
+	return static_cast<int>(bytes.size());
+}
+
+void RegistryClass::Get_Bin(const char *name, void *buffer, int buffer_size)
+{
+	assert(IsValid);
+	assert(buffer != NULL);
+	assert(buffer_size > 0);
+	std::string stored;
+	std::vector<unsigned char> bytes;
+	if (!pal::ReadValue(section, name, "BINARY:", scope(section), stored) || !pal::DecodeHex(stored, bytes))
+		return;
+	size_t copy = bytes.size() < static_cast<size_t>(buffer_size) ? bytes.size() : static_cast<size_t>(buffer_size);
+	std::memcpy(buffer, bytes.data(), copy);
+}
+
+void RegistryClass::Set_Bin(const char *name, const void *buffer, int buffer_size)
+{
+	assert(IsValid);
+	assert(buffer != NULL);
+	assert(buffer_size > 0);
+	if (IsLocked) return;
+	pal::WriteValue(section, name, "BINARY:" + pal::EncodeHex(static_cast<const unsigned char *>(buffer),
+	                                                          static_cast<size_t>(buffer_size)), scope(section));
+}
+
+char *RegistryClass::Get_String(const char *name, char *value, int value_size, const char *default_string)
+{
+	assert(IsValid);
+	std::string stored;
+	std::vector<unsigned char> bytes;
+	if (!pal::ReadValue(section, name, "SZ:", scope(section), stored) || !pal::DecodeHex(stored, bytes)) {
+		if (default_string != NULL) {
+			strncpy(value, default_string, value_size);
+			value[value_size - 1] = 0;
+		}
+		return value;
+	}
+	size_t copy = bytes.size() < static_cast<size_t>(value_size - 1) ? bytes.size() : static_cast<size_t>(value_size - 1);
+	std::memcpy(value, bytes.data(), copy);
+	value[copy] = 0;
+	return value;
+}
+
+void RegistryClass::Get_String(const char *name, StringClass &string, const char *default_string)
+{
+	assert(IsValid);
+	string = (default_string == NULL) ? "" : default_string;
+	std::string stored;
+	std::vector<unsigned char> bytes;
+	if (!pal::ReadValue(section, name, "SZ:", scope(section), stored) || !pal::DecodeHex(stored, bytes))
+		return;
+	string = std::string(bytes.begin(), bytes.end()).c_str();
+}
+
+void RegistryClass::Set_String(const char *name, const char *value)
+{
+	assert(IsValid);
+	if (IsLocked) return;
+	pal::WriteValue(section, name, "SZ:" + pal::EncodeHex(reinterpret_cast<const unsigned char *>(value), strlen(value)),
+	                scope(section));
+}
+
+void RegistryClass::Get_String(const WCHAR *name, WideStringClass &string, const WCHAR *default_string)
+{
+	assert(IsValid);
+	string = (default_string == NULL) ? L"" : default_string;
+	std::string stored;
+	std::vector<unsigned char> bytes;
+	if (!pal::ReadValue(section, utf8(name), "SZ:", scope(section), stored) || !pal::DecodeHex(stored, bytes))
+		return;
+	string = WideStringClass(std::string(bytes.begin(), bytes.end()).c_str());
+}
+
+void RegistryClass::Set_String(const WCHAR *name, const WCHAR *value)
+{
+	assert(IsValid);
+	if (IsLocked) return;
+	std::string text = utf8(value);
+	pal::WriteValue(section, utf8(name), "SZ:" + pal::EncodeHex(reinterpret_cast<const unsigned char *>(text.data()),
+	                                                            text.size()), scope(section));
+}
+
+void RegistryClass::Get_Value_List(DynamicVectorClass<StringClass> &list)
+{
+	assert(IsValid);
+	std::vector<std::string> keys;
+	if (!pal::SectionKeys(section, scope(section), keys)) return;
+	for (const auto &key : keys) list.Add(StringClass(key.c_str()));
+}
+
+void RegistryClass::Delete_Value(const char *name)
+{
+	assert(IsValid);
+	if (IsLocked) return;
+	pal::RemoveValue(section, name, scope(section));
+}
+
+void RegistryClass::Deleta_All_Values(void)
+{
+	assert(IsValid);
+	if (IsLocked) return;
+	pal::RemoveAllValues(section, scope(section));
+}
+
+void RegistryClass::Delete_Registry_Tree(char *path)
+{
+	if (IsLocked) return;
+	pal::RemoveAllValues(path, std::vector<std::string>{path});
+}
+
+void RegistryClass::Load_Registry(const char *filename, char *old_path, char *new_path)
+{
+	// old_path names where the dump was taken from; a dump is untyped text, so its
+	// values land as SZ: entries under new_path.
+	(void)old_path;
+	std::ifstream input(filename);
+	if (!input) return;
+	std::string line;
+	while (std::getline(input, line)) {
+		if (!line.empty() && line.back() == '\r') line.pop_back();
+		size_t equals = line.find('=');
+		if (line.empty() || line[0] == '[' || line[0] == ';' || line[0] == '#' || equals == std::string::npos)
+			continue;
+		std::string key = line.substr(0, equals);
+		std::string value = line.substr(equals + 1);
+		pal::WriteValue(new_path, key, "SZ:" + pal::EncodeHex(reinterpret_cast<const unsigned char *>(value.data()),
+		                                                             value.size()), std::vector<std::string>{new_path});
+	}
+}
+
+void RegistryClass::Save_Registry(const char *filename, char *path)
+{
+	std::vector<std::string> keys;
+	if (!pal::SectionKeys(path, std::vector<std::string>{path}, keys)) return;
+	std::ofstream output(filename, std::ios::binary | std::ios::trunc);
+	if (!output) return;
+	output << "[" << path << "]\n";
+	for (const auto &key : keys) {
+		std::string stored;
+		if (!pal::ReadValue(path, key, "SZ:", std::vector<std::string>{path}, stored)) continue;
+		std::vector<unsigned char> bytes;
+		if (!pal::DecodeHex(stored, bytes)) continue;
+		output << key << "=" << std::string(bytes.begin(), bytes.end()) << "\n";
+	}
+}
+
+#endif  // _WIN32
 
 
 

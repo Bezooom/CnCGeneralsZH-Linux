@@ -21,7 +21,9 @@
  */
 #include "test_harness.h"
 
+#if defined(_MSC_VER)
 #include <windows.h>
+#endif
 
 #include "benchmark.h"
 #include "EABrowserDispatch/BrowserDispatch.h"

@@ -56,26 +56,53 @@
 #include "dx8wrapper.h"
 #include "assetmgr.h"
 #include "Lib/BaseType.h"
+#if defined(_WIN32)
 #include "Common/File.h"
+#else
+#include "Common/file.h"
+#endif
 #include "Common/FileSystem.h"
 #include "W3DDevice/GameClient/W3DShaderManager.h"
 #include "W3DDevice/GameClient/W3DShroud.h"
 #include "W3DDevice/GameClient/HeightMap.h"
 #include "W3DDevice/GameClient/W3DCustomScene.h"
 #include "W3DDevice/GameClient/W3DSmudge.h"
+#if defined(_WIN32)
 #include "GameClient/view.h"
+#else
+#include "GameClient/View.h"
+#endif
 #include "GameClient/CommandXlat.h"
+#if defined(_WIN32)
 #include "GameClient/display.h"
+#else
+#include "GameClient/Display.h"
+#endif
 #include "GameClient/Water.h"
 #include "GameClient/UiAnimClock.h"
 #include "GameLogic/GameLogic.h"
+#if defined(_WIN32)
 #include "common/GlobalData.h"
+#else
+#include "Common/GlobalData.h"
+#endif
+#if defined(_WIN32)
 #include "common/GameLOD.h"
+#else
+#include "Common/GameLOD.h"
+#endif
 #include "d3dx9runtime.h"
 #include "d3d8shadertranslate.h"
 #include "dx8caps.h"
+#if defined(_WIN32)
 #include "common/gamelod.h"
-#include "Benchmark.h"
+#else
+#include "Common/GameLOD.h"
+#endif
+#include "benchmark.h"
+#if !defined(_WIN32)
+#include "WWLib/mmsys.h"
+#endif
 
 #ifdef _INTERNAL
 // for occasional debugging...
@@ -3168,13 +3195,6 @@ IDirect3DTexture9 *W3DShaderManager::getRenderTexture(void)
 	return m_renderTexture;
 }
 
-enum GraphicsVenderID
-{
-	DC_NVIDIA_VENDOR_ID	= 0x10DE,
-	DC_3DFX_VENDOR_ID	= 0x121A,
-	DC_ATI_VENDOR_ID	= 0x1002
-};
-
 // W3DShaderManager::ChipsetType =======================================================
 /** Returns the chipset used by the currently active rendering device.  Can be useful
 	for coding around specific driver bugs.
@@ -3193,9 +3213,9 @@ ChipsetType W3DShaderManager::getChipset( void )
 	{
 
 		D3DADAPTER_IDENTIFIER9 did;
-		::ZeroMemory(&did, sizeof(D3DADAPTER_IDENTIFIER9));
+		memset(&did, 0, sizeof(D3DADAPTER_IDENTIFIER9));
 	/*	HRESULT res = */ d3d8Interface->GetAdapterIdentifier(0,NO_ADAPTER_IDENTIFIER_FLAGS,&did);
-		*((LARGE_INTEGER*)&m_driverVersion) = did.DriverVersion;
+		*((DWORD*)&m_driverVersion) = did.DriverVersion.LowPart;
 
 		if(did.VendorId == DC_NVIDIA_VENDOR_ID)
 		{
@@ -3288,7 +3308,7 @@ static const DWORD* readShaderBytecode(const char* strFilePath)
 	TheFileSystem->getFileInfo(AsciiString(strFilePath), &fileInfo);
 	const DWORD dwFileSize = fileInfo.sizeLow;
 
-	const DWORD* pShader = (DWORD*)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, dwFileSize);
+	DWORD* pShader = new DWORD[dwFileSize / sizeof(DWORD)];
 	if (pShader != NULL)
 	{
 		file->read((void *)pShader, dwFileSize);
@@ -3311,7 +3331,7 @@ HRESULT W3DShaderManager::LoadAndCreateD3DPixelShader(const char* strFilePath, I
 	std::string source;
 	const HRESULT hr = Create_Translated_Pixel_Shader(DX8Wrapper::_Get_D3D_Device(), pShader, shader,
 		&source);
-	HeapFree(GetProcessHeap(), 0, (void*)pShader);
+	delete[] pShader;
 	dumpEngineShaderSource(strFilePath, source);
 
 	if (FAILED(hr))
@@ -3323,7 +3343,9 @@ HRESULT W3DShaderManager::LoadAndCreateD3DPixelShader(const char* strFilePath, I
 
 	// Nothing transcribes a .pso yet, so this registration buys one thing: a refused draw can say
 	// which shader it was refused for instead of only that it was one of them.
+#ifdef _WIN32
 	Direct3D11_Register_Engine_Shader(*shader, strFilePath);
+#endif
 
 	return S_OK;
 }
@@ -3341,7 +3363,7 @@ HRESULT W3DShaderManager::LoadAndCreateD3DVertexShader(const char* strFilePath, 
 	std::string source;
 	const HRESULT hr = Create_Translated_Vertex_Shader(DX8Wrapper::_Get_D3D_Device(),
 		pDeclaration, pShader, shader, declaration, &source);
-	HeapFree(GetProcessHeap(), 0, (void*)pShader);
+	delete[] pShader;
 	dumpEngineShaderSource(strFilePath, source);
 
 	if (FAILED(hr))
@@ -3353,7 +3375,9 @@ HRESULT W3DShaderManager::LoadAndCreateD3DVertexShader(const char* strFilePath, 
 
 	// The Direct3D 11 backend has a hand-written HLSL copy of some of these; the pointer is what
 	// tells a later bind which file it is looking at.
+#ifdef _WIN32
 	Direct3D11_Register_Engine_Shader(*shader, strFilePath);
+#endif
 
 	return S_OK;
 }

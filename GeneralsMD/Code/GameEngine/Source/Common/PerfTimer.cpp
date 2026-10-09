@@ -35,20 +35,8 @@
 #include "GameClient/Display.h"
 #include "GameClient/GraphDraw.h"
 
-__forceinline void ProfileGetTime(__int64 &t)
-{
-  _asm
-  {
-    mov ecx,[t]
-    push eax
-    push edx
-    rdtsc
-    mov [ecx],eax
-    mov [ecx+4],edx
-    pop edx
-    pop eax
-  };
-}
+// Use platform abstraction for timing
+#include "PAL_Timing.h"
 
 #ifdef _INTERNAL
 // for occasional debugging...
@@ -61,155 +49,6 @@ __forceinline void ProfileGetTime(__int64 &t)
 //-------------------------------------------------------------------------------------------------
 
 #if defined(PERF_TIMERS) || defined(DUMP_PERF_STATS)
-
-//-------------------------------------------------------------------------------------------------
-static Int64 s_ticksPerSec = 0;
-static double s_ticksPerMSec = 0;
-static double s_ticksPerUSec = 0;
-
-//-------------------------------------------------------------------------------------------------
-void GetPrecisionTimerTicksPerSec(Int64* t)
-{
-	*t = s_ticksPerSec;
-}
-
-//Kris: Plugged in Martin's code to optimize timer setup.
-#define HOFFESOMMER_REPLACEMENT_CODE
-
-//-------------------------------------------------------------------------------------------------
-void InitPrecisionTimer()
-{
-#ifdef HOFFESOMMER_REPLACEMENT_CODE
-
-  // measure clock cycles 3 times for 20 msec each
-  // then take the 2 counts that are closest, average
-  _int64 n[ 3 ];
-  for( int k = 0; k < 3; k++ )
-  {
-    // wait for end of current tick
-    unsigned timeEnd = timeGetTime() + 2;
-    while( timeGetTime() < timeEnd ); //do nothing
- 
-    // get cycles
-    _int64 start, startQPC, endQPC;
-    QueryPerformanceCounter( (LARGE_INTEGER *)&startQPC );
-    ProfileGetTime( start );
-    timeEnd += 20;
-    while( timeGetTime() < timeEnd ); //do nothing
-    ProfileGetTime( n[ k ] );
-    n[ k ] -= start;
- 
-    // convert to 1 second
-    if( QueryPerformanceCounter( (LARGE_INTEGER*)&endQPC ) )
-    {
-      QueryPerformanceFrequency( (LARGE_INTEGER*)&s_ticksPerSec );
-      n[ k ] = ( n[ k ] * s_ticksPerSec ) / ( endQPC - startQPC );
-    }
-    else
-    {
-      n[ k ] = ( n[ k ] * 1000 ) / 20;
-    }
-  }
- 
-  // find two closest values
-  _int64 d01 = n[ 1 ] - n[ 0 ];
-	_int64 d02 = n[ 2 ] - n[ 0 ];
-	_int64 d12 = n[ 2 ] - n[ 1 ];
-
-  if( d01 < 0 )
-	{
-		d01 = -d01;
-	}
-  if( d02 < 0 ) 
-	{
-		d02 = -d02;
-	}
-  if( d12 < 0 )
-	{
-		d12 = -d12;
-	}
-
-  _int64 avg;
-  if( d01 < d02 )
-  {
-    avg = d01 < d12 ? n[ 0 ] + n[ 1 ] : n[ 1 ] + n[ 2 ];
-  }
-  else
-  {
-    avg = d02 < d12 ? n[ 0 ] + n[ 2 ] : n[ 1 ] + n[ 2 ];
-  }
-
-	//s_ticksPerMSec = 1.0 * TotalTicks / totalTime;
-	s_ticksPerMSec = avg / 2000.0f;
-	s_ticksPerSec = s_ticksPerMSec * 1000.0f;
-	s_ticksPerUSec = s_ticksPerSec / 1000000.0f;
-
-	
-#else
-
-	//Kris: With total disrespect, this code costs 5 real seconds of init time
-	//whenever we fire up the game.
-
-	#ifdef USE_QPF
-		QueryPerformanceFrequency((LARGE_INTEGER*)&s_ticksPerSec);
-	#else
-		// Init the precision timers
-		Int64 totalTime = 0;
-		Int64	TotalTicks = 0;
-		static int TESTS = 5;
-		
-		for (int i = 0; i < TESTS; ++i) 
-		{
-			int        TimeStart;
-			int        TimeStop;
-			Int64		   StartTicks;
-			Int64		   EndTicks;
-
-			TimeStart = timeGetTime();
-			GetPrecisionTimer(&StartTicks);
-			for(;;)
-			{
-				TimeStop = timeGetTime();
-				if ((TimeStop - TimeStart) > 1000)
-				{
-					GetPrecisionTimer(&EndTicks);
-					break;
-				}
-			}
-
-			TotalTicks += (EndTicks - StartTicks);
-
-			totalTime += (TimeStop - TimeStart);
-		}
-
-		s_ticksPerMSec = 1.0 * TotalTicks / totalTime;
-		s_ticksPerSec = s_ticksPerMSec * 1000.0f;
-	#endif
-		s_ticksPerMSec = s_ticksPerSec / 1000.0f;
-		s_ticksPerUSec = s_ticksPerSec / 1000000.0f;
-
-	#ifdef NOT_IN_USE
-		Int64 bogus[8];
-		GetPrecisionTimer(&start);
-		for (Int ii = 0; ii < ITERS; ++ii)
-		{
-			GetPrecisionTimer(&bogus[0]);
-			GetPrecisionTimer(&bogus[1]);
-			GetPrecisionTimer(&bogus[2]);
-			GetPrecisionTimer(&bogus[3]);
-			GetPrecisionTimer(&bogus[4]);
-			GetPrecisionTimer(&bogus[5]);
-			GetPrecisionTimer(&bogus[6]);
-			GetPrecisionTimer(&bogus[7]);
-		}
-		TheTicksToGetTicks = (bogus[7] - start) / (ITERS*8);
-		DEBUG_LOG(("TheTicksToGetTicks is %d (%f usec)\n",(int)TheTicksToGetTicks,TheTicksToGetTicks/s_ticksPerUSec));
-	#endif
-		
-#endif
-
-}
-#endif // defined(PERF_TIMERS) || defined(DUMP_PERF_STATS)
 
 //-------------------------------------------------------------------------------------------------
 //-------------------------------------------------------------------------------------------------
@@ -391,7 +230,7 @@ static UnsignedInt s_framesAccumulated = 0;
 	/* A frame nobody would have noticed needs no report; a frame that dropped a picture needs one
 		 while the evidence is still in the gathers, because resetAll() is about to throw it away.
 		 Written as one line so a run's stutters can be read off the log with a grep. */
-	if (frameMS < (Real)SPIKE_MS || s_ticksPerUSec <= 0.0)
+	if (frameMS < (Real)SPIKE_MS || Platform_GetTicksPerUSec() <= 0.0)
 		return;
 
 	char line[1024];
@@ -422,7 +261,7 @@ static UnsignedInt s_framesAccumulated = 0;
 		if (best == NULL)
 			break;
 		picked[ slot ] = best;
-		const double ms = (double)bestTime / s_ticksPerUSec / 1000.0;
+		const double ms = (double)bestTime / Platform_GetTicksPerUSec() / 1000.0;
 		if (ms < 0.05)
 			break;						// nothing left worth naming
 		// The old guard reserved 64 bytes and hoped the name fitted in them.  snprintf says how
@@ -439,7 +278,7 @@ static UnsignedInt s_framesAccumulated = 0;
 //-------------------------------------------------------------------------------------------------
 /*static*/ void PerfGather::dumpSummary()
 {
-	if (s_framesAccumulated == 0 || s_ticksPerUSec <= 0.0)
+	if (s_framesAccumulated == 0 || Platform_GetTicksPerUSec() <= 0.0)
 	{
 		DEBUG_LOG(("HEADLESS PERF: nothing gathered\n"));
 		return;
@@ -471,10 +310,10 @@ static UnsignedInt s_framesAccumulated = 0;
 		// worst frame is twenty milliseconds is a stutter, and the average alone hides it.
 		DEBUG_LOG(("HEADLESS PERF %s: %.1f (%.1f) x%.2f worst %.1f\n",
 			g->m_identifier,
-			(double)g->m_totalTimeNet / s_ticksPerUSec / s_framesAccumulated,
-			(double)g->m_totalTimeGross / s_ticksPerUSec / s_framesAccumulated,
+			(double)g->m_totalTimeNet / Platform_GetTicksPerUSec() / s_framesAccumulated,
+			(double)g->m_totalTimeGross / Platform_GetTicksPerUSec() / s_framesAccumulated,
 			(double)g->m_totalCallCount / s_framesAccumulated,
-			(double)g->m_worstFrameNet / s_ticksPerUSec));
+			(double)g->m_worstFrameNet / Platform_GetTicksPerUSec()));
 	}
 }
 
@@ -506,7 +345,7 @@ static UnsignedInt s_framesAccumulated = 0;
 		const Int ITERS = 100000;
 		Int64 start, end;
 		PerfGather pf("timer");
-		GetPrecisionTimer(&start);
+		Platform_GetPrecisionTimer(&start);
 		for (Int ii = 0; ii < ITERS; ++ii)
 		{
 			pf.startTimer(); pf.stopTimer();
@@ -518,9 +357,9 @@ static UnsignedInt s_framesAccumulated = 0;
 			pf.startTimer(); pf.stopTimer();
 			pf.startTimer(); pf.stopTimer();
 		}
-		GetPrecisionTimer(&end);
+		Platform_GetPrecisionTimer(&end);
 		s_stopStartOverhead = (end - start) / (ITERS*8);
-		DEBUG_LOG(("s_stopStartOverhead is %d (%f usec)\n",(int)s_stopStartOverhead,s_stopStartOverhead/s_ticksPerUSec));
+		DEBUG_LOG(("s_stopStartOverhead is %d (%f usec)\n",(int)s_stopStartOverhead,s_stopStartOverhead/Platform_GetTicksPerUSec()));
 	}
 }
 
@@ -585,7 +424,7 @@ static UnsignedInt s_framesAccumulated = 0;
 			for (const PerfGather* head = getHeadPtr(); head != NULL; head = head->m_next)
 			{
 				double t = head->m_runningTimeGross;
-				t /= s_ticksPerUSec;
+				t /= Platform_GetTicksPerUSec();
 				if (t > CLIP_BIG_SPIKES)
 					t = CLIP_BIG_SPIKES;
 				fprintf(s_perfStatsFile, ",%f", t);
@@ -596,7 +435,7 @@ static UnsignedInt s_framesAccumulated = 0;
 			for (const PerfGather* head = getHeadPtr(); head != NULL; head = head->m_next)
 			{
 				double t = head->m_runningTimeNet;
-				t /= s_ticksPerUSec;
+				t /= Platform_GetTicksPerUSec();
 				if (t > CLIP_BIG_SPIKES)
 					t = CLIP_BIG_SPIKES;
 				fprintf(s_perfStatsFile, ",%f", t);
@@ -641,7 +480,7 @@ static UnsignedInt s_framesAccumulated = 0;
 			for (const PerfGather* head = getHeadPtr(); head != NULL; head = head->m_next)
 			{
 				Real t = head->m_runningTimeGross;
-				t /= s_ticksPerUSec;
+				t /= Platform_GetTicksPerUSec();
 				if (t > CLIP_BIG_SPIKES)
 					t = CLIP_BIG_SPIKES;
 
@@ -653,7 +492,7 @@ static UnsignedInt s_framesAccumulated = 0;
 			for (const PerfGather* head = getHeadPtr(); head != NULL; head = head->m_next)
 			{
 				Real t = head->m_runningTimeNet;
-				t /= s_ticksPerUSec;
+				t /= Platform_GetTicksPerUSec();
 				if (t > CLIP_BIG_SPIKES)
 					t = CLIP_BIG_SPIKES;
 				
@@ -724,14 +563,14 @@ void PerfTimer::outputInfo( void )
 		return;
 	}
 
-	if (!s_ticksPerSec) {
+	if (!Platform_GetTicksPerSec()) {
 		// DEBUG_CRASH here
 		return;
 	}
 
 	// Not under _DEBUG/_INTERNAL: the DEBUG_LOG below uses these in every configuration a
 	// PERF_TIMERS build can be, and a Release measurement build is exactly such a configuration.
-	double totalTimeInMS = 1000.0 * m_runningTime / s_ticksPerSec;
+	double totalTimeInMS = 1000.0 * m_runningTime / Platform_GetTicksPerSec();
 	double avgTimePerFrame = totalTimeInMS / (m_lastFrame - m_startFrame + 1);
 	double avgTimePerCall = totalTimeInMS / m_callCount;
 
@@ -767,7 +606,7 @@ void PerfTimer::outputInfo( void )
 //-------------------------------------------------------------------------------------------------
 void PerfTimer::showMetrics( void )
 {
-	double totalTimeInMS = 1000.0 * m_runningTime / s_ticksPerSec;
+	double totalTimeInMS = 1000.0 * m_runningTime / Platform_GetTicksPerSec();
 	double avgTimePerFrame = totalTimeInMS / (m_lastFrame - m_startFrame + 1);
 	double avgTimePerCall = totalTimeInMS / m_callCount;
 
@@ -799,4 +638,5 @@ void StatMetricsDisplay( DebugDisplayInterface *dd, void *, FILE *fp )
 }
 
 #endif	// PERF_TIMERS
+#endif	// PERF_TIMERS || DUMP_PERF_STATS (outer guard was missing its close)
 

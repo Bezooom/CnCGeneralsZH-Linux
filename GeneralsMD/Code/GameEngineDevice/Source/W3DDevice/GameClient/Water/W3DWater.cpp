@@ -32,8 +32,15 @@
 										 
 // INCLUDES ///////////////////////////////////////////////////////////////////////////////////////
 #include "stdio.h"
+#if !defined(_WIN32)
+#include "WWLib/mmsys.h"
+#endif
 #include "W3DDevice/GameClient/W3DWater.h"
+#if defined(_WIN32)
 #include "W3DDevice/GameClient/heightmap.h"
+#else
+#include "W3DDevice/GameClient/HeightMap.h"
+#endif
 #include "W3DDevice/GameClient/W3DShroud.h"
 #include "W3DDevice/GameClient/W3DWaterTracks.h"
 #include "W3DDevice/GameClient/W3DAssetManager.h"
@@ -46,7 +53,9 @@
 #include "light.h"
 #include "d3dx9math.h"
 #include "d3d8shadertranslate.h"
+#include "d3dx9runtime.h"
 #include "dx11twin.h"
+#include "dx11runtime.h"
 #include "simplevec.h"
 #include "mesh.h"
 #include "matinfo.h"
@@ -1989,7 +1998,7 @@ void WaterRenderObjClass::drawSea(RenderInfoClass & rinfo)
 
 	DX8Wrapper::Set_DX8_Texture_Stage_State(0, D3DSAMP_ADDRESSU, D3DTADDRESS_WRAP);
 	DX8Wrapper::Set_DX8_Texture_Stage_State(0, D3DSAMP_ADDRESSV, D3DTADDRESS_WRAP);
-	DX8Wrapper::Set_DX8_Render_State( D3DRS_WRAP0, D3DWRAP_U | D3DWRAP_V);
+	DX8Wrapper::Set_DX8_Render_State( (D3DRENDERSTATETYPE)D3DRS_WRAP0, D3DWRAP_U | D3DWRAP_V);
 
 	DX8Wrapper::Set_DX8_Texture_Stage_State(1, D3DSAMP_ADDRESSU, D3DTADDRESS_CLAMP);
 	DX8Wrapper::Set_DX8_Texture_Stage_State(1, D3DSAMP_ADDRESSV, D3DTADDRESS_CLAMP);
@@ -2090,7 +2099,7 @@ void WaterRenderObjClass::drawSea(RenderInfoClass & rinfo)
 	DX8Wrapper::Set_DX8_Texture_Stage_State(1, D3DSAMP_ADDRESSU, D3DTADDRESS_WRAP);
 	DX8Wrapper::Set_DX8_Texture_Stage_State(1, D3DSAMP_ADDRESSV, D3DTADDRESS_WRAP);
 
-	DX8Wrapper::Set_DX8_Render_State( D3DRS_WRAP0, 0);	//turn off texture wrapping
+	DX8Wrapper::Set_DX8_Render_State( (D3DRENDERSTATETYPE)D3DRS_WRAP0, 0);	//turn off texture wrapping
 
 	DX8Wrapper::Set_DX8_Texture_Stage_State( 0, D3DTSS_COLOROP,   D3DTOP_DISABLE );
 	DX8Wrapper::Set_DX8_Texture_Stage_State( 0, D3DTSS_ALPHAOP,   D3DTOP_DISABLE );

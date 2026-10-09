@@ -28,7 +28,7 @@
 // buffer is the process's ANSI command line, so GetCommandLineA is truncated to the exe name and
 // the first switch by the time anything asks.  GetCommandLineW is untouched.
 
-#include <windows.h>
+#include "WWLib/win.h"
 #include <wchar.h>
 #include <wctype.h>
 

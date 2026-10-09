@@ -33,6 +33,10 @@
 #include "win.h"
 #include "mmsys.h"
 #include "ffactory.h"
+#if defined(PLATFORM_LINUX) || defined(__linux__) || defined(_UNIX)
+#include <sys/stat.h>
+#include <unistd.h>
+#endif
 
 //
 // cMiscUtil statics 
@@ -119,8 +123,16 @@ bool cMiscUtil::File_Is_Read_Only(LPCSTR filename)
 {
    WWASSERT(filename != NULL);
 
+#if defined(PLATFORM_LINUX) || defined(__linux__) || defined(_UNIX)
+	// Linux: a present-but-not-writable file is read-only; missing files are not.
+	struct stat st;
+	if (stat(filename, &st) != 0)
+		return false;
+	return (access(filename, W_OK) != 0);
+#else
 	DWORD attributes = ::GetFileAttributes(filename);
 	return ((attributes != 0xFFFFFFFF) && (attributes & FILE_ATTRIBUTE_READONLY));
+#endif
 }
 
 //-----------------------------------------------------------------------------
@@ -179,9 +191,15 @@ void cMiscUtil::Get_File_Id_String(LPCSTR filename, StringClass & str)
 	}
    file.Close();
 
-	//
-	// Note... this timedatestamp is not present for all file types...
-	//
+   //
+   // Note... this timedatestamp is not present for all file types...
+   //
+#if defined(PLATFORM_LINUX) || defined(__linux__) || defined(_UNIX)
+	// Linux: the stamp is the PE TimeDateStamp, which a data file does not
+	// have (Windows leaves the zeroed header in that case, and the tests
+	// pin stamp 0). There are no PE images on Linux, so it is always 0.
+	int time_date_stamp = 0;
+#else
 	IMAGE_FILE_HEADER header = {0};
 	extern bool Get_Image_File_Header(LPCSTR filename, IMAGE_FILE_HEADER *file_header);
 	/*
@@ -191,6 +209,7 @@ void cMiscUtil::Get_File_Id_String(LPCSTR filename, StringClass & str)
 	*/
 	Get_Image_File_Header(filename, &header);
 	int time_date_stamp = header.TimeDateStamp;
+#endif
 
 	char working_filename[500];
 	strcpy(working_filename, filename);
@@ -201,7 +220,8 @@ void cMiscUtil::Get_File_Id_String(LPCSTR filename, StringClass & str)
    //
    char * p_start = &working_filename[strlen(working_filename)];
    int num_chars = 1;
-   while (p_start > working_filename && *(p_start - 1) != '\\') {
+   // Both separators: '\\' (Windows) and '/' (Linux; also accepted by Windows).
+   while (p_start > working_filename && *(p_start - 1) != '\\' && *(p_start - 1) != '/') {
       p_start--;
       num_chars++;
    }
@@ -220,7 +240,11 @@ void cMiscUtil::Remove_File(LPCSTR filename)
 {
    WWASSERT(filename != NULL);
 
+#if defined(PLATFORM_LINUX) || defined(__linux__) || defined(_UNIX)
+	::remove(filename);
+#else
 	::DeleteFile(filename);
+#endif
 }
 
 

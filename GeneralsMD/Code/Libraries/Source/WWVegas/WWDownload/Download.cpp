@@ -18,10 +18,17 @@
 
 // Download.cpp : Implementation of CDownload
 #include "DownloadDebug.h"
-#include "download.h"
+#include "Download.h"
+#if defined(_MSC_VER)
 #include <mmsystem.h>
+#else
+// Linux: timeGetTime/MulDiv/_mkdir/_stat/_strnicmp shims.
+#include "WinCompat.h"
+#endif
 #include <assert.h>
+#if defined(_MSC_VER)
 #include <direct.h>
+#endif
 #include <stdlib.h>
 #include <stdio.h>
 #include <sys/stat.h>

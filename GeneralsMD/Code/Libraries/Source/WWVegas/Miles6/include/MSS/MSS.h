@@ -25,12 +25,19 @@
 
 /* The real Mss.H pulls in the Windows multimedia headers; WWAudio relies on
  * that for LPWAVEFORMAT in its Miles-facing signatures. */
+#if defined(_WIN32)
 #include <windows.h>
 #include <mmsystem.h>
-
-#define AILCALL     __stdcall
+#define AILCALL __stdcall
 #ifndef AILCALLBACK
 #define AILCALLBACK __stdcall
+#endif
+#else
+#include <stdint.h>
+#define AILCALL
+#ifndef AILCALLBACK
+#define AILCALLBACK
+#endif
 #endif
 
 /* Miles' scalar names are the long family (S32 = signed long), and the game
@@ -39,8 +46,14 @@ typedef signed char        S8;
 typedef unsigned char      U8;
 typedef signed short       S16;
 typedef unsigned short     U16;
+#if defined(_WIN32)
 typedef signed long        S32;
 typedef unsigned long      U32;
+#else
+/* LP64 long is 64 bits; these SDK scalars remain 32-bit on native Linux. */
+typedef int32_t            S32;
+typedef uint32_t           U32;
+#endif
 typedef float              F32;
 typedef double             F64;
 typedef char               C8;
@@ -127,6 +140,7 @@ typedef AILFILEREADCB  AIL_file_read_callback;
 /* The version string lives in the DLL's string table, resource id 1; the real
  * header reads it the same way instead of importing a function. */
 #define MSSDLLNAME "MSS32.DLL"
+#if defined(_WIN32)
 #define AIL_MSS_version(str, len)                \
 {                                                \
 	HINSTANCE mssvl = LoadLibraryA(MSSDLLNAME);  \
@@ -137,6 +151,13 @@ typedef AILFILEREADCB  AIL_file_read_callback;
 		FreeLibrary(mssvl);                      \
 	}                                            \
 }
+#else
+/* No runtime SDK on Linux: report no version, never a fabricated version. */
+static inline void AIL_MSS_version(char *str, U32 len)
+{
+	if (str && len) str[0] = '\0';
+}
+#endif
 
 #ifdef __cplusplus
 extern "C" {

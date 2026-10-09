@@ -21,8 +21,30 @@
 #include "wwdebug.h"
 #include "thread.h"
 #include "mpu.h"
+#if defined(_MSC_VER)
 #pragma warning (disable : 4201)	// Nonstandard extension - nameless struct
+#endif
+#if defined(PLATFORM_LINUX) || defined(__linux__) || defined(_UNIX)
+#include <cpuid.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/sysinfo.h>
+#include <sys/utsname.h>
+#include <unistd.h>
+// Windows version-platform ids used by the OS log/compact-log switches.
+#ifndef VER_PLATFORM_WIN32s
+#define VER_PLATFORM_WIN32s 0
+#define VER_PLATFORM_WIN32_WINDOWS 1
+#define VER_PLATFORM_WIN32_NT 2
+#endif
+// No Windows platform to report; falls through both switches to UNKNOWN while
+// OSVersionExtraInfo (uname) still identifies the machine.
+#ifndef VER_PLATFORM_LINUX
+#define VER_PLATFORM_LINUX 3
+#endif
+#else
 #include <windows.h>
+#endif
 #include "systimer.h"
 
 #ifdef _UNIX
@@ -141,9 +163,18 @@ static unsigned Calculate_Processor_Speed(__int64& ticks_per_second)
       mov Time.timer0_l, edx
    }
 #elif defined(_UNIX)
+#if defined(__linux__) || defined(PLATFORM_LINUX)
+      // Same layout quirk as the WIN32 block above (eax/low into timerN_h):
+      // the 64-bit read below pairs the two halves back in order.
+      unsigned int __lo, __hi;
+      __asm__ __volatile__("rdtsc" : "=a"(__lo), "=d"(__hi));
+      Time.timer0_h = __lo;
+      Time.timer0_l = __hi;
+#else
       __asm__("rdtsc");
       __asm__("mov %eax, __Time.timer1_h");
       __asm__("mov %edx, __Time.timer1_l");
+#endif
 #endif
 
 	unsigned start=TIMEGETTIME();
@@ -156,9 +187,15 @@ static unsigned Calculate_Processor_Speed(__int64& ticks_per_second)
          mov Time.timer1_l, edx
       }
 #elif defined(_UNIX)
+#if defined(__linux__) || defined(PLATFORM_LINUX)
+      __asm__ __volatile__("rdtsc" : "=a"(__lo), "=d"(__hi));
+      Time.timer1_h = __lo;
+      Time.timer1_l = __hi;
+#else
       __asm__ ("rdtsc");
       __asm__("mov %eax, __Time.timer1_h");
       __asm__("mov %edx, __Time.timer1_l");
+#endif
 #endif
 	}
 
@@ -848,6 +885,12 @@ void CPUDetectClass::Init_CPUID_Instruction()
       pop ebx
    }
 #elif defined(_UNIX)
+#if defined(__linux__) || defined(PLATFORM_LINUX)
+     // Original _UNIX asm used 32-bit push/pop mnemonics that do not assemble
+     // on x86_64. __get_cpuid failing leaf 0 is the portable "no CPUID" test.
+     unsigned int __a, __b, __c, __d;
+     cpuid_available = __get_cpuid(0, &__a, &__b, &__c, &__d) ? 1 : 0;
+#else
      __asm__(" mov $0, __cpuid_available");  // clear flag
      __asm__(" push %ebx");
      __asm__(" pushfd");
@@ -863,9 +906,10 @@ void CPUDetectClass::Init_CPUID_Instruction()
      __asm__(" mov $1, __cpuid_available");
      goto done;  // just to shut the compiler up
    done:
-     __asm__(" push %ebx");
-     __asm__(" popfd");
-     __asm__(" pop %ebx");
+      __asm__(" push %ebx");
+      __asm__(" popfd");
+      __asm__(" pop %ebx");
+#endif
 #endif
 	HasCPUIDInstruction=!!cpuid_available;
 }
@@ -910,6 +954,14 @@ static unsigned clamp_to_signed_max(DWORDLONG bytes)
 	const DWORDLONG limit = 0x7FFFFFFFui64;
 	return (unsigned)(bytes > limit ? limit : bytes);
 }
+#else
+// Linux twin of the above: same saturation into the 32-bit fields callers read.
+typedef unsigned long long LINUX_DWORDLONG;
+static unsigned clamp_to_signed_max(LINUX_DWORDLONG bytes)
+{
+	const LINUX_DWORDLONG limit = 0x7FFFFFFFull;
+	return (unsigned)(bytes > limit ? limit : bytes);
+}
 #endif
 
 void CPUDetectClass::Init_Memory()
@@ -939,14 +991,32 @@ void CPUDetectClass::Init_Memory()
 	TotalVirtualMemory      = clamp_to_signed_max(mem.ullTotalVirtual);
 	AvailableVirtualMemory  = clamp_to_signed_max(mem.ullAvailVirtual);
 #elif defined(_UNIX)
+#if defined(__linux__) || defined(PLATFORM_LINUX)
+	// sysinfo reports pages; physical + swap map onto the phys/page pairs the
+	// callers read. Virtual address space has no sysinfo source: report the
+	// 4GB ceiling of the 32-bit game image callers assume.
+	struct sysinfo info;
+	if (sysinfo(&info) == 0) {
+		unsigned long long page = (unsigned long long)info.mem_unit;
+		TotalPhysicalMemory     = clamp_to_signed_max((LINUX_DWORDLONG)info.totalram * page);
+		AvailablePhysicalMemory = clamp_to_signed_max((LINUX_DWORDLONG)info.freeram * page);
+		TotalPageMemory         = clamp_to_signed_max((LINUX_DWORDLONG)(info.totalram + info.totalswap) * page);
+		AvailablePageMemory     = clamp_to_signed_max((LINUX_DWORDLONG)(info.freeram + info.freeswap) * page);
+	} else {
+		TotalPhysicalMemory = AvailablePhysicalMemory = 0;
+		TotalPageMemory = AvailablePageMemory = 0;
+	}
+	TotalVirtualMemory = AvailableVirtualMemory = 0x7FFFFFFFu;
+#else
 #warning FIX Init_Memory()
+#endif
 #endif
 }
 
 void CPUDetectClass::Init_OS()
 {
-	OSVERSIONINFO os;
 #ifdef WIN32
+	OSVERSIONINFO os;
    os.dwOSVersionInfoSize = sizeof(os);
 	GetVersionEx(&os);
 
@@ -956,7 +1026,28 @@ void CPUDetectClass::Init_OS()
    OSVersionPlatformId  = os.dwPlatformId;
    OSVersionExtraInfo   = os.szCSDVersion;
 #elif defined(_UNIX)
+#if defined(__linux__) || defined(PLATFORM_LINUX)
+	// uname() release looks like "6.8.0-52-generic"; major/minor seed the
+	// version fields, the full string stays readable in OSVersionExtraInfo.
+	struct utsname name;
+	OSVersionNumberMajor = 0;
+	OSVersionNumberMinor = 0;
+	OSVersionBuildNumber = 0;
+	OSVersionPlatformId = VER_PLATFORM_LINUX;
+	if (uname(&name) == 0) {
+		OSVersionNumberMajor = (unsigned)atoi(name.release);
+		const char *dot = strchr(name.release, '.');
+		if (dot != NULL)
+			OSVersionNumberMinor = (unsigned)atoi(dot + 1);
+		StringClass extra(0, true);
+		extra.Format("%s %s %s", name.sysname, name.release, name.machine);
+		OSVersionExtraInfo = extra;
+	} else {
+		OSVersionExtraInfo = "Linux";
+	}
+#else
 #warning FIX Init_OS()
+#endif
 #endif
 }
 
@@ -990,6 +1081,11 @@ bool CPUDetectClass::CPUID(
       popad
    }
 #elif defined(_UNIX)
+#if defined(__linux__) || defined(PLATFORM_LINUX)
+   // __get_cpuid handles EBX preservation (PIC) and 64-bit mode; the raw
+   // push/pop sequence below does not assemble on x86_64.
+   __get_cpuid(cpuid_type, &u_eax, &u_ebx, &u_ecx, &u_edx);
+#else
    __asm__("pusha");
    __asm__("mov	__cpuid_type, %eax");
    __asm__("xor	%ebx, %ebx");
@@ -1001,6 +1097,7 @@ bool CPUDetectClass::CPUID(
    __asm__("mov	%ecx, __u_ecx");
    __asm__("mov	%edx, __u_edx");
    __asm__("popa");
+#endif
 #endif
 
 	u_eax_=u_eax;
@@ -1131,9 +1228,11 @@ void CPUDetectClass::Init_Compact_Log()
    GetTimeZoneInformation(&time_zone);
    COMPACTLOG(("%d\t", time_zone.Bias));  // get diff between local time and UTC
 #elif defined(_UNIX)
+   // timezone is hidden under -std=c++17 strict ANSI; tm_gmtoff (seconds east
+   // of UTC) is the portable twin. Negated to match timezone's west-positive.
    time_t t = time(NULL);
-   localtime(&t);
-   COMPACTLOG(("%d\t", timezone));
+   struct tm *local = localtime(&t);
+   COMPACTLOG(("%ld\t", local != NULL ? -(long)local->tm_gmtoff : 0L));
 #endif
 
 	OSInfoStruct os_info;
@@ -1157,7 +1256,7 @@ void CPUDetectClass::Init_Compact_Log()
 static class CPUDetectInitClass
 {
 public:
-	CPUDetectInitClass::CPUDetectInitClass()
+	CPUDetectInitClass()
 	{
 		CPUDetectClass::Init_CPUID_Instruction();
 		// We pretty much need CPUID, but let's not crash if it doesn't exist.

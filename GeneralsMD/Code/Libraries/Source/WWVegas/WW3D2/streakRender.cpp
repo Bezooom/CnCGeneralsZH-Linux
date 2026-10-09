@@ -25,7 +25,11 @@
  * - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
 
 
+#if defined(_WIN32)
 #include "streakrender.h"
+#else
+#include "streakRender.h"
+#endif
 #include "ww3d.h"
 #include "rinfo.h"
 #include "dx8wrapper.h"

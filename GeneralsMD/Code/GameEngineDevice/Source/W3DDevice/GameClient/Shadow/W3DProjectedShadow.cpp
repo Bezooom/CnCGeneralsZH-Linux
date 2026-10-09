@@ -34,10 +34,27 @@
 // USER INCLUDES //////////////////////////////////////////////////////////////
 #include "always.h"
 #include "GameClient/View.h"
+#if defined(_WIN32)
 #include "WW3D2/Camera.h"
+#else
+#include "WW3D2/camera.h"
+#endif
+#if defined(_WIN32)
 #include "WW3D2/Light.h"
+#else
+#include "WW3D2/light.h"
+#endif
+#if defined(_WIN32)
 #include "WW3D2/DX8Wrapper.h"
+#else
+#include "WW3D2/dx8wrapper.h"
+#include "WW3D2/dx11runtime.h"
+#endif
+#if defined(_WIN32)
 #include "WW3D2/HLod.h"
+#else
+#include "WW3D2/hlod.h"
+#endif
 #include "WW3D2/mesh.h"
 #include "WW3D2/meshmdl.h"
 #include "WW3D2/assetmgr.h"
@@ -45,19 +62,35 @@
 #include "WW3D2/dx8renderer.h"
 #include "Lib/BaseType.h"
 #include "W3DDevice/GameClient/W3DGranny.h"
+#if defined(_WIN32)
 #include "W3DDevice/GameClient/Heightmap.h"
+#else
+#include "W3DDevice/GameClient/HeightMap.h"
+#endif
 #include "d3dx9math.h"
+#if defined(_WIN32)
 #include "common/GlobalData.h"
+#else
+#include "Common/GlobalData.h"
+#endif
 #include "W3DDevice/GameClient/W3DProjectedShadow.h"
 #include "WW3D2/statistics.h"
 #include "Common/Debug.h"
 #include "GameLogic/Object.h"
 #include "GameLogic/PartitionManager.h"
 #include "GameLogic/TerrainLogic.h"
+#if defined(_WIN32)
 #include "GameClient/drawable.h"
+#else
+#include "GameClient/Drawable.h"
+#endif
 #include "W3DDevice/GameClient/Module/W3DModelDraw.h"
 #include "W3DDevice/GameClient/W3DShadow.h"
+#if defined(_WIN32)
 #include "W3DDevice/GameClient/Heightmap.h"
+#else
+#include "W3DDevice/GameClient/HeightMap.h"
+#endif
 
 #ifdef _INTERNAL
 // for occasional debugging...
@@ -307,7 +340,9 @@ Bool W3DProjectedShadowManager::ReAcquireResources(void)
 	)))
 		return FALSE;
 
+ #ifdef _WIN32
 	shadowDecalIndexTwin = Direct3D11_Twin_Index_Buffer(SHADOW_DECAL_INDEX_SIZE*sizeof(WORD), true);
+ #endif
 
 	if (shadowDecalVertexBufferD3D == NULL)
 	{	// Create vertex buffer
@@ -323,8 +358,10 @@ Bool W3DProjectedShadowManager::ReAcquireResources(void)
 		)))
 			return FALSE;
 
+  #ifdef _WIN32
 		shadowDecalVertexTwin = Direct3D11_Twin_Vertex_Buffer(
 			SHADOW_DECAL_VERTEX_SIZE*sizeof(SHADOW_DECAL_VERTEX), true);
+  #endif
 	}
 
 	return TRUE;
@@ -544,13 +581,19 @@ Int W3DProjectedShadowManager::renderProjectedTerrainShadow(W3DProjectedShadow *
 
 		// D3D9 takes the base vertex index on the draw call, not here.
 		m_pDev->SetIndices(shadowIndexBufferD3D);
+  #ifdef _WIN32
 		Direct3D11_Mirror_Indices(shadowIndexTwin);
+  #endif
 
-		m_pDev->SetTransform(D3DTS_WORLD,(_D3DMATRIX *)&mWorld);
+		m_pDev->SetTransform(D3DTS_WORLD,(D3DMATRIX *)&mWorld);
+  #ifdef _WIN32
 		Direct3D11_Mirror_Transform(D3DTS_WORLD,(const float *)&mWorld);
+  #endif
 
 		m_pDev->SetStreamSource(0,shadowVertexBufferD3D,0,vertexStride);
+  #ifdef _WIN32
 		Direct3D11_Mirror_Stream_Source(shadowVertexTwin, vertexStride, 0);
+  #endif
 		DX8Wrapper::Set_Vertex_Format(SHADOW_VOLUME_FVF);
 
 		Int numPolys = (endX - startX)*(endY - startY)*2;	//2 triangles per cell
@@ -573,9 +616,13 @@ Int W3DProjectedShadowManager::renderProjectedTerrainShadow(W3DProjectedShadow *
 		if (DX8Wrapper::_Is_Triangle_Draw_Enabled())
 		{
 			Debug_Statistics::Record_DX8_Polys_And_Vertices(numPolys,numVerts,ShaderClass::_PresetOpaqueShader);
+   #ifdef _WIN32
 			if (!Direct3D11_Present_Is_Enabled())
+   #endif
 				m_pDev->DrawIndexedPrimitive(D3DPT_TRIANGLELIST,nShadowStartBatchVertex,0,numVerts,nShadowStartBatchIndex,numPolys);
+   #ifdef _WIN32
 			Direct3D11_Draw_Indexed_Triangles(numIndex,nShadowStartBatchIndex,nShadowStartBatchVertex);
+   #endif
 		}
 
 		DX8Wrapper::Set_DX8_Render_State(D3DRS_ALPHATESTENABLE, FALSE);	//should reject background pixels
@@ -797,13 +844,19 @@ void W3DProjectedShadowManager::flushDecals(W3DShadowTexture *texture, ShadowTyp
 
 	// D3D9 takes the base vertex index on the draw call, not here.
 	m_pDev->SetIndices(shadowDecalIndexBufferD3D);
+ #ifdef _WIN32
 	Direct3D11_Mirror_Indices(shadowDecalIndexTwin);
+ #endif
 
 	m_pDev->SetTransform(D3DTS_WORLD,(_D3DMATRIX *)&mWorld);
+ #ifdef _WIN32
 	Direct3D11_Mirror_Transform(D3DTS_WORLD,(const float *)&mWorld);
+ #endif
 
 	m_pDev->SetStreamSource(0,shadowDecalVertexBufferD3D,0,sizeof(SHADOW_DECAL_VERTEX));
+ #ifdef _WIN32
 	Direct3D11_Mirror_Stream_Source(shadowDecalVertexTwin, sizeof(SHADOW_DECAL_VERTEX), 0);
+ #endif
 	DX8Wrapper::Set_Vertex_Format(SHADOW_DECAL_FVF);
 
 //Hard Shadows using stencil
@@ -825,10 +878,14 @@ void W3DProjectedShadowManager::flushDecals(W3DShadowTexture *texture, ShadowTyp
 	if (DX8Wrapper::_Is_Triangle_Draw_Enabled())
 	{
 		Debug_Statistics::Record_DX8_Polys_And_Vertices(nShadowDecalPolysInBatch,nShadowDecalVertsInBatch,ShaderClass::_PresetOpaqueShader);
+  #ifdef _WIN32
 		if (!Direct3D11_Present_Is_Enabled())
+  #endif
 			m_pDev->DrawIndexedPrimitive(D3DPT_TRIANGLELIST,nShadowDecalStartBatchVertex,0,nShadowDecalVertsInBatch,nShadowDecalStartBatchIndex,nShadowDecalPolysInBatch);
+  #ifdef _WIN32
 		Direct3D11_Draw_Indexed_Triangles(nShadowDecalPolysInBatch*3,nShadowDecalStartBatchIndex,
 			nShadowDecalStartBatchVertex);
+  #endif
 	}
 
 //	m_pDev->SetRenderState(D3DRS_ALPHATESTENABLE, FALSE);	//should reject background pixels

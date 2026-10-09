@@ -65,7 +65,7 @@
 #include "GameClient/DisplayStringManager.h"
 #include "GameClient/GadgetPushButton.h"
 #include "GameClient/GadgetStaticText.h"
-#include "GameClient/Controlbar.h"
+#include "GameClient/ControlBar.h"
 
 //-----------------------------------------------------------------------------
 // DEFINES ////////////////////////////////////////////////////////////////////
@@ -2174,7 +2174,7 @@ void PushButtonImageDrawThree(GameWindow *window, Int alpha )
 	
 }
 
-static void drawTypeText( GameWindow *window, DisplayString *str)
+void drawTypeText( GameWindow *window, DisplayString *str)
 {
 	TextData *tData = (TextData *)window->winGetUserData();
 	Int textColor = window->winGetEnabledTextColor();

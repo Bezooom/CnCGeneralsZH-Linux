@@ -112,7 +112,9 @@
 #include "metalmap.h"
 #include "w3dexclusionlist.h"
 #include <ini.h>
+#if defined(_WIN32)
 #include <windows.h>
+#endif
 #include <stdio.h>
 #include "d3dx9runtime.h"
 #include "texture.h"
@@ -810,7 +812,7 @@ RenderObjClass * WW3DAssetManager::Create_Render_Obj(const char * name)
 		char filename [MAX_PATH];
 		const char *mesh_name = ::strchr (name, '.');
 		if (mesh_name != NULL) {
-			::lstrcpyn (filename, name, ((int)mesh_name) - ((int)name) + 1);
+			::lstrcpyn (filename, name, (int)(mesh_name - name) + 1);
 			::lstrcat (filename, ".w3d");
 		} else {
 			sprintf( filename, "%s.w3d", name);
@@ -1101,7 +1103,7 @@ TextureClass * WW3DAssetManager::Get_Texture
 	}
 
 	StringClass lower_case_name(filename,true);
-	_strlwr(lower_case_name.Peek_Buffer());
+	strlwr(lower_case_name.Peek_Buffer());
 
 	/*
 	** See if the texture has already been loaded.

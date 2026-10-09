@@ -22,7 +22,7 @@
 // $Revision: #3 $
 // $DateTime: 2003/07/09 10:57:23 $
 //
-// ©2003 Electronic Arts
+// ï¿½2003 Electronic Arts
 //
 // Internal header
 //////////////////////////////////////////////////////////////////////////////
@@ -38,16 +38,27 @@
 #include "internal_cmd.h"
 #include "internal_result.h"
 
+// Platform abstraction for threading and timing (Platform/ is on the
+// include path; same form PAL_Timing.cpp itself uses)
+#include "PAL_Timing.h"
+
+#if defined(PLATFORM_LINUX) || defined(__linux__) || defined(_UNIX)
+#include <sched.h>
+#endif
+
 class ProfileFastCS
 {
   ProfileFastCS(const ProfileFastCS&);
   ProfileFastCS& operator=(const ProfileFastCS&);
 
 	volatile unsigned m_Flag;
-  static HANDLE testEvent;
+#if defined(_MSC_VER)
+	static HANDLE testEvent;
+#endif
 
 	void ThreadSafeSetFlag()
 	{
+#if defined(_MSC_VER)
 		volatile unsigned& nFlag=m_Flag;
 
 		#define ts_lock _emit 0xF0
@@ -67,6 +78,15 @@ class ProfileFastCS
 		__asm ts_lock
 		__asm bts dword ptr [ebx], 0
 		__asm jc  The_Bit_Was_Previously_Set_So_Try_Again
+#else
+		// Portable test-and-set spin.
+		// (Matches FastCriticalSectionClass in WWLib/mutex.h.)
+		while (__sync_lock_test_and_set(&m_Flag, 1)) {
+#if defined(PLATFORM_LINUX) || defined(__linux__) || defined(_UNIX)
+			sched_yield();
+#endif
+		}
+#endif
 	}
 
 	void ThreadSafeClearFlag()
@@ -100,26 +120,19 @@ public:
 		}
 	};
 
-	friend class Lock;
+  friend class Lock;
 };
 
 void *ProfileAllocMemory(unsigned numBytes);
 void *ProfileReAllocMemory(void *oldPtr, unsigned newSize);
 void ProfileFreeMemory(void *ptr);
 
+// __int64 tick storage vs uint64_t PAL timer: convert explicitly.
 __forceinline void ProfileGetTime(__int64 &t)
 {
-  _asm
-  {
-    mov ecx,[t]
-    push eax
-    push edx
-    rdtsc
-    mov [ecx],eax
-    mov [ecx+4],edx
-    pop edx
-    pop eax
-  };
+  uint64_t now = 0;
+  Platform_GetPrecisionTimer(&now);
+  t = (__int64)now;
 }
 
 #endif // INTERNAL_H

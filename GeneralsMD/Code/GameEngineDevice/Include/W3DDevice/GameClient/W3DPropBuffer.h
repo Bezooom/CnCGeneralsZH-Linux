@@ -54,9 +54,17 @@
 #include "rendobj.h"
 #include "w3d_file.h"
 #include "Lib/BaseType.h"
+#if defined(_WIN32)
 #include "common/GameType.h"
+#else
+#include "Common/GameType.h"
+#endif
 #include "Common/AsciiString.h"
+#if defined(_WIN32)
 #include "common/GlobalData.h"
+#else
+#include "Common/GlobalData.h"
+#endif
 
 //-----------------------------------------------------------------------------
 //           Forward References

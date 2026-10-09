@@ -57,7 +57,13 @@
 
 class UnicodeString;
 
+#if defined(_MSC_VER)
 #include "windows.h"
+#else
+// Linux: nothing in this header uses Win32 (checked); win.h below covers
+// what AsciiString.cpp needs.
+#include "win.h"
+#endif
 
 // -----------------------------------------------------
 /**

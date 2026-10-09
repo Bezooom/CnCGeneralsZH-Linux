@@ -21,6 +21,14 @@
 #ifndef __BINK_H__
 #define __BINK_H__
 
+/* Keep the Windows DLL ABI; native non-Windows stubs use the host ABI. */
+#if defined(_WIN32)
+#define BINKCALL __stdcall
+#else
+#define BINKCALL
+#include <stdint.h>
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -74,24 +82,36 @@ typedef struct BINK
 	unsigned int FrameRateDiv;    /* frame rate denominator */
 } BINK, *HBINK;
 
-typedef int (__stdcall *BINKSNDSYSOPEN)(unsigned int param);
+/*
+ * The sound-system callback takes an opaque handle. On Windows the shipped
+ * DLL ABI fixes it at 32 bits (DirectSound LPVOID is cast to unsigned int);
+ * that ABI must stay byte-identical. On Linux the stub receives real
+ * pointers, so the parameter is pointer-sized to avoid truncation.
+ */
+#if defined(_WIN32)
+typedef unsigned int BINKSNDSYSPARAM;
+#else
+typedef uintptr_t BINKSNDSYSPARAM;
+#endif
 
-HBINK __stdcall BinkOpen(const char *name, unsigned int flags);
-void  __stdcall BinkClose(HBINK bnk);
-int   __stdcall BinkWait(HBINK bnk);
-int   __stdcall BinkDoFrame(HBINK bnk);
-void  __stdcall BinkNextFrame(HBINK bnk);
-int   __stdcall BinkGoto(HBINK bnk, unsigned int frame, int flags);
-int   __stdcall BinkCopyToBuffer(HBINK bnk, void *dest, int destpitch,
+typedef int (BINKCALL *BINKSNDSYSOPEN)(BINKSNDSYSPARAM param);
+
+HBINK BINKCALL BinkOpen(const char *name, unsigned int flags);
+void  BINKCALL BinkClose(HBINK bnk);
+int   BINKCALL BinkWait(HBINK bnk);
+int   BINKCALL BinkDoFrame(HBINK bnk);
+void  BINKCALL BinkNextFrame(HBINK bnk);
+int   BINKCALL BinkGoto(HBINK bnk, unsigned int frame, int flags);
+int   BINKCALL BinkCopyToBuffer(HBINK bnk, void *dest, int destpitch,
                                  unsigned int destheight, unsigned int destx,
                                  unsigned int desty, unsigned int flags);
-int   __stdcall BinkSetVolume(HBINK bnk, unsigned int trackid, int volume);
-void  __stdcall BinkSetSoundTrack(unsigned int total_tracks, unsigned int *tracks);
-int   __stdcall BinkSetSoundSystem(BINKSNDSYSOPEN open, unsigned int param);
-int   __stdcall BinkOpenDirectSound(unsigned int param);
+int   BINKCALL BinkSetVolume(HBINK bnk, unsigned int trackid, int volume);
+void  BINKCALL BinkSetSoundTrack(unsigned int total_tracks, unsigned int *tracks);
+int   BINKCALL BinkSetSoundSystem(BINKSNDSYSOPEN open, BINKSNDSYSPARAM param);
+int   BINKCALL BinkOpenDirectSound(BINKSNDSYSPARAM param);
 
 #define BinkSoundUseDirectSound(lpDS) \
-	BinkSetSoundSystem((BINKSNDSYSOPEN)BinkOpenDirectSound, (unsigned int)(lpDS))
+	BinkSetSoundSystem((BINKSNDSYSOPEN)BinkOpenDirectSound, (BINKSNDSYSPARAM)(lpDS))
 
 #ifdef __cplusplus
 }

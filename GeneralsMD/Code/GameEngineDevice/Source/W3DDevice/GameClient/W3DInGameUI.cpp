@@ -28,6 +28,9 @@
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 
 #include <stdlib.h>
+#if !defined(_WIN32)
+#include "WWLib/mmsys.h"
+#endif
 
 #include "Common/GlobalData.h"
 #include "Common/Player.h"
@@ -56,10 +59,26 @@
 #include "W3DDevice/GameClient/W3DDisplay.h"
 #include "W3DDevice/GameClient/W3DScene.h"
 #include "W3DDevice/Common/W3DConvert.h"
+#if defined(_WIN32)
 #include "WW3D2/WW3D.h"
+#else
+#include "WW3D2/ww3d.h"
+#endif
+#if defined(_WIN32)
 #include "WW3D2/HAnim.h"
+#else
+#include "WW3D2/hanim.h"
+#endif
+#if defined(_WIN32)
 #include "WW3D2/Texture.h"
+#else
+#include "WW3D2/texture.h"
+#endif
+#if defined(_WIN32)
 #include "WW3D2/DX8Wrapper.h"
+#else
+#include "WW3D2/dx8wrapper.h"
+#endif
 #include "WW3D2/dx8vertexbuffer.h"
 #include "WW3D2/dx8indexbuffer.h"
 #include "WW3D2/vertmaterial.h"
@@ -76,9 +95,21 @@
 
 #ifdef _DEBUG
 #include "W3DDevice/GameClient/HeightMap.h"
+#if defined(_WIN32)
 #include "WW3D2/DX8IndexBuffer.h"
+#else
+#include "WW3D2/dx8indexbuffer.h"
+#endif
+#if defined(_WIN32)
 #include "WW3D2/DX8VertexBuffer.h"
+#else
+#include "WW3D2/dx8vertexbuffer.h"
+#endif
+#if defined(_WIN32)
 #include "WW3D2/VertMaterial.h"
+#else
+#include "WW3D2/vertmaterial.h"
+#endif
 class DebugHintObject : public RenderObjClass
 {	
 
@@ -980,6 +1011,7 @@ static OrderCursorArt s_orderCursorArt[ Mouse::NUM_MOUSE_CURSORS ];
 //-------------------------------------------------------------------------------------------------
 static const Image *loadOrderCursorImage( Mouse::MouseCursor cursor, ICoord2D *hotSpot )
 {
+#ifdef _WIN32
 	const AsciiString& name = TheMouse->m_cursorInfo[ cursor ].textureName;
 	if( name.isEmpty() )
 		return NULL;
@@ -1075,6 +1107,9 @@ static const Image *loadOrderCursorImage( Mouse::MouseCursor cursor, ICoord2D *h
 		DeleteObject( info.hbmMask );
 
 	return result;
+#else
+	return NULL;
+#endif
 }
 
 //-------------------------------------------------------------------------------------------------

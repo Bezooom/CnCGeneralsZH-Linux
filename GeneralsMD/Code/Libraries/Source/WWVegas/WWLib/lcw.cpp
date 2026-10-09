@@ -38,6 +38,7 @@
 
 #include	"always.h"
 #include	"lcw.h"
+#include	<stdint.h>
 
 /***************************************************************************
  * LCW_Uncomp -- Decompress an LCW encoded data block.                     *
@@ -124,7 +125,7 @@ int LCW_Uncomp(void const * source, void * dest, unsigned long )
 					word_data  = (word_data << 24) + (word_data << 16) + (word_data << 8) + word_data;
 					source_ptr += 3;
 
-					copy_ptr = dest_ptr + 4 - ((unsigned) dest_ptr & 0x3);
+					copy_ptr = dest_ptr + 4 - ((uintptr_t)dest_ptr & 0x3);
 					count -= (copy_ptr - dest_ptr);
 					while (dest_ptr < copy_ptr) *dest_ptr++ = data;
 
@@ -454,10 +455,134 @@ outofhere:
 		mov	eax,edi		//; get the last compressed address
 		sub	eax,[a1stdest]	//; sub the first for the compressed size
 		mov	[retval],eax
-	}
-#endif
-	return(retval);
-}
-#endif
+ 	}
+ #endif
+ 	return(retval);
+ }
+ #else
+ /*ARGSUSED*/
+ int LCW_Comp(void const * source, void * dest, int datasize)
+ {
+ 	/*
+ 	**	Portable C twin of the assembler above (which needs MSVC x86).
+ 	**	Emits the same code set with the same thresholds -- short matches
+ 	**	3-10 bytes within 12 bits back, medium matches 11-64 bytes by
+ 	**	absolute output offset, RLE/long runs of 65+ bytes, literals grouped
+ 	**	up to 63 per code, 0x80 terminator -- so any difference from the asm
+ 	**	is tie-breaking between equal matches, never validity. The two
+ 	**	degenerate sizes are handled identically to the block above.
+ 	*/
+ 	int retval = 0;
+ 
+ 	if (datasize <= 1) {
+ 		unsigned char * dest_ptr = (unsigned char *)dest;
+ 		if (datasize == 1) {
+ 			*dest_ptr++ = 0x81;								// medium copy, one byte follows
+ 			*dest_ptr++ = *(unsigned char const *)source;
+ 		}
+ 		*dest_ptr++ = 0x80;									// end of data
+ 		return ((int)(dest_ptr - (unsigned char *)dest));
+ 	}
+ 
+ 	{
+ 		unsigned char const * src = (unsigned char const *)source;
+ 		unsigned char * dst = (unsigned char *)dest;
+ 		unsigned char const * src_end = src + datasize;
+ 		unsigned char const * p = src;
+ 		unsigned char * lenoff = NULL;	// open literal code, if any
+ 		int inlen = 0;
+ 
+ 		while (p < src_end) {
+ 			/* RLE check: a run of identical bytes 65 or longer goes out
+ 			   as FE (the asm probes [esi+64] first, then counts bounded
+ 			   by end of data; the bounded count below subsumes both). */
+ 			unsigned char const * r = p + 1;
+ 			while (r < src_end && *r == *p) ++r;
+ 			{
+ 				size_t run = (size_t)(r - p);
+ 				if (run >= 65) {
+ 					size_t chunk = run > 65535 ? 65535 : run;
+ 					*dst++ = 0xfe;
+ 					*dst++ = (unsigned char)(chunk & 0xff);
+ 					*dst++ = (unsigned char)((chunk >> 8) & 0xff);
+ 					*dst++ = *p;
+ 					p += chunk;
+ 					inlen = 0;
+ 					continue;
+ 				}
+ 			}
+ 
+ 			/* Longest match in the already-emitted history. */
+ 			size_t remaining = (size_t)(src_end - p);
+ 			size_t max_cmp = remaining > 65535 ? 65535 : remaining;
+ 			size_t best_len = 0;
+ 			unsigned char const * best_q = NULL;
+ 			{
+ 				unsigned char const * q;
+ 				for (q = src; q < p; ++q) {
+ 					size_t n;
+ 					if (*q != *p) continue;
+ 					n = 1;
+ 					while (n < max_cmp && q[n] == p[n]) ++n;
+ 					if (n > best_len) {
+ 						best_len = n;
+ 						best_q = q;
+ 						if (best_len >= max_cmp) break;
+ 					}
+ 				}
+ 			}
+ 
+ 			if (best_len >= 3) {
+ 				size_t abs_off = (size_t)(best_q - src);
+ 				size_t rel_off = (size_t)(p - best_q);
+ 				if (best_len <= 10 && rel_off <= 0x0fff) {
+ 					/* Short copy from destination, offset back. */
+ 					unsigned off = (unsigned)rel_off;
+ 					*dst++ = (unsigned char)(((best_len - 3) << 4) | ((off >> 8) & 0x0f));
+ 					*dst++ = (unsigned char)(off & 0xff);
+ 				} else if (best_len <= 64 && abs_off <= 0xffff) {
+ 					/* Medium copy from destination, absolute offset. */
+ 					*dst++ = (unsigned char)(0xc0 | (best_len - 3));
+ 					*dst++ = (unsigned char)(abs_off & 0xff);
+ 					*dst++ = (unsigned char)((abs_off >> 8) & 0xff);
+ 				} else if (abs_off <= 0xffff) {
+ 					/* Long copy from destination, absolute offset. */
+ 					size_t chunk = best_len > 65535 ? 65535 : best_len;
+ 					*dst++ = 0xff;
+ 					*dst++ = (unsigned char)(chunk & 0xff);
+ 					*dst++ = (unsigned char)((chunk >> 8) & 0xff);
+ 					*dst++ = (unsigned char)(abs_off & 0xff);
+ 					*dst++ = (unsigned char)((abs_off >> 8) & 0xff);
+ 					best_len = chunk;
+ 				} else {
+ 					/* Beyond 16-bit absolute reach (the asm truncates
+ 					   here); fall through to literals, which always work. */
+ 					best_len = 0;
+ 				}
+ 				if (best_len >= 3) {
+ 					p += best_len;
+ 					inlen = 0;
+ 					continue;
+ 				}
+ 			}
+ 
+ 			/* Literal byte: patch into the open length code, or open a
+ 			   fresh 0x80 placeholder (63 literals per code, like the asm). */
+ 			if (!inlen || *lenoff == 0xbf) {
+ 				lenoff = dst++;
+ 				*lenoff = 0x80;
+ 			}
+ 			(*lenoff)++;
+ 			*dst++ = *p++;
+ 			inlen = 1;
+ 		}
+ 
+ 		*dst++ = 0x80;										// end of data
+ 		retval = (int)(dst - (unsigned char *)dest);
+ 	}
+ 
+ 	return(retval);
+ }
+ #endif
 
 

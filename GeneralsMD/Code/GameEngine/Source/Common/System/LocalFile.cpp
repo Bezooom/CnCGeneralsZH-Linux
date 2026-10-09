@@ -49,7 +49,11 @@
 
 #include <stdio.h>
 #include <fcntl.h>
+#if defined(_MSC_VER)
 #include <io.h>
+#else
+#include <unistd.h>
+#endif
 #include <string.h>
 #include <sys/stat.h>
 #include <stdlib.h>
@@ -142,7 +146,7 @@ LocalFile::~LocalFile()
 #else
 	if( m_handle != -1 )
 	{
-		_close( m_handle );
+		::close( m_handle );
 		m_handle = -1;
 		--s_totalOpen;
 	}
@@ -267,7 +271,7 @@ Bool LocalFile::open( const Char *filename, Int access )
 		flags |= _O_RDONLY;
 	}
 
-	m_handle = _open( filename, flags , _S_IREAD | _S_IWRITE);
+	m_handle = ::open( filename, flags , _S_IREAD | _S_IWRITE);
 
 	if( m_handle == -1 )
 	{
@@ -326,7 +330,7 @@ Int LocalFile::read( void *buffer, Int bytes )
 #ifdef USE_BUFFERED_IO
 		fseek(m_file, bytes, SEEK_CUR);
 #else
-		_lseek(m_handle, bytes, SEEK_CUR);
+		::lseek(m_handle, bytes, SEEK_CUR);
 #endif
 		return bytes;
 	}
@@ -334,7 +338,7 @@ Int LocalFile::read( void *buffer, Int bytes )
 #ifdef USE_BUFFERED_IO
 	Int ret = fread(buffer, 1, bytes, m_file);
 #else
-	Int ret = _read( m_handle, buffer, bytes );
+	Int ret = ::read( m_handle, buffer, bytes );
 #endif
 
 	return ret;
@@ -355,7 +359,7 @@ Int LocalFile::write( const void *buffer, Int bytes )
 #ifdef USE_BUFFERED_IO
 	Int ret = fwrite(buffer, 1, bytes, m_file);
 #else
-	Int ret = _write( m_handle, buffer, bytes );
+	Int ret = ::write( m_handle, buffer, bytes );
 #endif
 	return ret;
 }
@@ -392,7 +396,7 @@ Int LocalFile::seek( Int pos, seekMode mode)
 	else
 		return -1;
 #else
-	Int ret = _lseek( m_handle, pos, lmode );
+	Int ret = ::lseek( m_handle, pos, lmode );
 #endif
 	return ret;
 }
@@ -414,7 +418,7 @@ Bool LocalFile::scanInt(Int &newInt)
 #ifdef USE_BUFFERED_IO
 		val = fread(&c, 1, 1, m_file);
 #else
-		val = _read( m_handle, &c, 1);
+		val = ::read( m_handle, &c, 1);
 #endif
 	} while ((val != 0) && (((c < '0') || (c > '9')) && (c != '-')));
 
@@ -427,7 +431,7 @@ Bool LocalFile::scanInt(Int &newInt)
 #ifdef USE_BUFFERED_IO
 		val = fread(&c, 1, 1, m_file);
 #else
-		val = _read( m_handle, &c, 1);
+		val = ::read( m_handle, &c, 1);
 #endif
 	} while ((val != 0) && ((c >= '0') && (c <= '9')));
 
@@ -436,7 +440,7 @@ Bool LocalFile::scanInt(Int &newInt)
 #ifdef USE_BUFFERED_IO
 		fseek(m_file, -1, SEEK_CUR);
 #else
-		_lseek(m_handle, -1, SEEK_CUR);
+		::lseek(m_handle, -1, SEEK_CUR);
 #endif
 	}
 
@@ -462,7 +466,7 @@ Bool LocalFile::scanReal(Real &newReal)
 #ifdef USE_BUFFERED_IO
 		val = fread(&c, 1, 1, m_file);
 #else
-		val = _read( m_handle, &c, 1);
+		val = ::read( m_handle, &c, 1);
 #endif
 	} while ((val != 0) && (((c < '0') || (c > '9')) && (c != '-') && (c != '.')));
 
@@ -478,7 +482,7 @@ Bool LocalFile::scanReal(Real &newReal)
 #ifdef USE_BUFFERED_IO
 		val = fread(&c, 1, 1, m_file);
 #else
-		val = _read(m_handle, &c, 1);
+		val = ::read(m_handle, &c, 1);
 #endif
 	} while ((val != 0) && (((c >= '0') && (c <= '9')) || ((c == '.') && !sawDec)));
 
@@ -486,7 +490,7 @@ Bool LocalFile::scanReal(Real &newReal)
 #ifdef USE_BUFFERED_IO
 		fseek(m_file, -1, SEEK_CUR);
 #else
-		_lseek(m_handle, -1, SEEK_CUR);
+		::lseek(m_handle, -1, SEEK_CUR);
 #endif
 	}
 
@@ -511,7 +515,7 @@ Bool LocalFile::scanString(AsciiString &newString)
 #ifdef USE_BUFFERED_IO
 		val = fread(&c, 1, 1, m_file);
 #else
-		val = _read(m_handle, &c, 1);
+		val = ::read(m_handle, &c, 1);
 #endif
 	} while ((val != 0) && (isspace(c)));
 
@@ -524,7 +528,7 @@ Bool LocalFile::scanString(AsciiString &newString)
 #ifdef USE_BUFFERED_IO
 		val = fread(&c, 1, 1, m_file);
 #else
-		val = _read(m_handle, &c, 1);
+		val = ::read(m_handle, &c, 1);
 #endif
 	} while ((val != 0) && (!isspace(c)));
 
@@ -532,7 +536,7 @@ Bool LocalFile::scanString(AsciiString &newString)
 #ifdef USE_BUFFERED_IO
 		fseek(m_file, -1, SEEK_CUR);
 #else
-		_lseek(m_handle, -1, SEEK_CUR);
+		::lseek(m_handle, -1, SEEK_CUR);
 #endif
 	}
 
@@ -555,13 +559,13 @@ void LocalFile::nextLine(Char *buf, Int bufSize)
 #ifdef USE_BUFFERED_IO
 			val = fread(&c, 1, 1, m_file);
 #else
-			val = _read(m_handle, &c, 1);
+			val = ::read(m_handle, &c, 1);
 #endif
 		} else {
 #ifdef USE_BUFFERED_IO
 			val = fread(buf + i, 1, 1, m_file);
 #else
-			val = _read(m_handle, buf + i, 1);
+			val = ::read(m_handle, buf + i, 1);
 #endif
 			c = buf[i];
 		}

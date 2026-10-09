@@ -22,12 +22,59 @@
 // $Revision: #1 $
 // $DateTime: 2003/07/03 11:55:26 $
 //
-// ©2003 Electronic Arts
+// ï¿½2003 Electronic Arts
 //
 // Implementation of internal code
 //////////////////////////////////////////////////////////////////////////////
 #include "_pch.h"
 
+#if !defined(_MSC_VER)
+#include <stdlib.h>
+#include <string.h>
+#include <stdio.h>
+#include <unistd.h>
+
+void DebugInternalAssert(const char *file, int line, const char *expr)
+{
+  // No dialog on Linux; report and die like TerminateProcess did.
+  fprintf(stderr, "Internal assert failed\nFile %s, line %i:\n%s\n",
+          file, line, expr);
+  fflush(stderr);
+  _exit(666);
+}
+
+void *DebugAllocMemory(unsigned numBytes)
+{
+  // malloc(0) may return NULL, which callers read as failure.
+  void *p = malloc(numBytes ? numBytes : 1);
+  if (!p)
+    DCRASH_RELEASE("Debug mem alloc failed");
+  return p;
+}
+
+void *DebugReAllocMemory(void *oldPtr, unsigned newSize)
+{
+  if (!oldPtr)
+    return newSize ? DebugAllocMemory(newSize) : 0;
+
+  if (!newSize)
+  {
+    free(oldPtr);
+    return 0;
+  }
+
+  void *p = realloc(oldPtr, newSize);
+  if (!p)
+    DCRASH_RELEASE("Debug mem realloc failed");
+  return p;
+}
+
+void DebugFreeMemory(void *ptr)
+{
+  // free(NULL) is a no-op, matching the guarded GlobalFree above.
+  free(ptr);
+}
+#else
 void DebugInternalAssert(const char *file, int line, const char *expr)
 {
   // dangerous as well but since this function is used in this
@@ -36,7 +83,7 @@ void DebugInternalAssert(const char *file, int line, const char *expr)
   wsprintf(buf,"File %s, line %i:\n%s",file,line,expr);
   MessageBox(NULL,buf,"Internal assert failed",
                         MB_OK|MB_ICONSTOP|MB_TASKMODAL|MB_SETFOREGROUND);
-  
+
   // stop right now!
   TerminateProcess(GetCurrentProcess(),666);
 }
@@ -84,3 +131,4 @@ void DebugFreeMemory(void *ptr)
   if (ptr)
     GlobalFree((HGLOBAL)ptr);
 }
+#endif // !defined(_MSC_VER)

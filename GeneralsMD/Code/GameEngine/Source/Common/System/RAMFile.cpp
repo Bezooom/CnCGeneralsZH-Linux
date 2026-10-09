@@ -49,7 +49,11 @@
 
 #include <stdio.h>
 #include <fcntl.h>
+#if defined(_MSC_VER)
 #include <io.h>
+#else
+#include <unistd.h>
+#endif
 #include <string.h>
 #include <sys/stat.h>
 

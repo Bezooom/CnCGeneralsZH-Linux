@@ -34,6 +34,34 @@
 
 #include "Lib/BaseType.h"
 
+#if !defined(_MSC_VER)
+// Linux twin of the MSVC x87 control-word API (<float.h> there). Real
+// fldcw/fstcw/fninit underneath, same Intel bit layout, so setFPMode(),
+// getFPMode() and the tests' mode-poking all behave identically.
+#define _MCW_PC 0x300
+#define _MCW_RC 0x0C00
+#define _MCW_EM 0x003F
+#define _PC_24 0x0000
+#define _PC_53 0x0200
+#define _PC_64 0x0300
+#define _RC_NEAR 0x0000
+#define _RC_DOWN 0x0400
+#define _RC_UP 0x0800
+#define _RC_CHOP 0x0C00
+static inline unsigned _controlfp(unsigned newVal, unsigned mask)
+{
+  unsigned short oldCw, newCw;
+  __asm__ __volatile__("fstcw %0" : "=m"(oldCw));
+  newCw = (unsigned short)((oldCw & ~mask) | (newVal & mask));
+  __asm__ __volatile__("fldcw %0" : : "m"(newCw));
+  return oldCw;
+}
+static inline void _fpreset(void)
+{
+  __asm__ __volatile__("fninit");
+}
+#endif
+
 /**
   * setFPMode sets the FPU internal precision and rounding mode.  As DirectX is not guaranteed to
 	* leave the FPU in a good state, we must call this at the start of GameLogic::update() and

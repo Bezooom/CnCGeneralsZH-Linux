@@ -46,9 +46,15 @@
 //-----------------------------------------------------------------------------
 // SYSTEM INCLUDES ////////////////////////////////////////////////////////////
 //-----------------------------------------------------------------------------
+#if defined(_WIN32)
 #define WIN32_LEAN_AND_MEAN
+#ifdef _WIN32
 #include <windows.h>
+#endif
 #include <mmsystem.h>
+#else
+#include "WWLib/mmsys.h"
+#endif
 #include <time.h>
 //-----------------------------------------------------------------------------
 // USER INCLUDES //////////////////////////////////////////////////////////////
@@ -75,7 +81,11 @@
 // DEFINES ////////////////////////////////////////////////////////////////////
 //-----------------------------------------------------------------------------
 
+#if defined(_WIN32)
 void drawText( GameWindow *window, WinInstanceData *instData );
+#else
+static void drawText( GameWindow *window, WinInstanceData *instData );
+#endif
 static Color BrownishColor = GameMakeColor(167,134,94,255);
 static IRegion2D clipRegion;
 //-----------------------------------------------------------------------------

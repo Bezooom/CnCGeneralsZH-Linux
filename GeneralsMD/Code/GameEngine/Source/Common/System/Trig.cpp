@@ -46,7 +46,7 @@
 #include "PreRTS.h"
 
 #include "Lib/BaseType.h"
-#include "Lib/Trig.h"
+#include "Lib/trig.h"
 
 #include "dettrig.h"
 

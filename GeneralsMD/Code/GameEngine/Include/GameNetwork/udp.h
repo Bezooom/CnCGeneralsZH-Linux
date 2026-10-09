@@ -33,7 +33,9 @@
 #endif
 
 #ifdef _WINDOWS
+#if defined(_MSC_VER)
 #include <winsock.h>
+#endif
 #include <io.h>
 //#define close _close
 //#define read  _read

@@ -41,6 +41,77 @@
 #include "math.h"
 #include <assert.h>
 
+#if defined(PLATFORM_LINUX) || defined(__linux__) || defined(_UNIX)
+// ---------------------------------------------------------------------------
+// Linux: TSC calibration without QueryPerformanceFrequency or realtime
+// priority. clock_gettime(CLOCK_MONOTONIC) is the reference; RDTSC via the
+// compiler intrinsic. No priority boost: the 50ms window averages scheduling
+// jitter well enough for MHz reporting and profile calibration.
+// ---------------------------------------------------------------------------
+#include <time.h>
+#include <stdint.h>
+#if defined(__i386__) || defined(__x86_64__)
+#include <x86intrin.h>
+static inline uint64_t mpu_rdtsc(void) { return __rdtsc(); }
+#else
+static inline uint64_t mpu_rdtsc(void)
+{
+	struct timespec ts;
+	clock_gettime(CLOCK_MONOTONIC_RAW, &ts);
+	return (uint64_t)ts.tv_sec * 1000000000ULL + (uint64_t)ts.tv_nsec;
+}
+#endif
+
+static unsigned long mpu_calibrate_mhz(void)
+{
+	struct timespec t0, t1;
+	uint64_t c0, c1;
+	clock_gettime(CLOCK_MONOTONIC, &t0);
+	c0 = mpu_rdtsc();
+	do {
+		clock_gettime(CLOCK_MONOTONIC, &t1);
+	} while ((t1.tv_sec - t0.tv_sec) * 1000000000LL +
+		(t1.tv_nsec - t0.tv_nsec) < 50000000LL);
+	c1 = mpu_rdtsc();
+	uint64_t ns = (uint64_t)(t1.tv_sec - t0.tv_sec) * 1000000000ULL +
+		(uint64_t)(t1.tv_nsec - t0.tv_nsec);
+	if (ns == 0)
+		return 0;
+	return (unsigned long)((c1 - c0) * 1000ULL / ns);
+}
+
+unsigned long Get_CPU_Clock(unsigned long & high)
+{
+	uint64_t tsc = mpu_rdtsc();
+	high = (unsigned long)(tsc >> 32);
+	return (unsigned long)(tsc & 0xFFFFFFFFULL);
+}
+
+unsigned long Get_CPU_Rate(unsigned long & high)
+{
+	unsigned long mhz = mpu_calibrate_mhz();
+	uint64_t ticks = (uint64_t)mhz * 1000000ULL;
+	high = (unsigned long)(ticks >> 32);
+	return (unsigned long)(ticks & 0xFFFFFFFFULL);
+}
+
+static unsigned long TSC_Low;
+static unsigned long TSC_High;
+
+void RDTSC(void)
+{
+	uint64_t tsc = mpu_rdtsc();
+	TSC_Low = (unsigned long)(tsc & 0xFFFFFFFFULL);
+	TSC_High = (unsigned long)(tsc >> 32);
+}
+
+int Get_RDTSC_CPU_Speed(void)
+{
+	return (int)mpu_calibrate_mhz();
+}
+
+#else // Windows path below
+
 typedef union {
 	LARGE_INTEGER LargeInt;
 	struct QuadPart {
@@ -250,11 +321,13 @@ int Get_RDTSC_CPU_Speed(void)
 
 	int norm_freq = total_cycles / total_ticks;
 
-	freq = norm_freq * 10;
-	if ( (freq3 - freq) >= ROUND_THRESHOLD ) norm_freq++;
+ 	freq = norm_freq * 10;
+ 	if ( (freq3 - freq) >= ROUND_THRESHOLD ) norm_freq++;
 
-	return (norm_freq);
+ 	return (norm_freq);
 
-}
+ }
+
+#endif // PLATFORM_LINUX || __linux__ || _UNIX
 
 

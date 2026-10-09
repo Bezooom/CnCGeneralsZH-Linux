@@ -53,7 +53,13 @@
 #include "wwprofile.h"
 #include "fastallocator.h"
 #include "wwdebug.h"
+#if defined(PLATFORM_LINUX) || defined(_UNIX) || defined(__linux__)
+#include <pthread.h>
+#include <unistd.h>
+#include <sys/syscall.h>
+#else
 #include <windows.h>
+#endif
 //#include "systimer.h"
 #include "systimer.h"
 #include "rawfile.h"
@@ -62,6 +68,21 @@
 #include "cpudetect.h"
 #include "hashtemplate.h"
 #include <stdio.h>
+#include <ctype.h>
+#include <string.h>
+
+#if defined(PLATFORM_LINUX) || defined(_UNIX) || defined(__linux__)
+// Linux: GetCurrentThreadId() is Win32; gettid is the matching per-thread id.
+static inline unsigned int WWProfile_GetCurrentThreadId(void)
+{
+	return (unsigned int)syscall(SYS_gettid);
+}
+#else
+static inline unsigned int WWProfile_GetCurrentThreadId(void)
+{
+	return ::GetCurrentThreadId();
+}
+#endif
 
 static SimpleDynVecClass<WWProfileHierachyNodeClass*> ProfileCollectVector;
 static double TotalFrameTimes;
@@ -77,10 +98,12 @@ unsigned WWProfile_Get_System_Time()
 
 WWINLINE double WWProfile_Get_Inv_Processor_Ticks_Per_Second(void) 
 {
-#ifdef WIN32
+#if defined(WIN32) && !defined(PLATFORM_LINUX) && !defined(_UNIX)
 	return CPUDetectClass::Get_Inv_Processor_Ticks_Per_Second();
-#elif defined (_UNIX)
+#elif defined (_UNIX) || defined(PLATFORM_LINUX) || defined(__linux__)
 	return 0.001;
+#else
+	return CPUDetectClass::Get_Inv_Processor_Ticks_Per_Second();
 #endif
 }
 
@@ -98,7 +121,7 @@ WWINLINE double WWProfile_Get_Inv_Processor_Ticks_Per_Second(void)
  *=============================================================================================*/
 inline void WWProfile_Get_Ticks(_int64 * ticks)
 {
-#ifdef _UNIX
+#if defined(_UNIX) || defined(PLATFORM_LINUX) || defined(__linux__)
        *ticks = TIMEGETTIME();
 #else
 	__asm
@@ -389,7 +412,7 @@ static unsigned int				ThreadID = static_cast<unsigned int>(-1);
  *=============================================================================================*/
 void	WWProfileManager::Start_Profile( const char * name )
 {
-	if (::GetCurrentThreadId() != ThreadID) {
+	if (WWProfile_GetCurrentThreadId() != ThreadID) {
 		return;
 	}
 
@@ -403,7 +426,7 @@ void	WWProfileManager::Start_Profile( const char * name )
 
 void	WWProfileManager::Start_Root_Profile( const char * name )
 {
-	if (::GetCurrentThreadId() != ThreadID) {
+	if (WWProfile_GetCurrentThreadId() != ThreadID) {
 		return;
 	}
 
@@ -429,7 +452,7 @@ void	WWProfileManager::Start_Root_Profile( const char * name )
  *=============================================================================================*/
 void	WWProfileManager::Stop_Profile( void )
 {
-	if (::GetCurrentThreadId() != ThreadID) {
+	if (WWProfile_GetCurrentThreadId() != ThreadID) {
 		return;
 	}
 
@@ -442,7 +465,7 @@ void	WWProfileManager::Stop_Profile( void )
 
 void	WWProfileManager::Stop_Root_Profile( void )
 {
-	if (::GetCurrentThreadId() != ThreadID) {
+	if (WWProfile_GetCurrentThreadId() != ThreadID) {
 		return;
 	}
 
@@ -471,7 +494,7 @@ void	WWProfileManager::Stop_Root_Profile( void )
  *=============================================================================================*/
 void	WWProfileManager::Reset( void )
 {
-	ThreadID = ::GetCurrentThreadId();
+	ThreadID = WWProfile_GetCurrentThreadId();
 
 	Root.Reset();
 	FrameCounter = 0;

@@ -43,12 +43,17 @@
 
 #include "always.h"
 #pragma warning (push, 3)
+#if defined(_WIN32)
 #include "Mss.H"
-#pragma warning (pop)
-
 #include "Vector.H"
 #include "SoundBuffer.H"
 #include "AudioEvents.H"
+#else
+#include "Mss.h"
+#include "Vector.H"
+#include "SoundBuffer.h"
+#include "AudioEvents.h"
+#endif
 #include "wwstring.h"
 
 /////////////////////////////////////////////////////////////////////////////////

@@ -28,6 +28,10 @@
 #include <vector>
 #include <stdlib.h>
 
+#if !defined(_MSC_VER)
+// Linux shims (__int64 etc.) the public debug headers need to parse.
+#include "debug_linux.h"
+#endif
 #include "debug.h"
 
 
@@ -147,8 +151,14 @@ bool TestCmds::Execute(Debug &dbg, const char *cmd, CommandMode cmdmode,
 	if (!strcmp(cmd, "ints")) {
 		dbg << int(-42) << " " << unsigned(4000000000u) << " " << long(-7L)
 		    << " " << (unsigned long)(0xFFFFFFFFul) << " " << short(-3)
-		    << " " << (unsigned short)(65535) << " " << (__int64)(-5000000000i64)
+		    << " " << (unsigned short)(65535)
+#if defined(_MSC_VER)
+		    << " " << (__int64)(-5000000000i64)
 		    << " " << (unsigned __int64)(10000000000ui64) << " " << true << " " << false;
+#else
+		    << " " << (__int64)(-5000000000LL)
+		    << " " << (unsigned long long)(10000000000ULL) << " " << true << " " << false;
+#endif
 		return true;
 	}
 

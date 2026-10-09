@@ -35,11 +35,22 @@
 // around both halves.  A file the engine writes is always in that shape, so the two agree without
 // sharing code.
 
-#include <windows.h>
-#include <shlobj.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#if defined(_MSC_VER)
+#include <windows.h>
+#include <shlobj.h>
+#else
+// Linux: win.h carries MAX_PATH; the shell/registry calls below have
+// POSIX twins in the function bodies. The UserDataLeafName lookup uses
+// WWDownload's registry flavor (in-memory backend on Linux).
+#include "win.h"
+#include <sys/stat.h>
+#include <string>
+#include "WWDownload/Registry.h"
+#endif
 
 /** Where this user's Documents folder is.
 	*
@@ -50,6 +61,32 @@
 	* SHGetKnownFolderPath has no such limit. It is Vista and later, so it is bound at run time and
 	* the old call is still the fallback. The GUID is spelled out here rather than taken from
 	* KnownFolders.h so that nothing has to link another lib for one constant. */
+#if !defined(_MSC_VER)
+// Linux twin: ~/Documents when it exists, else $HOME. (XDG user-dirs
+// parsing is Phase-6 polish; this matches what the engine falls back to
+// when the folder is missing.)
+inline bool findDocumentsFolderA( char *out, size_t outSize )
+{
+	if (out == NULL || outSize == 0)
+		return false;
+	out[0] = 0;
+
+	const char *home = getenv( "HOME" );
+	if (home == NULL || *home == 0)
+		return false;
+
+	char probe[MAX_PATH];
+	snprintf( probe, sizeof( probe ), "%s/Documents", home );
+	struct stat st;
+	const char *docs = (stat( probe, &st ) == 0 && S_ISDIR( st.st_mode )) ? probe : home;
+
+	if (strlen( docs ) + 1 > outSize)
+		return false;
+
+	strcpy( out, docs );
+	return true;
+}
+#else
 inline bool findDocumentsFolderA( char *out, size_t outSize )
 {
 	if (out == NULL || outSize == 0)
@@ -96,12 +133,46 @@ inline bool findDocumentsFolderA( char *out, size_t outSize )
 	strcpy( out, documents );
 	return true;
 }
+#endif // _MSC_VER (Linux findDocumentsFolderA above)
 
 /** The directory the game keeps Options.ini, replays and save games in.
 	*
 	* GlobalData works this out the same way at startup (Documents plus a leaf name the installer
 	* writes into the registry), but it does it far too late to help WinMain.  Both defaults have to
 	* match GlobalData.cpp's or the two read different files. */
+#if !defined(_MSC_VER)
+// Linux twin: same shape (documents + leaf + trailing separator), '/'-
+// separated, leaf overridable through the same registry lookup the engine
+// uses (which misses on Linux, keeping the default).
+inline bool findUserDataDirectory( char *out, size_t outSize )
+{
+	if (outSize == 0)
+		return false;
+	out[0] = 0;
+
+	char documents[MAX_PATH];
+	if (!findDocumentsFolderA( documents, sizeof( documents ) ))
+		return false;
+
+	char leaf[MAX_PATH] = "Command and Conquer Generals Zero Hour Data";
+	{
+		std::string overrideLeaf;
+		extern bool GetStringFromRegistry(std::string path, std::string key, std::string &val);
+		if (GetStringFromRegistry( "", "UserDataLeafName", overrideLeaf ) && !overrideLeaf.empty())
+		{
+			strncpy( leaf, overrideLeaf.c_str(), sizeof( leaf ) - 1 );
+			leaf[sizeof( leaf ) - 1] = 0;
+		}
+	}
+
+	if (snprintf( out, outSize, "%s/%s/", documents, leaf ) >= (int)outSize)
+	{
+		out[0] = 0;
+		return false;
+	}
+	return true;
+}
+#else
 inline bool findUserDataDirectory( char *out, size_t outSize )
 {
 	if (outSize == 0)
@@ -151,6 +222,7 @@ inline bool findUserDataDirectory( char *out, size_t outSize )
 	out[outSize - 1] = 0;
 	return true;
 }
+#endif // _MSC_VER (Linux findUserDataDirectory above)
 
 /** The value stored under this key in an already-open preferences file.
 	*

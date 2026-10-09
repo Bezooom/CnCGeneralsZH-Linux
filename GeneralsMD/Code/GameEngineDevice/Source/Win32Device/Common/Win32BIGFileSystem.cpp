@@ -26,17 +26,27 @@
 // Bryan Cleveland, August 2002
 /////////////////////////////////////////////////////////////
 
+#if defined(_WIN32)
 #include <winsock2.h>
+#endif
 #include "Common/AudioAffect.h"
 #include "Common/ArchiveFile.h"
 #include "Common/ArchiveFileSystem.h"
+#if defined(_WIN32)
 #include "Common/File.h"
+#else
+#include "Common/file.h"
+#endif
 #include "Common/GameAudio.h"
 #include "Common/GameMemory.h"
 #include "Common/LocalFileSystem.h"
 #include "Win32Device/Common/Win32BIGFile.h"
 #include "Win32Device/Common/Win32BIGFileSystem.h"
+#if defined(_WIN32)
 #include "Common/registry.h"
+#else
+#include "Common/Registry.h"
+#endif
 
 #ifdef _INTERNAL
 // for occasional debugging...

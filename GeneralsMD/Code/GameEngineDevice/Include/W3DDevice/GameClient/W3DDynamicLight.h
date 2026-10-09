@@ -31,8 +31,16 @@
 #ifndef W3D_DYNAMIC_LIGHT_H
 #define W3D_DYNAMIC_LIGHT_H
 
+#if defined(_WIN32)
 #include "WW3D2/Light.h"
+#else
+#include "WW3D2/light.h"
+#endif
+#if defined(_WIN32)
 #include "lib/baseType.h"
+#else
+#include "Lib/BaseType.h"
+#endif
 class HeightMapRenderObjClass;
 
 /*************************************************************************

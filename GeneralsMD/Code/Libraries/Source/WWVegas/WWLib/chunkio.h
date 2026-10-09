@@ -375,6 +375,4 @@ private:
 #define OBSOLETE_MICRO_CHUNK(id) \
 	case (id): break;
 
-
-
 #endif CHUNKIO_H

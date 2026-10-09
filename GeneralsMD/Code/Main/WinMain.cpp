@@ -31,6 +31,7 @@
 ///////////////////////////////////////////////////////////////////////////////
 
 // SYSTEM INCLUDES ////////////////////////////////////////////////////////////
+#ifndef PLATFORM_LINUX
 #define WIN32_LEAN_AND_MEAN  // only bare bones windows stuff wanted
 #include <windows.h>
 #include <stdlib.h>
@@ -38,7 +39,10 @@
 #include <eh.h>
 #include <ole2.h>
 #include <dbt.h>
-
+#else
+#include <stdlib.h>
+#include "win.h"
+#endif
 // USER INCLUDES //////////////////////////////////////////////////////////////
 #include "WinMain.h"
 #include "Lib/BaseType.h"
@@ -59,16 +63,17 @@
 #include "Common/Team.h"
 #include "GameClient/InGameUI.h"
 #include "GameClient/GameClient.h"
+#include "GameClient/Keyboard.h"
 #include "GameLogic/GameLogic.h"  ///< @todo for demo, remove
 #include "GameClient/Mouse.h"
 #include "GameClient/IMEManager.h"
 #include "GameClient/LookAtXlat.h"
 #include "Win32Device/GameClient/Win32Mouse.h"
 #include "Win32Device/Common/Win32GameEngine.h"
-#include "Common/Version.h"
+#include "Common/version.h"
 #include "BuildVersion.h"
 #include "GeneratedVersion.h"
-#include "Resource.h"
+#include "resource.h"
 
 #include <rts/profile.h>
 
@@ -891,41 +896,6 @@ void checkProtection(void)
 #endif
 }
 
-// strtrim ====================================================================
-/** Trim leading and trailing whitespace from a character string (in place). */
-//=============================================================================
-static char* strtrim(char* buffer)
-{
-	if (buffer != NULL) {
-		//	Strip leading white space from the string.
-		char * source = buffer;
-		while ((*source != 0) && ((unsigned char)*source <= 32))
-		{
-			source++;
-		}
-
-		if (source != buffer)
-		{
-			strcpy(buffer, source);
-		}
-
-		//	Clip trailing white space from the string.
-		for (int index = strlen(buffer)-1; index >= 0; index--)
-		{
-			if ((*source != 0) && ((unsigned char)buffer[index] <= 32))
-			{
-				buffer[index] = '\0';
-			}
-			else
-			{
-				break;
-			}
-		}
-	}
-
-	return buffer;
-}
-
 char *nextParam(char *newSource, char *seps)
 {
 	static char *source = NULL;
@@ -982,6 +952,7 @@ char *nextParam(char *newSource, char *seps)
 // Necessary to allow memory managers and such to have useful critical sections
 static CriticalSection critSec1, critSec2, critSec3, critSec4, critSec5;
 
+#ifdef _WIN32
 // _set_se_translator below only covers the thread that installs it, so a fault on one
 // of the engine's worker threads (WW3D's texture loader, the GameSpy threads) took the
 // process down with nothing in the log at all.  The unhandled-exception filter is
@@ -992,6 +963,7 @@ static LONG WINAPI dumpUnhandledException( EXCEPTION_POINTERS *e_info )
 	DumpExceptionInfo( e_info->ExceptionRecord->ExceptionCode, e_info );
 	return EXCEPTION_EXECUTE_HANDLER;
 }
+#endif
 
 // WinMain ====================================================================
 /** Application entry point */
@@ -1007,8 +979,13 @@ Int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance,
 
 	try {
 
+#ifdef _WIN32
 		_set_se_translator( DumpExceptionInfo ); // Hook that allows stack trace.
 		SetUnhandledExceptionFilter( dumpUnhandledException ); // ...on every other thread too.
+#else
+		// No SEH on Linux; the same dump comes from the signal handlers StackDump installs.
+		Platform_InstallCrashHandlers();
+#endif
 		//
 		// there is something about checkin in and out the .dsp and .dsw files 
 		// that blows the working directory information away on each of the 
@@ -1300,3 +1277,31 @@ GameEngine *CreateGameEngine( void )
 	return engine;
 
 }  // end CreateGameEngine
+
+#ifdef PLATFORM_LINUX
+// Windows hands WinMain one already-split command line; the C runtime hands Linux
+// argv.  Rebuild the single string WinMain parses so the argument handling below
+// (including the quoting nextParam honours) is the same code on both platforms.
+int main(int argc, char** argv)
+{
+	static char cmdline[4096];
+	size_t off = 0;
+	for (int i = 1; i < argc; ++i)
+	{
+		Bool quote = strpbrk(argv[i], " \"") != NULL;
+		if (off && off + strlen(argv[i]) + 2 >= sizeof(cmdline))
+		{
+			DEBUG_LOG(("command line: truncated at %d characters\n", (int)sizeof(cmdline) - 1));
+			break;
+		}
+		if (off) cmdline[off++] = ' ';
+		if (quote) cmdline[off++] = '"';
+		size_t len = strlen(argv[i]);
+		memcpy(cmdline + off, argv[i], len);
+		off += len;
+		if (quote) cmdline[off++] = '"';
+	}
+	cmdline[off] = 0;
+	return WinMain(NULL, NULL, cmdline, SW_SHOWNORMAL);
+}
+#endif

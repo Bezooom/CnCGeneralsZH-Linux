@@ -38,8 +38,15 @@
 /*		7/18/2002 : Initial creation                                           */
 /*---------------------------------------------------------------------------*/
 
+#if defined(_WIN32)
 #include <dsound.h>
-#include "Lib/Basetype.h"
+#else
+#include "win.h"
+#ifndef WAVE_FORMAT_PCM
+#define WAVE_FORMAT_PCM 1
+#endif
+#endif
+#include "Lib/BaseType.h"
 #include "MilesAudioDevice/MilesAudioManager.h"
 
 #include "Common/AudioAffect.h"
@@ -64,7 +71,7 @@
 #include "GameLogic/GameLogic.h"
 #include "GameLogic/TerrainLogic.h"
 
-#include "Common/File.h"
+#include "Common/file.h"
 
 #ifdef _INTERNAL
 //#pragma optimize("", off)
@@ -72,6 +79,13 @@
 #endif
 
 enum { INFINITE_LOOP_COUNT = 1000000 };
+
+#if defined(_WIN32)
+typedef long MilesAtomicWord;
+#else
+typedef LONG MilesAtomicWord;
+static_assert(sizeof(MilesAtomicWord) == sizeof(PlayingStatus), "Audio status atomic width");
+#endif
 
 // Callback functions useful for Miles ////////////////////////////////////////////////////////////
 static void AILCALLBACK setSampleCompleted( HSAMPLE sampleCompleted );
@@ -965,8 +979,13 @@ void MilesAudioManager::stopAudioEvent( AudioHandle handle )
 		if (audio->m_audioEventRTS->getPlayingHandle() == handle) {
 			// found it
 			// Ask it to stop; the next processPlayingList sweep does the Miles side and the free.
-			InterlockedCompareExchange( (volatile long *)&audio->m_status, PS_Stopping, PS_Playing );
+			InterlockedCompareExchange( (volatile MilesAtomicWord *)&audio->m_status, PS_Stopping, PS_Playing );
+#if defined(LINUX)
+			// The legacy completion interface cannot carry native Linux handles.
+			errno = ENOTSUP;
+#else
 			notifyOfAudioCompletion((UnsignedInt)(audio->m_stream), PAT_Stream);
+#endif
 			break;
 		}
 	}
@@ -979,7 +998,7 @@ void MilesAudioManager::stopAudioEvent( AudioHandle handle )
 
 		if (audio->m_audioEventRTS->getPlayingHandle() == handle) {
 			// Ask it to stop; the next processPlayingList sweep does the Miles side and the free.
-			InterlockedCompareExchange( (volatile long *)&audio->m_status, PS_Stopping, PS_Playing );
+			InterlockedCompareExchange( (volatile MilesAtomicWord *)&audio->m_status, PS_Stopping, PS_Playing );
 			break;
 		}
 	}
@@ -995,7 +1014,7 @@ void MilesAudioManager::stopAudioEvent( AudioHandle handle )
 			DEBUG_LOG((" (%s)\n", audio->m_audioEventRTS->getEventName()));
 		#endif
 			// Ask it to stop; the next processPlayingList sweep does the Miles side and the free.
-			InterlockedCompareExchange( (volatile long *)&audio->m_status, PS_Stopping, PS_Playing );
+			InterlockedCompareExchange( (volatile MilesAtomicWord *)&audio->m_status, PS_Stopping, PS_Playing );
 			break;
 		}
 	}
@@ -1180,8 +1199,8 @@ void MilesAudioManager::releasePlayingAudio( PlayingAudio *release )
 void MilesAudioManager::stopPlayingAudio( PlayingAudio *release )
 {
 	// Playing -> Stopping, then Stopping -> Stopped.  Whoever wins the second one does the work.
-	InterlockedCompareExchange( (volatile long *)&release->m_status, PS_Stopping, PS_Playing );
-	const long prevStatus = InterlockedCompareExchange( (volatile long *)&release->m_status, PS_Stopped, PS_Stopping );
+	InterlockedCompareExchange( (volatile MilesAtomicWord *)&release->m_status, PS_Stopping, PS_Playing );
+	const long prevStatus = InterlockedCompareExchange( (volatile MilesAtomicWord *)&release->m_status, PS_Stopped, PS_Stopping );
 	if (prevStatus != PS_Stopping) {
 		return;
 	}
@@ -1678,12 +1697,17 @@ void MilesAudioManager::notifyOfAudioCompletion( UnsignedInt audioCompleted, Uns
 
 	// Ask for the stop rather than declaring it: this runs on the Miles thread, and the half that
 	// talks back to Miles and frees the object belongs to the main thread's next sweep.
-	InterlockedCompareExchange( (volatile long *)&playing->m_status, PS_Stopping, PS_Playing );
+	InterlockedCompareExchange( (volatile MilesAtomicWord *)&playing->m_status, PS_Stopping, PS_Playing );
 }
 
 //-------------------------------------------------------------------------------------------------
 PlayingAudio *MilesAudioManager::findPlayingAudioFrom( UnsignedInt audioCompleted, UnsignedInt flags )
 {
+#if defined(LINUX)
+	// No native handle can be recovered from the legacy completion identifier.
+	errno = ENOTSUP;
+	return NULL;
+#else
 	// Miles calls in here from its own timer thread when a sample finishes, so every walk of these
 	// lists is guarded against the main thread taking an element out from under it.
 	std::list<PlayingAudio *>::iterator it;
@@ -1735,6 +1759,7 @@ PlayingAudio *MilesAudioManager::findPlayingAudioFrom( UnsignedInt audioComplete
 	}
 
 	return NULL;
+#endif
 }
 
 
@@ -1785,9 +1810,10 @@ void MilesAudioManager::selectProvider( UnsignedInt providerNdx )
 		unselectProvider();
 	}
 
+	Bool useDolby = FALSE;
+#if defined(_WIN32)
 	LPDIRECTSOUND lpDirectSoundInfo;
 	AIL_get_DirectSound_info( NULL, (void**)&lpDirectSoundInfo, NULL );
-	Bool useDolby = FALSE;
 	if( lpDirectSoundInfo )
 	{
 		DWORD speakerConfig;
@@ -1825,6 +1851,12 @@ void MilesAudioManager::selectProvider( UnsignedInt providerNdx )
 				break;
 		}
 	}
+
+#else
+	// No native Miles/DirectSound provider exists on Linux.
+	m_selectedProvider = PROVIDER_ERROR;
+	return;
+#endif
 
 	Bool success = FALSE;
 	if( useDolby )
@@ -2705,7 +2737,7 @@ Real MilesAudioManager::getFileLengthMS( AsciiString strToLoad ) const
 		return 0.0f;
 	}
 
-	long retVal;
+	S32 retVal = 0;
 	AIL_stream_ms_position(stream, &retVal, NULL);
 	// Now close the stream
 	AIL_close_stream(stream);
@@ -2868,7 +2900,7 @@ Bool MilesAudioManager::startNextLoop( PlayingAudio *looping )
 			// fake it out so that this sound appears done, but also so that it will not
 			// delete the sound on completion (which would suck)
 			looping->m_cleanupAudioEventRTS = false;
-			InterlockedCompareExchange( (volatile long *)&looping->m_status, PS_Stopping, PS_Playing );
+			InterlockedCompareExchange( (volatile MilesAtomicWord *)&looping->m_status, PS_Stopping, PS_Playing );
 			
 			
 			AudioRequest *req = allocateAudioRequest(true);
@@ -3160,24 +3192,45 @@ void MilesAudioManager::friend_forcePlayAudioEventRTS(const AudioEventRTS* event
 //-------------------------------------------------------------------------------------------------
 void AILCALLBACK setSampleCompleted( HSAMPLE sampleCompleted )
 {
+#if defined(LINUX)
+	// The legacy callback ABI cannot represent native Linux pointers.
+	errno = ENOTSUP;
+#else
 	TheAudio->notifyOfAudioCompletion((UnsignedInt) sampleCompleted, PAT_Sample);
+#endif
 }
 
 //-------------------------------------------------------------------------------------------------
 void AILCALLBACK set3DSampleCompleted( H3DSAMPLE sample3DCompleted )
 {
+#if defined(LINUX)
+	errno = ENOTSUP;
+#else
 	TheAudio->notifyOfAudioCompletion((UnsignedInt) sample3DCompleted, PAT_3DSample);
+#endif
 }
 
 //-------------------------------------------------------------------------------------------------
 void AILCALLBACK setStreamCompleted( HSTREAM streamCompleted )
 {
+#if defined(LINUX)
+	errno = ENOTSUP;
+#else
 	TheAudio->notifyOfAudioCompletion((UnsignedInt) streamCompleted, PAT_Stream);
+#endif
 }
 
 //-------------------------------------------------------------------------------------------------
 U32 AILCALLBACK streamingFileOpen(char const *fileName, U32 *file_handle)
 {
+#if defined(LINUX)
+	// No File is opened: the U32 callback ABI cannot carry its native pointer.
+	if (file_handle) {
+		*file_handle = 0;
+	}
+	errno = file_handle ? ENOTSUP : EINVAL;
+	return 0;
+#else
 #if defined(_DEBUG) || defined(_INTERNAL)
 	if (sizeof(U32) != sizeof(File*)) {
 		RELEASE_CRASH(("streamingFileOpen - This function requires work in order to compile on non 32-bit platforms.\n"));
@@ -3186,24 +3239,39 @@ U32 AILCALLBACK streamingFileOpen(char const *fileName, U32 *file_handle)
 
 	(*file_handle) = (U32) TheFileSystem->openFile(fileName, File::READ | File::STREAMING);
 	return ((*file_handle) != 0);
+#endif
 }
 
 //-------------------------------------------------------------------------------------------------
 void AILCALLBACK streamingFileClose(U32 fileHandle)
 {
+#if defined(LINUX)
+	errno = ENOTSUP;
+#else
 	((File*) fileHandle)->close();
+#endif
 }
 
 //-------------------------------------------------------------------------------------------------
 S32 AILCALLBACK streamingFileSeek(U32 fileHandle, S32 offset, U32 type)
 {
+#if defined(LINUX)
+	errno = ENOTSUP;
+	return -1;
+#else
 	return ((File*) fileHandle)->seek(offset, (File::seekMode) type);
+#endif
 }
 
 //-------------------------------------------------------------------------------------------------
 U32 AILCALLBACK streamingFileRead(U32 file_handle, void *buffer, U32 bytes)
 {
+#if defined(LINUX)
+	errno = ENOTSUP;
+	return 0;
+#else
 	return ((File*) file_handle)->read(buffer, bytes);
+#endif
 }
 
 //-------------------------------------------------------------------------------------------------

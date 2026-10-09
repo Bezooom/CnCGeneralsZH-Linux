@@ -49,6 +49,9 @@
 #include "Common/GlobalData.h"
 #endif
 
+// Platform abstraction for timing
+#include "PAL_Timing.h"
+
 // Forward Declarations
 class DebugDisplayInterface;
 
@@ -56,32 +59,20 @@ class DebugDisplayInterface;
 //-------------------------------------------------------------------------------------------------
 //-------------------------------------------------------------------------------------------------
 
-#define NO_USE_QPF	// non-QPF is much faster.
-
 #if defined(PERF_TIMERS) || defined(DUMP_PERF_STATS)
 //-------------------------------------------------------------------------------------------------
-void InitPrecisionTimer();
+inline void InitPrecisionTimer() {
+  Platform_InitPrecisionTimer();
+}
 
 //-------------------------------------------------------------------------------------------------
-void GetPrecisionTimerTicksPerSec(Int64* t);
+inline void GetPrecisionTimerTicksPerSec(Int64* t) {
+  *t = static_cast<Int64>(Platform_GetTicksPerSec());
+}
 
 //-------------------------------------------------------------------------------------------------
-__forceinline void GetPrecisionTimer(Int64* t)
-{
-#ifdef USE_QPF
-	QueryPerformanceCounter((LARGE_INTEGER*)t);
-#else
-	// CPUID is needed to force serialization of any previous instructions. 
-	__asm 
-	{
-		// for now, I am commenting this out. It throws the timings off a bit more (up to .001%) jkmcd
-		//		CPUID
-		RDTSC
-		MOV ECX,[t]
-		MOV [ECX], EAX
-		MOV [ECX+4], EDX
-	}
-#endif
+inline void GetPrecisionTimer(Int64* t) {
+  *t = static_cast<Int64>(Platform_GetPrecisionTimer());
 }
 #endif
 

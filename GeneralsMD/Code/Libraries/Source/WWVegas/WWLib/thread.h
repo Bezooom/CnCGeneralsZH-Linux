@@ -98,8 +98,12 @@ protected:
 	ExceptionHandlerType ExceptionHandler;
 
 private:
-	static void __cdecl Internal_Thread_Function(void*);
-	volatile unsigned long handle;
+ 	static void __cdecl Internal_Thread_Function(void*);
+#if defined(PLATFORM_LINUX) || defined(__linux__) || defined(_UNIX)
+	// pthread entry: calls Internal_Thread_Function and returns NULL.
+	static void *Pthread_Entry(void *params);
+#endif
+ 	volatile unsigned long handle;
 	int thread_priority;
 };
 

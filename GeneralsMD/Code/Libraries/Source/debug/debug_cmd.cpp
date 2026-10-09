@@ -22,12 +22,15 @@
 // $Revision: #1 $
 // $DateTime: 2003/07/03 11:55:26 $
 //
-// ©2003 Electronic Arts
+// ï¿½2003 Electronic Arts
 //
 // Debug command group 'debug'
 //////////////////////////////////////////////////////////////////////////////
 #include "_pch.h"
+#include <stdlib.h>
+#if defined(_MSC_VER)
 #include <process.h>
+#endif
 
 bool DebugCmdInterfaceDebug::Execute(class Debug& dbg, const char *cmd, 
                                      CommandMode cmdmode, unsigned argn, 
@@ -179,12 +182,16 @@ bool DebugCmdInterfaceDebug::Execute(class Debug& dbg, const char *cmd,
           {
             for (Debug::FrameHashEntry *cur=dbg.frameHash[k];cur;cur=cur->next)
             {
-              if (!(cur->frameType&mask))
-                continue;
+            if (!(cur->frameType&mask))
+              continue;
 
-              char help[256];
-              wsprintf(help,"%s(%i)",cur->fileOrGroup,cur->line);
-              if (Debug::SimpleMatch(help,pattern))
+            char help[256];
+#if defined(_MSC_VER)
+            wsprintf(help,"%s(%i)",cur->fileOrGroup,cur->line);
+#else
+            snprintf(help,sizeof(help),"%s(%i)",cur->fileOrGroup,cur->line);
+#endif
+            if (Debug::SimpleMatch(help,pattern))
               {
                 dbg << help << " (" << cur->hits << " hits)";
                 if (cur->status==Debug::Skip)

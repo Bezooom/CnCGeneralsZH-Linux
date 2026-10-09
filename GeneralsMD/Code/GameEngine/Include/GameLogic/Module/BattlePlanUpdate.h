@@ -37,11 +37,12 @@
 #include "GameLogic/Module/SpecialPowerUpdateModule.h"
 
 // FORWARD REFERENCES /////////////////////////////////////////////////////////////////////////////
+#include "GameLogic/Module/BodyModule.h"
+
 class SpecialPowerModule;
 class ParticleSystem;
 class FXList;
 class AudioEventRTS;
-enum  MaxHealthChangeType;
 enum  CommandOption;
 
 //-------------------------------------------------------------------------------------------------
@@ -98,7 +99,7 @@ enum TransitionStatus
 	TRANSITIONSTATUS_PACKING,
 };
 
-enum BattlePlanStatus
+enum BattlePlanStatus : int
 {
 	PLANSTATUS_NONE,
 	PLANSTATUS_BOMBARDMENT,

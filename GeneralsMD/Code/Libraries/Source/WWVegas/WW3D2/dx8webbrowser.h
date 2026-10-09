@@ -33,8 +33,13 @@
 #ifndef DX8_WEBBROWSER_H
 #define DX8_WEBBROWSER_H
 
+#ifdef _WIN32
 #include <windows.h>
+#endif
+
+#ifdef _WIN32
 #include <d3d9.h>
+#endif
 
 // ***********************************
 // Set this to 0 to remove all embedded browser code.
@@ -51,6 +56,8 @@
 #define BROWSEROPTION_3DBORDER		0x0002
 
 struct IDirect3DDevice9;
+struct IDispatch;
+typedef IDispatch* LPDISPATCH;
 
 /**
 ** DX8WebBrowser

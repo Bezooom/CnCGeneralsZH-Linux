@@ -25,6 +25,13 @@
 #include "Common/EarlyCommandLine.h"
 #include "GameLogic/FPUControl.h"
 
+// On Linux, HANDLE is not defined by win.h (to avoid conflict with
+// rawfile.h's FILE* HANDLE).  Provide a local definition for this file.
+#ifndef HANDLE
+typedef void *HANDLE;
+#define NULL_HANDLE ((HANDLE)0)
+#endif
+
 namespace
 {
 

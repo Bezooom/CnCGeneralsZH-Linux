@@ -34,7 +34,13 @@
 
 #define NO_DEBUG_CRC
 
+#include <cstdint>
+
+#if defined(_WIN32)
 #include "Common/CRC.h"
+#else
+#include "Common/crc.h"
+#endif
 #include "Common/CRCDebug.h"
 #include "Common/GameState.h"
 #include "Common/GlobalData.h"
@@ -65,11 +71,31 @@
 #include "W3DDevice/GameClient/BaseHeightMap.h"
 #include "W3DDevice/GameClient/W3DTerrainTracks.h"
 #include "W3DDevice/GameClient/WorldHeightMap.h"
+#if defined(_WIN32)
 #include "WW3D2/HAnim.h"
+#else
+#include "WW3D2/hanim.h"
+#endif
+#if defined(_WIN32)
 #include "WW3D2/HLod.h"
+#else
+#include "WW3D2/hlod.h"
+#endif
+#if defined(_WIN32)
 #include "WW3D2/RendObj.h"
+#else
+#include "WW3D2/rendobj.h"
+#endif
+#if defined(_WIN32)
 #include "WW3D2/Mesh.h"
+#else
+#include "WW3D2/mesh.h"
+#endif
+#if defined(_WIN32)
 #include "WW3D2/MeshMdl.h"
+#else
+#include "WW3D2/meshmdl.h"
+#endif
 #include "Common/BitFlagsIO.h"
 
 #ifdef _INTERNAL
@@ -1237,7 +1263,7 @@ enum AnimParseType
 //-------------------------------------------------------------------------------------------------
 static void parseAnimation(INI* ini, void *instance, void * /*store*/, const void* userData)
 {
-	AnimParseType animType = (AnimParseType)(UnsignedInt)userData;
+	AnimParseType animType = static_cast<AnimParseType>(reinterpret_cast<std::uintptr_t>(userData));
 
 	AsciiString animName = ini->getNextAsciiString();
 	animName.toLower();
@@ -1451,7 +1477,7 @@ void W3DModelDrawModuleData::parseConditionState(INI* ini, void *instance, void 
 
 	ModelConditionInfo info;
 	W3DModelDrawModuleData* self = (W3DModelDrawModuleData*)instance;
-	ParseCondStateType cst = (ParseCondStateType)(UnsignedInt)userData;
+	ParseCondStateType cst = static_cast<ParseCondStateType>(reinterpret_cast<std::uintptr_t>(userData));
 	switch (cst)
 	{
 		case PARSE_DEFAULT:

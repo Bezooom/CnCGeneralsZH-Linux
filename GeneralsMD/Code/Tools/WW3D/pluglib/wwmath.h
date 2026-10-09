@@ -46,6 +46,9 @@
 #include <math.h>
 #include <assert.h>
 
+// Platform abstraction for portable float-to-int conversion
+#include "Platform/PAL_Timing.h"
+
 /*
 ** Some global constants.
 */
@@ -214,7 +217,8 @@ inline long WWMath::Float_To_Long	(float f)
 	__asm fistp dword ptr [retval]
 	return retval;
 #else 
-	return (long) f;
+	// Portable: use SSE2 cvttss2si on x86/x64, otherwise standard cast
+	return Platform_FloatToLong(f);
 #endif
 }
 
@@ -226,7 +230,8 @@ inline long WWMath::Float_To_Long	(double f)
 	__asm fistp dword ptr [retval]
 	return retval;
 #else 
-	return (long) f;
+	// Portable: use SSE2 cvttsd2si on x86/x64, otherwise standard cast
+	return Platform_DoubleToLong(f);
 #endif
 }
 

@@ -44,7 +44,11 @@
 #include "dx8wrapper.h"
 #include "vertmaterial.h"
 #include "texture.h"
+#ifdef _WIN32
 #include <d3d9.h>
+#else
+#include "ww3d_d3d9.h"
+#endif
 #include "d3dx9math.h"
 #include "statistics.h"
 #include <wwprofile.h>

@@ -18,7 +18,25 @@
 
 #include "mutex.h"
 #include "wwdebug.h"
+#if defined(PLATFORM_LINUX) || defined(__linux__) || defined(_UNIX)
+#include <pthread.h>
+#include <time.h>
+#include <errno.h>
+// Windows mutexes/critical sections are recursive; match that so existing
+// nested LockClass use keeps working.
+static pthread_mutex_t *new_recursive_mutex(void)
+{
+	pthread_mutexattr_t attr;
+	pthread_mutexattr_init(&attr);
+	pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_RECURSIVE);
+	pthread_mutex_t *m = new pthread_mutex_t;
+	pthread_mutex_init(m, &attr);
+	pthread_mutexattr_destroy(&attr);
+	return m;
+}
+#else
 #include <windows.h>
+#endif
 
 
 // ----------------------------------------------------------------------------
@@ -26,7 +44,9 @@
 MutexClass::MutexClass(const char* name) : handle(NULL), locked(false)
 {
 	#ifdef _UNIX
-		//assert(0);
+		(void)name;
+		handle = new_recursive_mutex();
+		WWASSERT(handle);
 	#else
 		handle=CreateMutex(NULL,false,name);
 		WWASSERT(handle);
@@ -36,7 +56,9 @@ MutexClass::MutexClass(const char* name) : handle(NULL), locked(false)
 MutexClass::~MutexClass()
 {
 	#ifdef _UNIX
-		//assert(0);
+		WWASSERT(!locked); // Can't delete locked mutex!
+		pthread_mutex_destroy((pthread_mutex_t *)handle);
+		delete (pthread_mutex_t *)handle;
 	#else
 		WWASSERT(!locked); // Can't delete locked mutex!
 		CloseHandle(handle);
@@ -46,7 +68,26 @@ MutexClass::~MutexClass()
 bool MutexClass::Lock(int time)
 {
 	#ifdef _UNIX
-		//assert(0);
+		pthread_mutex_t *m = (pthread_mutex_t *)handle;
+		int res;
+		if (time == WAIT_INFINITE) {
+			res = pthread_mutex_lock(m);
+		} else if (time <= 0) {
+			res = pthread_mutex_trylock(m);
+		} else {
+			struct timespec ts;
+			clock_gettime(CLOCK_REALTIME, &ts);
+			ts.tv_sec += time / 1000;
+			ts.tv_nsec += (long)(time % 1000) * 1000000L;
+			if (ts.tv_nsec >= 1000000000L) {
+				ts.tv_sec += 1;
+				ts.tv_nsec -= 1000000000L;
+			}
+			res = pthread_mutex_timedlock(m, &ts);
+		}
+		if (res != 0)
+			return false;
+		locked++;
 		return true;
 	#else
 		int res = WaitForSingleObject(handle,time==WAIT_INFINITE ? INFINITE : time);
@@ -59,7 +100,9 @@ bool MutexClass::Lock(int time)
 void MutexClass::Unlock()
 {
 	#ifdef _UNIX
-		//assert(0);
+		WWASSERT(locked);
+		locked--;
+		pthread_mutex_unlock((pthread_mutex_t *)handle);
 	#else
 		WWASSERT(locked);
 		locked--;
@@ -92,7 +135,7 @@ MutexClass::LockClass::~LockClass()
 CriticalSectionClass::CriticalSectionClass() : handle(NULL), locked(false)
 {
 	#ifdef _UNIX
-		//assert(0);
+		handle = new_recursive_mutex();
 	#else
 		handle=W3DNEWARRAY char[sizeof(CRITICAL_SECTION)];
 		InitializeCriticalSection((CRITICAL_SECTION*)handle);
@@ -102,7 +145,9 @@ CriticalSectionClass::CriticalSectionClass() : handle(NULL), locked(false)
 CriticalSectionClass::~CriticalSectionClass()
 {
 	#ifdef _UNIX
-		//assert(0);
+		WWASSERT(!locked); // Can't delete locked mutex!
+		pthread_mutex_destroy((pthread_mutex_t *)handle);
+		delete (pthread_mutex_t *)handle;
 	#else
 		WWASSERT(!locked); // Can't delete locked mutex!
 		DeleteCriticalSection((CRITICAL_SECTION*)handle);
@@ -113,7 +158,8 @@ CriticalSectionClass::~CriticalSectionClass()
 void CriticalSectionClass::Lock()
 {
 	#ifdef _UNIX
-		//assert(0);
+		pthread_mutex_lock((pthread_mutex_t *)handle);
+		locked++;
 	#else
 		EnterCriticalSection((CRITICAL_SECTION*)handle);
 		locked++;
@@ -123,7 +169,9 @@ void CriticalSectionClass::Lock()
 void CriticalSectionClass::Unlock()
 {
 	#ifdef _UNIX
-		//assert(0);
+		WWASSERT(locked);
+		locked--;
+		pthread_mutex_unlock((pthread_mutex_t *)handle);
 	#else
 		WWASSERT(locked);
 		locked--;

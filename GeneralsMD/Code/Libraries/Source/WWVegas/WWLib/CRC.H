@@ -40,6 +40,7 @@
 #ifndef CRC_H
 #define CRC_H
 
+#include	"always.h"
 #include	<stdlib.h>
 #ifdef _UNIX
 	#include "osdep.h"

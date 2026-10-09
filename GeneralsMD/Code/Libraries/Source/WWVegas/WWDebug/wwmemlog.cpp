@@ -43,7 +43,14 @@
 #include "wwdebug.h"
 #include "vector.h"
 #include "fastallocator.h"
+#if defined(PLATFORM_LINUX) || defined(_UNIX) || defined(__linux__)
+// Linux: memlog is disabled via DISABLE_MEMLOG below; no Win32 sync needed.
+#include <pthread.h>
+#include <unistd.h>
+#include <sys/syscall.h>
+#else
 #include <windows.h>
+#endif
 
 #define USE_FAST_ALLOCATOR
 
@@ -289,6 +296,8 @@ WWINLINE void * Get_Mem_Log_Mutex(void)
 	return _MemLogCriticalSectionHandle;
 
 #endif
+	// Linux/_UNIX: memlog disabled, no sync primitive in use.
+	return NULL;
 }
 
 WWINLINE void Lock_Mem_Log_Mutex(void)
@@ -392,7 +401,11 @@ ActiveCategoryStackClass::operator = (const ActiveCategoryStackClass & that)
 ***************************************************************************************************/
 ActiveCategoryStackClass & ActiveCategoryClass::Get_Active_Stack(void)
 {
+#if defined(PLATFORM_LINUX) || defined(_UNIX) || defined(__linux__)
+	int current_thread = (int)syscall(SYS_gettid);
+#else
 	int current_thread = ::GetCurrentThreadId();
+#endif
 
 	/*
 	** If we already have an allocated category stack for the current thread,

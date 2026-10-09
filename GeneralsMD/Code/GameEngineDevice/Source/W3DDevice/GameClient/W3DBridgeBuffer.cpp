@@ -52,8 +52,16 @@
 #include "stringex.h"
 #include "W3DDevice/GameClient/W3DAssetManager.h"
 #include <texture.h>
+#if defined(_WIN32)
 #include "common/GlobalData.h"
+#else
+#include "Common/GlobalData.h"
+#endif
+#if defined(_WIN32)
 #include "common/RandomValue.h"
+#else
+#include "Common/RandomValue.h"
+#endif
 #include "Common/ThingFactory.h"
 #include "Common/ThingTemplate.h"
 #include "GameClient/TerrainRoads.h"
@@ -66,12 +74,36 @@
 #include "W3DDevice/GameClient/Module/W3DModelDraw.h"
 #include "W3DDevice/GameClient/W3DShaderManager.h"
 #include "W3DDevice/GameClient/W3DShroud.h"
+#if defined(_WIN32)
 #include "WW3D2/Camera.h"
+#else
+#include "WW3D2/camera.h"
+#endif
+#if defined(_WIN32)
 #include "WW3D2/DX8Wrapper.h"
+#else
+#include "WW3D2/dx8wrapper.h"
+#endif
+#if defined(_WIN32)
 #include "WW3D2/DX8Renderer.h"
+#else
+#include "WW3D2/dx8renderer.h"
+#endif
+#if defined(_WIN32)
 #include "WW3D2/Mesh.h"
+#else
+#include "WW3D2/mesh.h"
+#endif
+#if defined(_WIN32)
 #include "WW3D2/MeshMdl.h"
+#else
+#include "WW3D2/meshmdl.h"
+#endif
+#if defined(_WIN32)
 #include "WW3D2/Scene.h"
+#else
+#include "WW3D2/scene.h"
+#endif
 
 #ifdef _INTERNAL
 // for occasional debugging...

@@ -36,6 +36,7 @@
 //#pragma MESSAGE("************************************** WARNING, optimization disabled for debugging purposes")
 #endif
 
+#ifdef _WIN32
 Bool  getStringFromRegistry(HKEY root, AsciiString path, AsciiString key, AsciiString& val)
 {
 	HKEY handle;
@@ -198,3 +199,114 @@ UnsignedInt GetRegistryMapPackVersion(void)
 	GetUnsignedIntFromRegistry("", "MapPackVersion", val);
 	return val;
 }
+#else
+#if defined(__linux__)
+#include "PAL_Registry.h"
+
+#include <string>
+#include <vector>
+
+namespace {
+// The game's own keys live in two sections. A file that holds any other section is
+// rejected rather than skipped, so a write cannot drop a section the game never wrote.
+const std::vector<std::string> kGameSections{"General", "Options"};
+
+bool address(const AsciiString& path, const AsciiString& key, std::string& section)
+{
+	const std::string name(path.str());
+	if (name.empty() || name == "General") section = "General";
+	else if (name == "\\Options" || name == "Options") section = "Options";
+	else return false;
+	return pal::ValidKey(key.str());
+}
+} // namespace
+
+Bool GetStringFromRegistry(AsciiString path, AsciiString key, AsciiString& val)
+{
+	std::string section, encoded;
+	if (!address(path, key, section) || !pal::ReadValue(section, key.str(), "SZ:", kGameSections, encoded)) return FALSE;
+	std::vector<unsigned char> bytes;
+	if (!pal::DecodeHex(encoded, bytes)) return FALSE;
+	val = std::string(bytes.begin(), bytes.end()).c_str();
+	return TRUE;
+}
+
+Bool GetStringFromGeneralsRegistry(AsciiString path, AsciiString key, AsciiString& val)
+{
+	return GetStringFromRegistry(path, key, val);
+}
+
+Bool GetUnsignedIntFromRegistry(AsciiString path, AsciiString key, UnsignedInt& val)
+{
+	std::string section, encoded;
+	if (!address(path, key, section) || !pal::ReadValue(section, key.str(), "DWORD:", kGameSections, encoded)) return FALSE;
+	unsigned int number;
+	if (!pal::ParseDword(encoded, number)) return FALSE;
+	val = number;
+	return TRUE;
+}
+
+Bool SetStringInRegistry(AsciiString path, AsciiString key, AsciiString val)
+{
+	std::string section;
+	if (!address(path, key, section)) return FALSE;
+	if (static_cast<size_t>(val.getLength()) > pal::kMaxStringSize) return FALSE;
+	return pal::WriteValue(section, key.str(),
+	                       "SZ:" + pal::EncodeHex(reinterpret_cast<const unsigned char*>(val.str()), val.getLength()),
+	                       kGameSections) ? TRUE : FALSE;
+}
+
+Bool SetUnsignedIntInRegistry(AsciiString path, AsciiString key, UnsignedInt val)
+{
+	std::string section;
+	if (!address(path, key, section)) return FALSE;
+	return pal::WriteValue(section, key.str(), "DWORD:" + std::to_string(val), kGameSections) ? TRUE : FALSE;
+}
+
+Bool SetBinaryInRegistry(AsciiString path, AsciiString key, const std::vector<unsigned char>& val)
+{
+	std::string section;
+	if (!address(path, key, section)) return FALSE;
+	if (val.size() > pal::kMaxBinarySize) return FALSE;
+	return pal::WriteValue(section, key.str(), "BINARY:" + pal::EncodeHex(val.data(), val.size()), kGameSections) ? TRUE : FALSE;
+}
+
+Bool GetBinaryFromRegistry(AsciiString path, AsciiString key, std::vector<unsigned char>& val)
+{
+	std::string section, encoded;
+	if (!address(path, key, section) || !pal::ReadValue(section, key.str(), "BINARY:", kGameSections, encoded)) return FALSE;
+	std::vector<unsigned char> bytes;
+	if (!pal::DecodeHex(encoded, bytes)) return FALSE;
+	val.swap(bytes);
+	return TRUE;
+}
+
+AsciiString GetRegistryLanguage(void)
+{
+	AsciiString val = "english";
+	GetStringFromRegistry("", "Language", val);
+	return val;
+}
+
+AsciiString GetRegistryGameName(void)
+{
+	AsciiString val = "GeneralsMPTest";
+	GetStringFromRegistry("", "SKU", val);
+	return val;
+}
+
+UnsignedInt GetRegistryVersion(void)
+{
+	UnsignedInt val = 65536;
+	GetUnsignedIntFromRegistry("", "Version", val);
+	return val;
+}
+
+UnsignedInt GetRegistryMapPackVersion(void)
+{
+	UnsignedInt val = 65536;
+	GetUnsignedIntFromRegistry("", "MapPackVersion", val);
+	return val;
+}
+#endif // __linux__
+#endif // _WIN32

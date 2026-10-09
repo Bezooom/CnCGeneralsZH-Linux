@@ -43,16 +43,32 @@
 //			  and alpha.
 //-----------------------------------------------------------------------------
 
+#if defined(_WIN32)
 #include "W3DDevice/GameClient/heightmap.h"
+#else
+#include "W3DDevice/GameClient/HeightMap.h"
+#endif
 #include "W3DDevice/GameClient/W3DWaterTracks.h"
 #include "W3DDevice/GameClient/W3DShaderManager.h"
 #include "W3DDevice/GameClient/W3DShroud.h"
 #include "GameClient/InGameUI.h"
 #include "GameClient/Water.h"
 #include "GameLogic/TerrainLogic.h"
+#if defined(_WIN32)
 #include "common/GlobalData.h"
+#else
+#include "Common/GlobalData.h"
+#endif
+#if defined(_WIN32)
 #include "common/UnicodeString.h"
+#else
+#include "Common/UnicodeString.h"
+#endif
+#if defined(_WIN32)
 #include "Common/File.h"
+#else
+#include "Common/file.h"
+#endif
 #include "Common/FileSystem.h"
 #include "texture.h"
 #include "colmath.h"
@@ -60,7 +76,14 @@
 #include "rinfo.h"
 #include "camera.h"
 #include "assetmgr.h"
+#if defined(_WIN32)
 #include "WW3D2/DX8Wrapper.h"
+#else
+#include "WW3D2/dx8wrapper.h"
+#if !defined(_WIN32)
+#include "WWLib/mmsys.h"
+#endif
+#endif
 
 //#pragma optimize("", off)
 
@@ -79,19 +102,6 @@
 WaterTracksRenderSystem *TheWaterTracksRenderSystem=NULL;	///< singleton for track drawing system.
 
 static Bool pauseWaves=FALSE;
-
-enum waveType
-{
-	WaveTypeFirst,
-	WaveTypePond=WaveTypeFirst,
-	WaveTypeOcean,
-	WaveTypeCloseOcean,	//same as above but appears much closer to beach.
-	WaveTypeCloseOceanDouble,	//same as above but waves much sloser together.
-	WaveTypeRadial,
-	WaveTypeLast = WaveTypeRadial,
-	WaveTypeStationary,
-	WaveTypeMax,
-};
 
 struct waveInfo
 {
@@ -879,7 +889,9 @@ void WaterTracksRenderSystem::update()
 }
 
 
+#if defined(_WIN32)
 void TestWaterUpdate(void);
+#endif
 void setFPMode( void );
 
 //=============================================================================
@@ -898,8 +910,12 @@ Try improving the fit to vertical surfaces like cliffs.
 	if (!TheGlobalData->m_showSoftWaterEdge || TheWaterTransparency->m_transparentWaterDepth ==0 )
 		return;
 
-	if (TheGlobalData->m_usingWaterTrackEditor)
-		TestWaterUpdate();
+		if (TheGlobalData->m_usingWaterTrackEditor)
+		{
+#if defined(_WIN32)
+			TestWaterUpdate();
+#endif
+		}
 
 	update();	//update positions of all the tracks
 
@@ -1136,6 +1152,7 @@ extern HWND ApplicationHWnd;
 //TODO: Fix editor so it actually draws the wave segment instead of line while editing
 //Could freeze all the water while editing?  Or keep setting elapsed time on current segment.
 //Have to make it so seamless merge of segments at final position.
+#if defined(_WIN32)
 static void TestWaterUpdate(void)
 {
 	static Int doInit=1;
@@ -1360,3 +1377,4 @@ static void TestWaterUpdate(void)
 		}
 	}
 }
+#endif

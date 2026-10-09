@@ -22,7 +22,7 @@
 // $Revision: #2 $
 // $DateTime: 2003/08/14 13:43:29 $
 //
-// ©2003 Electronic Arts
+// ï¿½2003 Electronic Arts
 //
 // High level profiling
 //////////////////////////////////////////////////////////////////////////////
@@ -195,14 +195,28 @@ void ProfileId::Maximum(double max)
 const char *ProfileId::AsString(double v) const
 {
   char help1[10],help[40];
+#if defined(_MSC_VER)
   wsprintf(help1,"%%%i.lf",m_precision);
-  
+#else
+  snprintf(help1,sizeof(help1),"%%%i.lf",m_precision);
+#endif
+
   double mul=1.0;
   int k;
   for (k=m_exp10;k<0;k++) mul*=10.0;
   for (;k>0;k--) mul/=10.0;
 
+#if defined(_MSC_VER)
   unsigned len=_snprintf(help,sizeof(help),help1,v*mul)+1;
+#else
+  // vsnprintf always terminates: clamp the copy to the buffer instead of
+  // propagating _snprintf's truncation -1 (which copied nothing and left a
+  // stale string behind on Windows).
+  int n=snprintf(help,sizeof(help),help1,v*mul);
+  unsigned len=(n<0)?1:(unsigned)n+1;
+  if (len>sizeof(help))
+    len=sizeof(help);
+#endif
 
   ProfileFastCS::Lock lock(cs);
   if (stringBufUnused+len>STRING_BUFFER_SIZE)

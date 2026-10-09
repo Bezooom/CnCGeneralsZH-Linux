@@ -36,15 +36,24 @@
 #ifndef __W3DSHADERMANAGER_H_
 #define __W3DSHADERMANAGER_H_
 
+#if defined(_WIN32)
 #include "WW3D2/Texture.h"
-enum FilterTypes;
-enum CustomScenePassModes;
-enum StaticGameLODLevel;
-enum ChipsetType;
-enum CpuType;
-enum GraphicsVenderID;
+#else
+#include "WW3D2/texture.h"
+#endif
+enum FilterTypes : int;
+enum FilterModes : int;
+#include "W3DDevice/GameClient/W3DCustomScene.h"
+#include "Common/GameLOD.h"
 
-#include <d3d9.h>
+enum GraphicsVenderID
+{
+	DC_NVIDIA_VENDOR_ID = 0x10DE,
+	DC_3DFX_VENDOR_ID = 0x121A,
+	DC_ATI_VENDOR_ID = 0x1002
+};
+
+#include "ww3d_d3d9.h"
 
 class TextureClass;	///forward reference
 /** System for managing complex rendering settings which are either not handled by

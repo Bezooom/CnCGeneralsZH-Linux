@@ -26,12 +26,18 @@
 // John McDonald, December 2002
 ////////////////////////////////////////////////////////////
 
+#if defined(_WIN32)
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#endif
 #include "Common/OSDisplay.h"
 
 #include "Common/SubsystemInterface.h"
+#if defined(_WIN32)
 #include "Common/STLTypeDefs.h"
+#else
+#include "Common/STLTypedefs.h"
+#endif
 #include "Common/AsciiString.h"
 #include "Common/SystemInfo.h"
 #include "Common/UnicodeString.h"

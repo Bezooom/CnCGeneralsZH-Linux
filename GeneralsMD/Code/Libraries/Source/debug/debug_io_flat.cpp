@@ -22,13 +22,37 @@
 // $Revision: #1 $
 // $DateTime: 2003/07/03 11:55:26 $
 //
-// ©2003 Electronic Arts
+// ï¿½2003 Electronic Arts
 //
 // Debug I/O class flat (flat or split log file)
 //////////////////////////////////////////////////////////////////////////////
 #include "_pch.h"
 #include <stdlib.h>
 #include <new>      // needed for placement new prototype
+
+#if !defined(_MSC_VER)
+#include <fcntl.h>
+#include <unistd.h>
+#include <errno.h>
+#include <limits.h>
+#include <time.h>
+#include <sys/stat.h>
+// HANDLE carries a POSIX fd here (see _pch.h / debug_linux.h).
+static inline int flat_fd(HANDLE h) { return (int)(intptr_t)h; }
+static inline HANDLE flat_handle(int fd) { return (HANDLE)(intptr_t)fd; }
+static bool flat_write_all(int fd, const char *src, unsigned len)
+{
+  while (len)
+  {
+    ssize_t w = write(fd, src, len);
+    if (w <= 0)
+      return false;
+    src += w;
+    len -= (unsigned)w;
+  }
+  return true;
+}
+#endif
 
 DebugIOFlat::OutputStream::OutputStream(const char *filename, unsigned maxSize):
   m_bufferUsed(0), m_nextChar(0)
@@ -41,9 +65,13 @@ DebugIOFlat::OutputStream::OutputStream(const char *filename, unsigned maxSize):
   m_buffer=(char *)DebugAllocMemory(m_bufferSize);
 
   if (!m_limitedFileSize)
+#if !defined(_MSC_VER)
+    m_fileHandle=flat_handle(open(m_fileName,O_WRONLY|O_CREAT|O_TRUNC,0644));
+#else
     m_fileHandle=CreateFile(m_fileName,GENERIC_WRITE,0,NULL,CREATE_ALWAYS,
                             FILE_ATTRIBUTE_NORMAL|FILE_FLAG_WRITE_THROUGH,
                             NULL);
+#endif
 }
 
 DebugIOFlat::OutputStream::~OutputStream()
@@ -59,11 +87,80 @@ void DebugIOFlat::OutputStream::Delete(const char *path)
 {
   Flush();
   if (!m_limitedFileSize)
+#if !defined(_MSC_VER)
+  {
+    if (m_fileHandle != INVALID_HANDLE_VALUE)
+      close(flat_fd(m_fileHandle));
+  }
+#else
     CloseHandle(m_fileHandle);
+#endif
 
   if (path&&*path)
   {
-    // copy file to given path
+#if !defined(_MSC_VER)
+    // POSIX twin of the CopyFile loop below: copy under a unique name,
+    // appending (n) before the extension while the target exists.
+    const char *ext = strrchr(m_fileName, '.');
+    if (!ext)
+      ext = m_fileName + strlen(m_fileName);
+    const char *slash = strrchr(m_fileName, '/');
+    const char *bslash = strrchr(m_fileName, '\\');
+    if (bslash && (!slash || bslash > slash))
+      slash = bslash;
+    const char *fileNameOnly = slash ? slash + 1 : m_fileName;
+
+    unsigned pathLen = strlen(path);
+    for (int run = 0; ; ++run)
+    {
+      char help[512];
+      // absolute path?
+      if (path[0] == '/')
+      {
+        strcpy(help, path);
+        strcpy(help + pathLen, fileNameOnly);
+        help[ext - fileNameOnly + pathLen] = 0;
+      }
+      else
+      {
+        // no, relative path given
+        strcpy(help, m_fileName);
+        strcpy(help + (fileNameOnly - m_fileName), path);
+        strcpy(help + (fileNameOnly - m_fileName) + pathLen, fileNameOnly);
+        help[ext - fileNameOnly + pathLen + (fileNameOnly - m_fileName)] = 0;
+      }
+      if (run)
+        snprintf(help + strlen(help), sizeof(help) - strlen(help),
+                 "(%i)%s", run, ext);
+      else
+        strcat(help, ext);
+
+      int srcFd = open(m_fileName, O_RDONLY);
+      if (srcFd < 0)
+        break;
+      int dstFd = open(help, O_WRONLY | O_CREAT | O_EXCL, 0644);
+      if (dstFd < 0)
+      {
+        close(srcFd);
+        if (errno != EEXIST)
+          break;
+        continue;
+      }
+      char copyBuf[8192];
+      ssize_t n;
+      while ((n = read(srcFd, copyBuf, sizeof(copyBuf))) > 0)
+      {
+        if (!flat_write_all(dstFd, copyBuf, (unsigned)n))
+          break;
+      }
+      close(srcFd);
+      close(dstFd);
+      if (n == 0)
+        break;
+      unlink(help);
+      break;
+    }
+#else
     int run=-1;
     char *ext=strrchr(m_fileName,'.');
     if (!ext)
@@ -99,6 +196,7 @@ void DebugIOFlat::OutputStream::Delete(const char *path)
       if (GetLastError()!=ERROR_FILE_EXISTS)
         break;
     }
+#endif
   }
 
   DebugFreeMemory(m_buffer);
@@ -169,13 +267,32 @@ void DebugIOFlat::OutputStream::Flush(void)
   if (!m_limitedFileSize)
   {
     // simple flush to file
+#if !defined(_MSC_VER)
+    flat_write_all(flat_fd(m_fileHandle), m_buffer, m_bufferUsed);
+    m_bufferUsed = 0;
+#else
     DWORD written;
     WriteFile(m_fileHandle,m_buffer,m_bufferUsed,&written,NULL);
     m_bufferUsed=0;
+#endif
   }
   else
   {
     // create file, write ring buffer
+#if !defined(_MSC_VER)
+    int fd = open(m_fileName, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    if (fd >= 0)
+    {
+      if (m_bufferUsed < m_bufferSize)
+        flat_write_all(fd, m_buffer, m_bufferUsed);
+      else
+      {
+        flat_write_all(fd, m_buffer + m_nextChar, m_bufferUsed - m_nextChar);
+        flat_write_all(fd, m_buffer, m_nextChar);
+      }
+      close(fd);
+    }
+#else
     m_fileHandle=CreateFile(m_fileName,GENERIC_WRITE,0,NULL,CREATE_ALWAYS,
                             FILE_ATTRIBUTE_NORMAL|FILE_FLAG_WRITE_THROUGH,
                             NULL);
@@ -188,6 +305,7 @@ void DebugIOFlat::OutputStream::Flush(void)
       WriteFile(m_fileHandle,m_buffer,m_nextChar,&written,NULL);
     }
     CloseHandle(m_fileHandle);
+#endif
   }
 }
 
@@ -232,32 +350,81 @@ void DebugIOFlat::ExpandMagic(const char *src, const char *splitName, char *buf)
       *dst++='-';
 
     char help[256];
+#if !defined(_MSC_VER)
     DWORD size=sizeof(help);
+#endif
     *help=0;
 
     switch(*src++)
     {
       case 'e':
       case 'E':
+#if !defined(_MSC_VER)
+      {
+        // exe path, like GetModuleFileName(NULL,...) on Windows
+        ssize_t n = readlink("/proc/self/exe", help, sizeof(help) - 1);
+        if (n > 0)
+          help[n] = 0;
+        else
+          strcpy(help, "unknown");
+        break;
+      }
+#else
         GetModuleFileName(NULL,help,sizeof(help));
         break;
+#endif
       case 'm':
       case 'M':
+#if !defined(_MSC_VER)
+        gethostname(help, sizeof(help) - 1);
+        help[sizeof(help) - 1] = 0;
+        break;
+#else
         GetComputerName(help,&size);
         break;
+#endif
       case 'u':
       case 'U':
+#if !defined(_MSC_VER)
+      {
+        char loginBuf[256];
+        const char *user = NULL;
+        if (getlogin_r(loginBuf, sizeof(loginBuf)) == 0)
+          user = loginBuf;
+        else
+          user = getenv("USER");
+        if (!user)
+          user = getenv("LOGNAME");
+        if (user)
+        {
+          strncpy(help, user, sizeof(help) - 1);
+          help[sizeof(help) - 1] = 0;
+        }
+        break;
+      }
+#else
         GetUserName(help,&size);
         break;
+#endif
       case 't':
       case 'T':
         {
+#if !defined(_MSC_VER)
+          time_t now = time(NULL);
+          struct tm tmNow;
+          localtime_r(&now, &tmNow);
+
+          snprintf(help, sizeof(help), "%04i%02i%02i-%02i%02i-%02i",
+                   tmNow.tm_year + 1900, tmNow.tm_mon + 1, tmNow.tm_mday,
+                   tmNow.tm_hour, tmNow.tm_min, tmNow.tm_sec);
+#else
           SYSTEMTIME systime;
           GetLocalTime(&systime);
 
           wsprintf(help,"%04i%02i%02i-%02i%02i-%02i",
                    systime.wYear,systime.wMonth,systime.wDay,
                    systime.wHour,systime.wMinute,systime.wSecond);
+#endif
         }
         break;
       case 'n':

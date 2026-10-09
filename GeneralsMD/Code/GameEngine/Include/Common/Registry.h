@@ -47,6 +47,17 @@ Bool GetStringFromRegistry(AsciiString path, AsciiString key, AsciiString& val);
 	*/
 Bool GetUnsignedIntFromRegistry(AsciiString path, AsciiString key, UnsignedInt& val);
 
+#if defined(__linux__) && !defined(_WIN32)
+#include <vector>
+// Per-user typed INI store. ""/"General" -> [General], "\\Options"/"Options" -> [Options].
+// Unsupported paths, invalid data and I/O errors return FALSE; getters leave val unchanged.
+// Every call reopens the store; GetStringFromGeneralsRegistry uses the same Linux store.
+Bool SetStringInRegistry(AsciiString path, AsciiString key, AsciiString val);
+Bool SetUnsignedIntInRegistry(AsciiString path, AsciiString key, UnsignedInt val);
+Bool SetBinaryInRegistry(AsciiString path, AsciiString key, const std::vector<unsigned char>& val);
+Bool GetBinaryFromRegistry(AsciiString path, AsciiString key, std::vector<unsigned char>& val);
+#endif
+
 AsciiString GetRegistryLanguage(void); // convenience function
 AsciiString GetRegistryGameName(void); // convenience function
 UnsignedInt GetRegistryVersion(void); // convenience function

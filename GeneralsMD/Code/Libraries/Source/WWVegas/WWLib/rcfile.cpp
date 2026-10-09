@@ -49,6 +49,10 @@ ResourceFileClass::ResourceFileClass(HMODULE hmodule, char const *filename) :
 	EndOfFile(NULL)
 {
 	Set_Name(filename);
+#if defined(PLATFORM_LINUX) || defined(__linux__) || defined(_UNIX)
+	// Linux: no PE resources; the file stays empty (Read returns 0).
+	(void)hmodule;
+#else
 	HRSRC hresource = FindResource(hmodule,ResourceName,RESOURCE_FILE_TYPE_NAME);	
 
 	if (hresource) {
@@ -61,6 +65,7 @@ ResourceFileClass::ResourceFileClass(HMODULE hmodule, char const *filename) :
 			}
 		}
 	}
+#endif
 }
 
 ResourceFileClass::~ResourceFileClass(void)									

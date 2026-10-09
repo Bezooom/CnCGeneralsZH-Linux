@@ -31,8 +31,8 @@
 #ifndef __PEERDEFS_H__
 #define __PEERDEFS_H__
 
-#include "GameSpy/Peer/Peer.h"
-#include "GameSpy/GP/GP.h"
+#include "gamespy/peer/peer.h"
+#include "gamespy/gp/gp.h"
 
 #include "GameClient/Color.h"
 #include "Common/STLTypedefs.h"
@@ -127,7 +127,7 @@ struct AsciiComparator
 
 typedef std::map<AsciiString, PlayerInfo, AsciiComparator> PlayerInfoMap;
 
-enum GameSpyColors {
+enum GameSpyColors : int {
 	GSCOLOR_DEFAULT = 0,
 	GSCOLOR_CURRENTROOM,
 	GSCOLOR_ROOM,
@@ -160,7 +160,7 @@ enum GameSpyColors {
 
 extern Color GameSpyColor[GSCOLOR_MAX];
 
-enum GameSpyBuddyStatus {
+enum GameSpyBuddyStatus : int {
 	BUDDY_OFFLINE,
 	BUDDY_ONLINE,
 	BUDDY_LOBBY,

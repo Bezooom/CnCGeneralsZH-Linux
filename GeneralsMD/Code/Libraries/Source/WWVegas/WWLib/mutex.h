@@ -26,6 +26,13 @@
 #include "always.h"
 #include "thread.h"
 
+#if defined(PLATFORM_LINUX) || defined(__linux__) || defined(_UNIX)
+#include <pthread.h>
+#endif
+
+#if defined(__GNUC__) && !defined(__forceinline)
+#define __forceinline inline __attribute__((always_inline))
+#endif
 
 // Always use mutex or critical section when accessing the same data from multiple threads!
 
@@ -131,22 +138,18 @@ public:
 		{
 		  unsigned& nFlag=cs.Flag;
 
+#if defined(_MSC_VER)
 		  #define ts_lock _emit 0xF0
 		  assert(((unsigned)&nFlag % 4) == 0);
 
-      // I'm terribly sorry for these emits in here but
-      // VC won't inline any functions that have labels in them...
-
-      // Had to remove the emits back to normal
-      // ASM statements because sometimes the jump
-      // would be 1 byte off....
-      
+		  // Had to remove the emits back to normal
+		  // ASM statements because sometimes the jump
+		  // would be 1 byte off....
+		  
 		  __asm mov ebx, [nFlag]
 		  __asm ts_lock
 		  __asm bts dword ptr [ebx], 0
 		  __asm jnc BitSet
-      //__asm _emit 0x73
-      //__asm _emit 0x0f
 
 		  The_Bit_Was_Previously_Set_So_Try_Again:
 		    ThreadClass::Switch_Thread();
@@ -154,16 +157,30 @@ public:
 		  __asm ts_lock
 		  __asm bts dword ptr [ebx], 0
 		  __asm jc  The_Bit_Was_Previously_Set_So_Try_Again
-      //_asm _emit 0x72
-      //_asm _emit 0xf1
 
-      BitSet:
-        ;
+       BitSet:
+         ;
+#elif defined(__GNUC__)
+		  // Portable atomic test-and-set for GCC
+		  while (__sync_lock_test_and_set(&nFlag, 1)) {
+#if defined(PLATFORM_LINUX) || defined(__linux__) || defined(_UNIX)
+			  // Cancellation point: ThreadClass::Stop() kills stuck workers
+			  // with pthread_cancel after its timeout, and the spin below
+			  // (sched_yield) is not a cancel point on its own.
+			  pthread_testcancel();
+#endif
+			  ThreadClass::Switch_Thread();
+		  }
+#endif
 		}
 
 		~LockClass()
 		{
+#if defined(__GNUC__)
+      __sync_lock_release(&cs.Flag);
+#else
       cs.Flag=0;
+#endif
 		}
     
 	private:

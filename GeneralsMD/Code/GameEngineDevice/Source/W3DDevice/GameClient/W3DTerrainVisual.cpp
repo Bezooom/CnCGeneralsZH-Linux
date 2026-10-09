@@ -29,8 +29,9 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#ifdef _WIN32
 #include <windows.h>
-
+#endif
 #include "Common/GameState.h"
 #include "Common/GlobalData.h"
 #include "Common/PerfTimer.h"
@@ -57,14 +58,38 @@
 #include "W3DDevice/GameClient/W3DTerrainTracks.h"
 #include "W3DDevice/GameClient/W3DGranny.h"
 #include "W3DDevice/GameClient/W3DShadow.h"
+#if defined(_WIN32)
 #include "W3DDevice/GameClient/heightmap.h"
+#else
+#include "W3DDevice/GameClient/HeightMap.h"
+#endif
+#if defined(_WIN32)
 #include "W3DDevice/GameClient/FlatHeightmap.h"
+#else
+#include "W3DDevice/GameClient/FlatHeightMap.h"
+#endif
 #include "W3DDevice/GameClient/W3DSmudge.h"
 #include "W3DDevice/GameClient/Module/W3DModelDraw.h"
+#if defined(_WIN32)
 #include "WW3D2/Light.h"
+#else
+#include "WW3D2/light.h"
+#endif
+#if defined(_WIN32)
 #include "WW3D2/RendObj.h"
+#else
+#include "WW3D2/rendobj.h"
+#endif
+#if defined(_WIN32)
 #include "WW3D2/ColType.h"
+#else
+#include "WW3D2/coltype.h"
+#endif
+#if defined(_WIN32)
 #include "WW3D2/ColTest.h"
+#else
+#include "WW3D2/coltest.h"
+#endif
 #include "WW3D2/assetmgr.h"
 
 

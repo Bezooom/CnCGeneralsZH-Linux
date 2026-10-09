@@ -46,7 +46,11 @@
 #include "W3DDevice/GameLogic/W3DGhostObject.h"
 #include "WW3D2/rendobj.h"
 #include "WW3D2/hlod.h"
+#if defined(_WIN32)
 #include "WW3D2/Scene.h"
+#else
+#include "WW3D2/scene.h"
+#endif
 #include "WW3D2/matinfo.h"
 
 

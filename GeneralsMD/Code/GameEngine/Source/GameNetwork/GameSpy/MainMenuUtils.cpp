@@ -35,7 +35,7 @@
 
 //#include "Common/Registry.h"
 #include "Common/UserPreferences.h"
-#include "Common/Version.h"
+#include "Common/version.h"
 #include "GameClient/GameText.h"
 #include "GameClient/MessageBox.h"
 #include "GameClient/Shell.h"
@@ -43,7 +43,7 @@
 
 #include "GameClient/ShellHooks.h"
 
-#include "GameSpy/ghttp/ghttp.h"
+#include "gamespy/ghttp/ghttp.h"
 
 #include "GameNetwork/DownloadManager.h"
 #include "GameNetwork/GameSpy/BuddyThread.h"
@@ -52,7 +52,7 @@
 #include "GameNetwork/GameSpy/PeerThread.h"
 
 #include "WWDownload/Registry.h"
-#include "WWDownload/URLBuilder.h"
+#include "WWDownload/urlBuilder.h"
 
 #ifdef _INTERNAL
 // for occasional debugging...
@@ -321,7 +321,7 @@ static GHTTPBool motdCallback( GHTTPRequest request, GHTTPResult result,
 	// the SDK widened its byte count to 64 bits; the body wants the old Int.
 	Int bufferLen = (Int)bufferLen64;
 	(void)bufferLen;	// only read by DEBUG_LOG in some of these, which Release compiles out
-	Int run = (Int)param;
+	Int run = (Int)(uintptr_t)param;
 	if (run != timeThroughOnline)
 	{
 		DEBUG_CRASH(("Old callback being called!"));
@@ -364,7 +364,7 @@ static GHTTPBool configCallback( GHTTPRequest request, GHTTPResult result,
 	// the SDK widened its byte count to 64 bits; the body wants the old Int.
 	Int bufferLen = (Int)bufferLen64;
 	(void)bufferLen;	// only read by DEBUG_LOG in some of these, which Release compiles out
-	Int run = (Int)param;
+	Int run = (Int)(uintptr_t)param;
 	if (run != timeThroughOnline)
 	{
 		DEBUG_CRASH(("Old callback being called!"));
@@ -432,7 +432,7 @@ static GHTTPBool configHeadCallback( GHTTPRequest request, GHTTPResult result,
 	// the SDK widened its byte count to 64 bits; the body wants the old Int.
 	Int bufferLen = (Int)bufferLen64;
 	(void)bufferLen;	// only read by DEBUG_LOG in some of these, which Release compiles out
-	Int run = (Int)param;
+	Int run = (Int)(uintptr_t)param;
 	if (run != timeThroughOnline)
 	{
 		DEBUG_CRASH(("Old callback being called!"));
@@ -522,7 +522,7 @@ static GHTTPBool gamePatchCheckCallback( GHTTPRequest request, GHTTPResult resul
 	// the SDK widened its byte count to 64 bits; the body wants the old Int.
 	Int bufferLen = (Int)bufferLen64;
 	(void)bufferLen;	// only read by DEBUG_LOG in some of these, which Release compiles out
-	Int run = (Int)param;
+	Int run = (Int)(uintptr_t)param;
 	if (run != timeThroughOnline)
 	{
 		DEBUG_CRASH(("Old callback being called!"));
@@ -695,7 +695,7 @@ DWORD WINAPI asyncGethostbynameThreadFunc( void * szName )
 int asyncGethostbyname(char * szName)
 {
 	static int            stat = 0;
-	static unsigned long  threadid;
+	static DWORD          threadid;
 
 	if( stat == 0 )
 	{

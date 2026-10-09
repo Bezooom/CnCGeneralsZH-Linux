@@ -34,6 +34,9 @@
 
 #include "ffshader.h"
 
+struct IDirect3DDevice9;
+struct IDirect3DPixelShader9;
+
 // The description the device is currently configured for, read back off it.  StageCount is zero
 // when stage 0's colour operation is D3DTOP_DISABLE, which is the device drawing untextured.
 void CombinerShaderCache_Read_Device(IDirect3DDevice9 * device, CombinerDescription & description);

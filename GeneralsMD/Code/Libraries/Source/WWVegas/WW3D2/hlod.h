@@ -51,7 +51,7 @@
 #endif
 
 #ifndef SNAPPTS_H
-#include "snappts.h"
+#include "snapPts.h"
 #endif
 
 #ifndef PROTO_H

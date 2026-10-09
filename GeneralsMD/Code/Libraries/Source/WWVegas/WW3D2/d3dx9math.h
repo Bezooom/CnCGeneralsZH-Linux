@@ -34,9 +34,12 @@
 
 #ifndef D3DX9MATH_H
 #define D3DX9MATH_H
-
+#ifndef _WIN32
+#include "../LinuxDX/d3dx9math.h"
+#else
+#ifdef _WIN32
 #include <d3d9.h>
-
+#endif
 #define D3DX_PI	((FLOAT)3.141592654f)
 
 struct D3DXVECTOR3 : public D3DVECTOR
@@ -164,5 +167,6 @@ inline D3DXMATRIX * D3DXMatrixIdentity(D3DXMATRIX * out)
 	out->m[0][0] = out->m[1][1] = out->m[2][2] = out->m[3][3] = 1.0f;
 	return out;
 }
+#endif // _WIN32
 
 #endif // D3DX9MATH_H

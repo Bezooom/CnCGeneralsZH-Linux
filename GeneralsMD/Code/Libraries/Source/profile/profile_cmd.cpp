@@ -22,11 +22,12 @@
 // $Revision: #2 $
 // $DateTime: 2003/08/12 15:05:00 $
 //
-// ©2003 Electronic Arts
+// ï¿½2003 Electronic Arts
 //
 // Profile module command interface
 //////////////////////////////////////////////////////////////////////////////
 #include "_pch.h"
+#include <string.h>
 
 unsigned ProfileCmdInterface::numResIf;
 ProfileCmdInterface::Factory *ProfileCmdInterface::resIf;

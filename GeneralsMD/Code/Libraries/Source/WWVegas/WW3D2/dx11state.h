@@ -39,7 +39,9 @@
 #ifndef DX11STATE_H
 #define DX11STATE_H
 
+#ifdef _WIN32
 #include <d3d9.h>
+#endif
 #include <d3d11.h>
 
 // The engine sets more render states than D3D11 has anywhere to put, and the highest of them is

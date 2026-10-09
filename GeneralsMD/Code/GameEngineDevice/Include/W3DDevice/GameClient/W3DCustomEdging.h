@@ -58,7 +58,11 @@
 #include "shader.h"
 #include "vertmaterial.h"
 #include "Lib/BaseType.h"
+#if defined(_WIN32)
 #include "common/GameType.h"
+#else
+#include "Common/GameType.h"
+#endif
 #include "Common/AsciiString.h"
 
 //-----------------------------------------------------------------------------

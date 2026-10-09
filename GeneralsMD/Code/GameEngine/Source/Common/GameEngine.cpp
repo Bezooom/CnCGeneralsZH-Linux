@@ -43,7 +43,7 @@
 #include "Common/INIException.h"
 #include "Common/MessageStream.h"
 #include "Common/ThingFactory.h"
-#include "Common/File.h"
+#include "Common/file.h"
 #include "Common/FileSystem.h"
 #include "Common/ArchiveFileSystem.h"
 #include "Common/LocalFileSystem.h"
@@ -115,10 +115,10 @@
 #include "GameNetwork/WOLBrowser/WebBrowser.h"
 #include "GameNetwork/LANAPI.h"
 #include "GameNetwork/LANAPICallbacks.h"
-#include "GameNetwork/NetworkUtil.h"
+#include "GameNetwork/networkutil.h"
 #include "GameNetwork/GameSpy/GameResultsThread.h"
 
-#include "Common/Version.h"
+#include "Common/version.h"
 
 #ifdef _INTERNAL
 // for occasional debugging...
@@ -638,11 +638,16 @@ void GameEngine::init( int argc, char *argv[] )
 		// Create the low-level file system interface
 		TheFileSystem = createFileSystem();
 
-		//Kris: Patch 1.01 - November 17, 2003
-		//I was unable to resolve the RTPatch method of deleting a shipped file. English, Chinese, and Korean
-		//SKU's shipped with two INIZH.big files. One properly in the Run directory and the other in Run\INI\Data.
-		//We need to toast the latter in order for the game to patch properly.
-		DeleteFile( "Data\\INI\\INIZH.big" );
+	//Kris: Patch 1.01 - November 17, 2003
+	//I was unable to resolve the RTPatch method of deleting a shipped file. English, Chinese, and Korean
+	//SKU's shipped with two INIZH.big files. One properly in the Run directory and the other in Run\INI\Data.
+	//We need to toast the latter in order for the game to patch properly.
+#if defined(_MSC_VER)
+	DeleteFile( "Data\\INI\\INIZH.big" );
+#else
+	// No RTPatch leftovers on Linux (and backslashes are not separators here).
+	::remove( "Data/INI/INIZH.big" );
+#endif
 
 		// not part of the subsystem list, because it should normally never be reset!
 		TheNameKeyGenerator = MSGNEW("GameEngineSubsystem") NameKeyGenerator;
@@ -2469,4 +2474,10 @@ void updateTGAtoDDS()
 // If we're using the Wide character version of MessageBox, then there's no additional
 // processing necessary. Please note that this is a sleazy way to get this information,
 // but pending a better one, this'll have to do.
+#if defined(_MSC_VER)
 extern const Bool TheSystemIsUnicode = (((void*) (::MessageBox)) == ((void*) (::MessageBoxW)));
+#else
+// Linux: no MessageBox at all (crash UI is Phase-5 work); the value is
+// unused because the dialog branches below are compiled out.
+extern const Bool TheSystemIsUnicode = false;
+#endif

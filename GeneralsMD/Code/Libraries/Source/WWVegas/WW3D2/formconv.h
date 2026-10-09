@@ -45,8 +45,11 @@
 #define FORMCONV_H
 
 #include "ww3dformat.h"
+#ifdef _WIN32
 #include <d3d9.h>
-
+#else
+#include "ww3d_d3d9.h"
+#endif
 /*
 ** This file is used for conversions between D3DFORMAT and WW3DFormat.
 */

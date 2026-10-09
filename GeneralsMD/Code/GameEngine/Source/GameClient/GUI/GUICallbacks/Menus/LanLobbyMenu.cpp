@@ -32,7 +32,7 @@
 #include "PreRTS.h"	// This must go first in EVERY cpp file int the GameEngine
 
 #include "Lib/BaseType.h"
-#include "Common/CRC.h"
+#include "Common/crc.h"
 #include "Common/GameEngine.h"
 #include "Common/GlobalData.h"
 #include "Common/MultiplayerSettings.h"
@@ -328,7 +328,7 @@ static void playerTooltip(GameWindow *window,
 		return;
 	}
 
-	UnsignedInt playerIP = (UnsignedInt)GadgetListBoxGetItemData( window, row, col );
+	UnsignedInt playerIP = (UnsignedInt)(uintptr_t)GadgetListBoxGetItemData( window, row, col );
 	LANPlayer *player = TheLAN->LookupPlayer(playerIP);
 	if (!player)
 	{

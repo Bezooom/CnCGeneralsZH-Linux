@@ -49,6 +49,9 @@
 #include "wwstring.h"
 #include "trim.h"
 #include <wchar.h>
+#if !defined(_MSC_VER)
+#include <wctype.h>
+#endif
 #ifdef _UNIX
 #include "osdep.h"
 #endif
@@ -304,7 +307,18 @@ inline int
 WideStringClass::Compare_No_Case (const WCHAR *string) const
 {
 	if (string) {
+#if defined(_MSC_VER)
 		return _wcsicmp (m_Buffer, string);
+#else
+		// towlower loop: wcscasecmp needs _GNU_SOURCE under -std=c++17.
+		const WCHAR *a = m_Buffer;
+		const WCHAR *b = string;
+		while (*a != 0 && towlower(*a) == towlower(*b)) {
+			++a;
+			++b;
+		}
+		return (int)(towlower(*a) - towlower(*b));
+#endif
 	}
 
 	return -1;

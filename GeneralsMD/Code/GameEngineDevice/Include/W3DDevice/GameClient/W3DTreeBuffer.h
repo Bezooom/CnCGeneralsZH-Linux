@@ -53,15 +53,27 @@
 #include "always.h"
 #include "rendobj.h"
 #include "w3d_file.h"
+#if defined(_WIN32)
 #include "Texture.h"
+#else
+#include "texture.h"
+#endif
 #include "dx8vertexbuffer.h"
 #include "dx8indexbuffer.h"
 #include "shader.h"
 #include "vertmaterial.h"
 #include "Lib/BaseType.h"
+#if defined(_WIN32)
 #include "common/GameType.h"
+#else
+#include "Common/GameType.h"
+#endif
 #include "Common/AsciiString.h"
+#if defined(_WIN32)
 #include "common/GlobalData.h"
+#else
+#include "Common/GlobalData.h"
+#endif
 
 //-----------------------------------------------------------------------------
 //           Forward References

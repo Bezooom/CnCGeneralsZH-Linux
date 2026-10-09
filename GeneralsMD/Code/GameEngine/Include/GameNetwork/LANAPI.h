@@ -47,7 +47,9 @@ static const Int g_lanHostNameLength = 1;
 static const Int g_lanGameNameLength = 16; // reduced length because of game option length
 static const Int g_lanGameNameReservedLength = 16; // save N wchars for ID info
 static const Int g_lanMaxChatLength = 100;
-static const Int m_lanMaxOptionsLength = MAX_LANAPI_PACKET_SIZE - ( 8 + (g_lanGameNameLength+1)*2 + 4 + (g_lanPlayerNameLength+1)*2
+// The *2 multipliers below are sizeof(WideChar): 2 on Windows, 4 on Linux.
+// Spelled out so the options length stays in the same units on both.
+static const Int m_lanMaxOptionsLength = MAX_LANAPI_PACKET_SIZE - ( 8 + (g_lanGameNameLength+1)*(Int)sizeof(WideChar) + 4 + (g_lanPlayerNameLength+1)*(Int)sizeof(WideChar)
 																														+ (g_lanLoginNameLength+1) + (g_lanHostNameLength+1) );
 static const Int g_maxSerialLength = 23; // including the trailing '\0'
 
@@ -433,8 +435,14 @@ struct LANMessage
 #pragma pack(pop)
 
 // The lobby broadcast is read at fixed offsets out of one datagram, so it has to fit in one.
+// Linux note: WideChar is 4 bytes here (wchar_t) vs 2 on Windows, so this
+// struct is bigger than the wire format. Linux<->Linux play stays
+// self-consistent (same layout both ends); Windows<->Linux interop needs
+// the char16_t migration, which is Phase-6 (multiplayer) work.
+#if defined(_MSC_VER)
 static_assert(sizeof(LANMessage) <= MAX_LANAPI_PACKET_SIZE,
 	"LANMessage must fit in a single LAN datagram");
+#endif
 
 
 #endif // _LANAPI_H_

@@ -54,7 +54,9 @@
 
 #include	"always.h"
 #include	"rawfile.h"
+#if defined(_MSC_VER)
 #include	<direct.h>
+#endif
 //#include	<share.h>
 #include	<stddef.h>
 #include	<stdio.h>
@@ -66,6 +68,7 @@
 #ifdef _UNIX
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <unistd.h>
 #endif
 
 
@@ -856,17 +859,12 @@ int RawFileClass::Size(void)
 	if (Is_Open()) {
 
       #ifdef _UNIX
-			fpos_t curpos,startpos,endpos;
-			fgetpos(Handle,&curpos);	
+			long curpos = ftell(Handle);
+			fseek(Handle, 0, SEEK_END);
+			long endpos = ftell(Handle);
+			fseek(Handle, curpos, SEEK_SET);
 
-			fseek(Handle,0,SEEK_SET);
-			fgetpos(Handle,&startpos);	
-
-			fseek(Handle,0,SEEK_END);
-			fgetpos(Handle,&endpos);	
-
-			size=endpos-startpos;
-			fsetpos(Handle,&curpos);
+			size = (int)endpos;
 		#else
 			size = GetFileSize(Handle, NULL);
 		#endif

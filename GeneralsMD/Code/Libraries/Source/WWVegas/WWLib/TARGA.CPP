@@ -827,6 +827,7 @@ void Targa::XFlip(void)
 
 static __forceinline void _swapBytes(char *p1, char *p2, unsigned count)
 {
+#if defined(_MSC_VER)
   _asm
   {
     mov esi,[p1]
@@ -865,6 +866,14 @@ static __forceinline void _swapBytes(char *p1, char *p2, unsigned count)
     jmp lpLessThan16
   done:
   }
+#else
+  // Portable byte swap; the asm above is a 16-byte-unrolled equivalent.
+  for (unsigned i = 0; i < count; ++i) {
+    char tmp = p1[i];
+    p1[i] = p2[i];
+    p2[i] = tmp;
+  }
+#endif
 }
 
 void Targa::YFlip(void)

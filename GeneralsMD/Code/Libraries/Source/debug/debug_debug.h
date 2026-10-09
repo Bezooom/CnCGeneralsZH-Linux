@@ -32,9 +32,15 @@
 #ifndef DEBUG_DEBUG_H // Include guard
 #define DEBUG_DEBUG_H
 
+#if !defined(_MSC_VER)
+#include <stdint.h> // uintptr_t for frame addresses
+#endif
+
 // this makes sure that whenever this header is included
 // the accompanying OBJ file is linked in as well
+#if defined(_MSC_VER)
 #pragma comment(linker,"/include:___DebugIncludeInLink1")
+#endif
 
 /**
   \class Debug debug.h <rts/debug.h>
@@ -207,7 +213,7 @@ DLOG( "My HResult is: " << Debug::HResult(SomeHRESULTValue) << "\n" );
   class Hex {};
   
   /// \internal Performs actual switch to hexadecimal format. 
-  Debug& operator<<(Hex &)
+  Debug& operator<<(Hex)
   {
     SetPrefixAndRadix("0x",16);
     return *this;
@@ -219,7 +225,7 @@ DLOG( "My HResult is: " << Debug::HResult(SomeHRESULTValue) << "\n" );
   class Dec {};
 
   /// \internal Performs actuals switch to decimal format
-  Debug& operator<<(Dec &)
+  Debug& operator<<(Dec)
   {
     SetPrefixAndRadix("",10);
     return *this;
@@ -231,7 +237,7 @@ DLOG( "My HResult is: " << Debug::HResult(SomeHRESULTValue) << "\n" );
   class Bin {};
 
   /// \internal Performs actuals switch to binary format
-  Debug& operator<<(Bin &)
+  Debug& operator<<(Bin)
   {
     SetPrefixAndRadix("%",2);
     return *this;
@@ -253,7 +259,7 @@ DLOG( "My HResult is: " << Debug::HResult(SomeHRESULTValue) << "\n" );
   };
 
   /// \internal Performs actuals width switch
-  Debug& operator<<(Width &w)
+  Debug& operator<<(Width w)
   {
     // the padding loop compares an unsigned length against this, so a negative
     // width used to wrap round and append four billion fill characters
@@ -277,7 +283,7 @@ DLOG( "My HResult is: " << Debug::HResult(SomeHRESULTValue) << "\n" );
   };
 
   /// \internal Performs actuals setting of fill char
-  Debug& operator<<(FillChar &c)
+  Debug& operator<<(FillChar c)
   {
     m_fillChar=c.m_fill;
     return *this;
@@ -300,7 +306,7 @@ DLOG( "My HResult is: " << Debug::HResult(SomeHRESULTValue) << "\n" );
   };
 
   /// \internal Performs actuals repeating of char
-  Debug& operator<<(RepeatChar &c);
+  Debug& operator<<(RepeatChar c);
 
   /**
     \brief Old printf style formatting.
@@ -584,7 +590,12 @@ DLOG( "My HResult is: " << Debug::HResult(SomeHRESULTValue) << "\n" );
     \param val unsigned 64 bit integer
     \return *this
   */
+#if defined(_MSC_VER)
   Debug& operator<<(unsigned __int64 val);
+#else
+  // `unsigned __int64` is only valid where __int64 is a keyword (MSVC).
+  Debug& operator<<(unsigned long long val);
+#endif
 
   /** \internal
 
@@ -784,19 +795,29 @@ private:
   */
   static Debug Instance;
 
-  /** \internal 
-    
+  /** \internal
+
     Helper variable for putting PreStaticInit() into the MSVC
     startup list.
   */
-  static void *PreStatic;    
+  static void *PreStatic;
 
-  /** \internal 
-    
+  /** \internal
+
     Helper variable for putting PostStaticInit() into the MSVC
     startup list.
   */
-  static void *PostStatic;    
+  static void *PostStatic;
+
+#if !defined(_MSC_VER)
+  /** \internal
+
+    Linux twins of the .CRT$XC{B,Y} mechanism above (GCC constructor
+    priorities; see debug_debug.cpp).
+  */
+  static void LinuxPreStatic(void) __attribute__((constructor(101)));
+  static void LinuxPostStatic(void) __attribute__((constructor));
+#endif
 
   /// \internal HResult translator vector entry
   struct HResultTranslatorEntry
@@ -875,7 +896,8 @@ private:
   CmdInterfaceListEntry *firstCmdGroup;
 
   /// \internal current stack frame (used by SkipNext)
-  static unsigned curStackFrame;
+  /// (pointer-sized: return addresses do not fit in 32 bits on 64-bit)
+  static uintptr_t curStackFrame;
 
   /** \internal 
   
@@ -922,8 +944,8 @@ private:
     /// pointer to next entry with same hash
     FrameHashEntry *next;
 
-    /// frame address
-    unsigned frameAddr;
+    /// frame address (pointer-sized, see curStackFrame)
+    uintptr_t frameAddr;
 
     /// frame type (FrameTypeAssert, FrameTypeCheck, or FrameTypeLog)
     unsigned frameType;
@@ -963,7 +985,7 @@ private:
     \param addr frame address
     \return FrameHashEntry found or 0 if nothing found
   */
-  __forceinline FrameHashEntry *LookupFrame(unsigned addr)
+  __forceinline FrameHashEntry *LookupFrame(uintptr_t addr)
   {
     for (FrameHashEntry *e=frameHash[addr%FRAME_HASH_SIZE];e;e=e->next)
       if (e->frameAddr==addr)
@@ -983,7 +1005,7 @@ private:
     \param line line number
     \return the entry just added
   */
-  FrameHashEntry *AddFrameEntry(unsigned addr, unsigned type,
+  FrameHashEntry *AddFrameEntry(uintptr_t addr, unsigned type,
                                 const char *fileOrGroup, int line);
 
   /** \internal
@@ -1005,7 +1027,7 @@ private:
     \param line line number
     \return the entry just added (or the already existing entry)
   */
-  FrameHashEntry *GetFrameEntry(unsigned addr, unsigned type,
+  FrameHashEntry *GetFrameEntry(uintptr_t addr, unsigned type,
                                 const char *fileOrGroup, int line)
   {
     FrameHashEntry *e=LookupFrame(addr);

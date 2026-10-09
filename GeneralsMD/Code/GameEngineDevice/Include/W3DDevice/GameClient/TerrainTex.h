@@ -33,9 +33,21 @@
 
 //#define DO_8STAGE_TERRAIN_PASS		//optimized terrain rendering for Nvidia based cards
 
+#if defined(_WIN32)
 #include "WW3D2/Texture.h"
+#else
+#include "WW3D2/texture.h"
+#endif
+#if defined(_WIN32)
 #include "WWMATH/Matrix3d.h"
+#else
+#include "WWMath/matrix3d.h"
+#endif
+#if defined(_WIN32)
 #include "common/AsciiString.h"
+#else
+#include "Common/AsciiString.h"
+#endif
 
 class WorldHeightMap;
 #define TILE_OFFSET 8

@@ -79,7 +79,15 @@ static const Int MAX_NETWORK_MESSAGE_LEN = MAX_UDP_PAYLOAD_SIZE;
 static const Int MAX_PACKET_SIZE = MAX_UDP_PAYLOAD_SIZE - sizeof(TransportMessageHeader);
 
 // The LAN lobby's own broadcast is a fixed struct read at fixed offsets, and it stays where it was.
+#if defined(_MSC_VER)
 static const Int MAX_LANAPI_PACKET_SIZE = 476;
+#else
+// Linux WideChar is 4 bytes, so the same struct is 536 bytes: 60 header +
+// 476 Chat union member (which still dominates GameInfo's 475, keeping
+// m_lanMaxOptionsLength at its Windows value of 404). Linux<->Linux play
+// stays self-consistent; wire compat with Windows is Phase-6 work.
+static const Int MAX_LANAPI_PACKET_SIZE = 536;
+#endif
 
 /**
  * Command packet - contains frame #, total # of commands, and each command.  This is what gets sent
@@ -130,7 +138,7 @@ struct DelayedTransportMessage
 /**
  * Message types
  */
-enum NetMessageFlag {
+enum NetMessageFlag : int {
 	MSG_ACK = 1,
 	MSG_NEEDACK = 2,
 	MSG_SEQUENCED = 4,
@@ -138,7 +146,7 @@ enum NetMessageFlag {
 };
 typedef UnsignedByte NetMessageFlags;
 
-enum NetCommandType {
+enum NetCommandType : int {
 	NETCOMMANDTYPE_UNKNOWN = -1,
 	NETCOMMANDTYPE_ACKBOTH = 0,
 	NETCOMMANDTYPE_ACKSTAGE1,
@@ -179,7 +187,7 @@ enum NetCommandType {
 	NETCOMMANDTYPE_MAX
 };
 
-enum NetLocalStatus {
+enum NetLocalStatus : int {
 	NETLOCALSTATUS_PREGAME = 0,
 	NETLOCALSTATUS_INGAME,
 	NETLOCALSTATUS_LEAVING,
@@ -187,7 +195,7 @@ enum NetLocalStatus {
 	NETLOCALSTATUS_POSTGAME
 };
 
-enum PlayerLeaveCode {
+enum PlayerLeaveCode : int {
 	PLAYERLEAVECODE_CLIENT = 0,
 	PLAYERLEAVECODE_LOCAL,
 	PLAYERLEAVECODE_PACKETROUTER,

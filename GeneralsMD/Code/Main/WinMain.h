@@ -34,8 +34,11 @@
 #define __WINMAIN_H_
 
 // SYSTEM INCLUDES ////////////////////////////////////////////////////////////
+#ifndef PLATFORM_LINUX
 #include <windows.h>
-
+#else
+#include "win.h"
+#endif
 // USER INCLUDES //////////////////////////////////////////////////////////////
 #include "Win32Device/GameClient/Win32Mouse.h"
 

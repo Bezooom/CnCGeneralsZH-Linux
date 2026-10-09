@@ -9,16 +9,16 @@
  */
 #include "bink.h"
 
-HBINK __stdcall BinkOpen(const char *name, unsigned int flags) { return 0; }
-void  __stdcall BinkClose(HBINK bnk) {}
-int   __stdcall BinkWait(HBINK bnk) { return 0; }
-int   __stdcall BinkDoFrame(HBINK bnk) { return 0; }
-void  __stdcall BinkNextFrame(HBINK bnk) {}
-int   __stdcall BinkGoto(HBINK bnk, unsigned int frame, int flags) { return 0; }
-int   __stdcall BinkCopyToBuffer(HBINK bnk, void *dest, int destpitch,
+HBINK BINKCALL BinkOpen(const char *name, unsigned int flags) { return 0; }
+void  BINKCALL BinkClose(HBINK bnk) {}
+int   BINKCALL BinkWait(HBINK bnk) { return 0; }
+int   BINKCALL BinkDoFrame(HBINK bnk) { return 0; }
+void  BINKCALL BinkNextFrame(HBINK bnk) {}
+int   BINKCALL BinkGoto(HBINK bnk, unsigned int frame, int flags) { return 0; }
+int   BINKCALL BinkCopyToBuffer(HBINK bnk, void *dest, int destpitch,
                                  unsigned int destheight, unsigned int destx,
                                  unsigned int desty, unsigned int flags) { return 0; }
-int   __stdcall BinkSetVolume(HBINK bnk, unsigned int trackid, int volume) { return 0; }
-void  __stdcall BinkSetSoundTrack(unsigned int total_tracks, unsigned int *tracks) {}
-int   __stdcall BinkSetSoundSystem(BINKSNDSYSOPEN open, unsigned int param) { return 0; }
-int   __stdcall BinkOpenDirectSound(unsigned int param) { return 0; }
+int   BINKCALL BinkSetVolume(HBINK bnk, unsigned int trackid, int volume) { return 0; }
+void  BINKCALL BinkSetSoundTrack(unsigned int total_tracks, unsigned int *tracks) {}
+int   BINKCALL BinkSetSoundSystem(BINKSNDSYSOPEN open, BINKSNDSYSPARAM param) { return 0; }
+int   BINKCALL BinkOpenDirectSound(BINKSNDSYSPARAM param) { return 0; }

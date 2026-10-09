@@ -815,7 +815,9 @@ static void getPreorderCallback(int localid, int profileid, persisttype_t type, 
 void PSThreadClass::Thread_Function()
 {
 	try {
+#if defined(_MSC_VER)
 	_set_se_translator( DumpExceptionInfo ); // Hook that allows stack trace.
+#endif
 	/*********
 	First step, set our game authentication info
 	We could do:

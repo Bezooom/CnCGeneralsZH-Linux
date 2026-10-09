@@ -45,12 +45,18 @@
 //         Includes                                                      
 //----------------------------------------------------------------------------
 
-#include "windows.h"
+#if defined(_WIN32)
+#include <windows.h>
+#endif
 
 #include "Common/GameMemory.h"
 #include "Common/FileSystem.h"
 
+#if defined(_WIN32)
 #include "Win32DEvice/Common/Win32CDManager.h"
+#else
+#include "Win32Device/Common/Win32CDManager.h"
+#endif
 
 //----------------------------------------------------------------------------
 //         Externals                                                     

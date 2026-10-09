@@ -13,5 +13,7 @@
 !stub/
 !stub/mss/
 !stub/mss/mss.h
-# stub/miles.c, stub/miles.def, stub/cleanup.c stay unvendored: they are
-# re-fetched from Thyme (see CLAUDE.md), with one local patch documented there.
+# The native unavailable implementation must survive a clean checkout.
+!stub/miles.c
+# Windows export definitions and cleanup remain supplied externally.
+# Linux builds do not consume the Windows .def file.

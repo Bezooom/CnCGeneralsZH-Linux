@@ -32,6 +32,36 @@
 ******************************************************************************/
 
 #include "LaunchWeb.h"
+#if defined(PLATFORM_LINUX) || defined(__linux__) || defined(_UNIX)
+// Linux: open the URL with the desktop's default handler (Phase 4 PAL item).
+#include <stdio.h>
+#include <string.h>
+#include <unistd.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+
+bool LaunchWebBrowser(const char* url)
+{
+	// Just return if no URL specified
+	if (!url || (strlen(url) == 0))
+	{
+		return false;
+	}
+
+	pid_t pid = fork();
+	if (pid < 0)
+		return false;
+	if (pid == 0) {
+		// Child: detach and exec xdg-open; _exit keeps stdio buffers intact.
+		execlp("xdg-open", "xdg-open", url, (char*)NULL);
+		_exit(127);
+	}
+	// Parent: do not wait (matches Wait=false); reap lazily to avoid zombies.
+	int status = 0;
+	waitpid(pid, &status, WNOHANG);
+	return true;
+}
+#else
 #include <windows.h>
 #include <shellapi.h>
 #include <stdio.h>
@@ -114,7 +144,8 @@ bool LaunchWebBrowser(const char* url)
 	BOOL createSuccess = CreateProcess(exeName, commandLine, NULL, NULL, FALSE,
 			0, NULL, NULL, &startupInfo, &processInfo);
 
-	assert(createSuccess && "Failed to launch default WebBrowser.");
+ 	assert(createSuccess && "Failed to launch default WebBrowser.");
 
-	return (TRUE == createSuccess);
-	}
+ 	return (TRUE == createSuccess);
+ 	}
+#endif // PLATFORM_LINUX || __linux__ || _UNIX

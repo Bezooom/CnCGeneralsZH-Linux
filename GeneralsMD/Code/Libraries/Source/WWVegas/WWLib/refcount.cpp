@@ -40,7 +40,12 @@
 
 
 #include "refcount.h"
+#if defined(PLATFORM_LINUX) || defined(__linux__) || defined(_UNIX)
+// No Win32 use in this file; win.h carries the Linux type shims.
+#include "win.h"
+#else
 #include <windows.h>
+#endif
 
 
 #ifndef NDEBUG

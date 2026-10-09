@@ -81,13 +81,41 @@ enum
 #include "W3DDevice/GameClient/W3DShadow.h"
 #include "W3DDevice/GameClient/W3DShroud.h"
 #include "W3DDevice/GameClient/W3DProjectedShadow.h"
+#if defined(_WIN32)
 #include "WW3D2/Camera.h"
+#else
+#include "WW3D2/camera.h"
+#endif
+#if defined(_WIN32)
 #include "WW3D2/DX8Wrapper.h"
+#else
+#include "WW3D2/dx8wrapper.h"
+#endif
+#if defined(_WIN32)
 #include "WW3D2/DX8Renderer.h"
+#else
+#include "WW3D2/dx8renderer.h"
+#endif
+#if defined(_WIN32)
 #include "WW3D2/HLod.h"
+#else
+#include "WW3D2/hlod.h"
+#endif
+#if defined(_WIN32)
 #include "WW3D2/Matinfo.h"
+#else
+#include "WW3D2/matinfo.h"
+#endif
+#if defined(_WIN32)
 #include "WW3D2/Mesh.h"
+#else
+#include "WW3D2/mesh.h"
+#endif
+#if defined(_WIN32)
 #include "WW3D2/MeshMdl.h"
+#else
+#include "WW3D2/meshmdl.h"
+#endif
 #include "WW3D2/vertmaterial.h"
 #include "d3dx9runtime.h"
 #include "d3d8shadertranslate.h"

@@ -38,14 +38,14 @@
 #define DEFAULT_WORLD_HEIGHT	64
 
 /// A unique, generic "identifier" used to access Objects.
-enum ObjectID
+enum ObjectID : int
 {
 	INVALID_ID = 0,
 	FORCE_OBJECTID_TO_LONG_SIZE = 0x7ffffff
 };
 
 /// A unique, generic "identifier" used to access Drawables.
-enum DrawableID
+enum DrawableID : int
 {
 	INVALID_DRAWABLE_ID = 0,
 	FORCE_DRAWABLEID_TO_LONG_SIZE = 0x7ffffff
@@ -65,7 +65,7 @@ class INI;
 //-------------------------------------------------------------------------------------------------
 /** The time of day enumeration, keep in sync with TimeOfDayNames[] */
 //-------------------------------------------------------------------------------------------------
-enum TimeOfDay
+enum TimeOfDay : int
 {
 	TIME_OF_DAY_INVALID = 0,
 	TIME_OF_DAY_FIRST = 1,
@@ -170,7 +170,7 @@ enum Scorches
 };
 
 //-------------------------------------------------------------------------------------------------
-enum WeaponSlotType
+enum WeaponSlotType : int
 {
 	PRIMARY_WEAPON = 0,
 	SECONDARY_WEAPON,
@@ -188,7 +188,24 @@ enum WeaponSlotType
 // made of structures.
 // Note that the bridges just index in the pathfinder, so you don't actually
 // have a LAYER_BRIDGE_1 enum value.
-enum PathfindLayerEnum {LAYER_INVALID = 0, LAYER_GROUND = 1, LAYER_WALL = 15, LAYER_LAST=15};
+enum PathfindLayerEnum : int {
+// NOTE (Linux port): this enum arrived truncated (no body, no closing
+// brace), so it is reconstructed here from in-tree constraints:
+//  - AIPathfind.h pins LAYER_INVALID=0, LAYER_GROUND=1 ("Layer 1 is ground");
+//  - bridges are assigned per map from LAYER_GROUND+1 upward (addBridge);
+//  - m_layers is sized [LAYER_LAST+1] and indexed up to LAYER_WALL, so
+//    LAYER_WALL == LAYER_LAST; the wall slot is initialized separately
+//    (allocateCellsForWallLayer) after the 0..LAST-1 bridge loop;
+//  - getCell treats GROUND<layer<=LAST as layered, else the ground map.
+// Capacity: 6 bridge slots (retail maps use at most 2-3); bump LAYER_LAST
+// (=LAYER_WALL) if a map ever hits "Ran out of bridge layers".
+// Values are NOT save-compatible with any other numbering; no test or
+// shipped data pins them (replays/MP out of scope).
+	LAYER_INVALID = 0,
+	LAYER_GROUND = 1,
+	LAYER_LAST = 8,
+	LAYER_WALL = 8
+};
 
 //-------------------------------------------------------------------------------------------------
 

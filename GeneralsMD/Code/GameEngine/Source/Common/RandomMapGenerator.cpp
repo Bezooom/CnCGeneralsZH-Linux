@@ -34,7 +34,7 @@
 #include <map>
 
 #include "Common/RandomMapGenerator.h"
-#include "Lib/Trig.h"
+#include "Lib/trig.h"
 #include "Common/crc.h"
 #include "Common/DataChunk.h"
 #include "Common/Dict.h"

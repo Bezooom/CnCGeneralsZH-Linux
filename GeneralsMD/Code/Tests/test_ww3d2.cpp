@@ -78,6 +78,15 @@ void freeFromW3DMemPool(void * /*pool*/, void *p)
 	::operator delete(raw);
 }
 
+#ifdef PLATFORM_LINUX
+#include "dx8webbrowser.h"
+
+// RegistryClass is no longer stubbed here: it has a real Linux backend through
+// Platform/PAL_Registry, so this test links the real one.
+void DX8WebBrowser::Update(void) {}
+void DX8WebBrowser::Render(int) {}
+#endif
+
 /*=========================================================================
    ww3dformat - format property tables
   =========================================================================*/
@@ -1597,6 +1606,7 @@ TEST(w3d_shader_struct_is_the_size_the_file_format_expects)
 
 #include "dx8wrapper.h"
 
+#if defined(_MSC_VER) && !defined(PLATFORM_LINUX)
 static void convertColorRegisterWitness(const Vector3 *rgb, float alpha, unsigned *colOut,
 	unsigned *ebxOut, unsigned *esiOut, unsigned *ediOut)
 {
@@ -1617,16 +1627,20 @@ static void convertColorRegisterWitness(const Vector3 *rgb, float alpha, unsigne
 		mov dword ptr [eax], edi
 	}
 }
+#endif
 
 TEST(convert_color_leaves_the_callee_saved_registers_alone)
 {
 	Vector3 rgb(0.4f, 0.8f, 0.2f);
+#if defined(_MSC_VER) && !defined(PLATFORM_LINUX)
 	unsigned col = 0, ebxOut = 0, esiOut = 0, ediOut = 0;
 	convertColorRegisterWitness(&rgb, 1.0f, &col, &ebxOut, &esiOut, &ediOut);
 	CHECK_EQ(ebxOut, 0x0BADF00D);
 	CHECK_EQ(esiOut, 0x0BADBEEF);
 	CHECK_EQ(ediOut, 0x0BADCAFE);
-
+#else
+	unsigned col = DX8Wrapper::Convert_Color(rgb, 1.0f);
+#endif
 	/* ...and it still converts: truncate(x*255), packed AARRGGBB. */
 	unsigned expected = ((unsigned)(1.0f * 255.0f) << 24)
 							| ((unsigned)(0.4f * 255.0f) << 16)
@@ -1635,6 +1649,7 @@ TEST(convert_color_leaves_the_callee_saved_registers_alone)
 	CHECK_EQ(col, expected);
 }
 
+#if defined(_MSC_VER) && !defined(PLATFORM_LINUX)
 static void clampColorRegisterWitness(Vector4 *color,
 	unsigned *ebxOut, unsigned *esiOut, unsigned *ediOut)
 {
@@ -1655,16 +1670,20 @@ static void clampColorRegisterWitness(Vector4 *color,
 		mov dword ptr [eax], edi
 	}
 }
+#endif
 
 TEST(clamp_color_leaves_the_callee_saved_registers_alone)
 {
 	Vector4 color(-0.5f, 0.5f, 2.0f, 1.0f);
+#if defined(_MSC_VER) && !defined(PLATFORM_LINUX)
 	unsigned ebxOut = 0, esiOut = 0, ediOut = 0;
 	clampColorRegisterWitness(&color, &ebxOut, &esiOut, &ediOut);
 	CHECK_EQ(ebxOut, 0x0BADF00D);
 	CHECK_EQ(esiOut, 0x0BADBEEF);
 	CHECK_EQ(ediOut, 0x0BADCAFE);
-
+#else
+	DX8Wrapper::Clamp_Color(color);
+#endif
 	CHECK_NEAR(color.X, 0.0f, 0.0001f);
 	CHECK_NEAR(color.Y, 0.5f, 0.0001f);
 	CHECK_NEAR(color.Z, 1.0f, 0.0001f);

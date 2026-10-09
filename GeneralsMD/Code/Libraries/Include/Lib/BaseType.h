@@ -97,12 +97,25 @@
 //#define abs(x) (((x) < 0) ? -(x) : (x))
 //#endif
 
+#if defined(__linux__) || defined(PLATFORM_LINUX) || defined(_UNIX)
+// Function templates, not macros: function-like min/max macros expand inside
+// libstdc++ headers themselves (e.g. <algorithm>'s 3-argument declarations)
+// and break every translation unit. The templates evaluate each argument
+// once (the macros evaluated twice) and otherwise match macro semantics,
+// including mixed argument types via common_type.
+#include <type_traits>
+template <typename T, typename U>
+inline typename std::common_type<T, U>::type min(T a, U b) { return (a < b) ? a : b; }
+template <typename T, typename U>
+inline typename std::common_type<T, U>::type max(T a, U b) { return (a > b) ? a : b; }
+#else
 #ifndef min
 #define min(x,y) (((x)<(y)) ? (x) : (y))
 #endif
 
 #ifndef max
 #define max(x,y) (((x)>(y)) ? (x) : (y))
+#endif
 #endif
 
 #ifndef TRUE
@@ -131,10 +144,18 @@ typedef char							Byte;							// 1 byte		USED TO BE "SignedByte"
 typedef char							Char;							// 1 byte of text
 typedef bool							Bool;							// 
 // note, the types below should use "long long", but MSVC doesn't support it yet
+#if defined(_MSC_VER)
 typedef __int64						Int64;							// 8 bytes 
 typedef unsigned __int64	UnsignedInt64;	  	// 8 bytes 
+#else
+typedef long long					Int64;							// 8 bytes
+typedef unsigned long long	UnsignedInt64;		// 8 bytes
+// MSVC spellings used directly in a few TUs (AIPathfind, CommandXlat, ...).
+typedef long long __int64;
+typedef unsigned long long __uint64;
+#endif 
 
-#include "Lib/Trig.h"
+#include "Lib/trig.h"
 
 //-----------------------------------------------------------------------------
 typedef wchar_t WideChar;  ///< multi-byte character representations
@@ -169,16 +190,22 @@ inline Real deg2rad(Real rad) { return rad * (PI/180); }
 //-----------------------------------------------------------------------------
 // For twiddling bits
 //-----------------------------------------------------------------------------
+#if defined(__GNUC__) && !defined(__forceinline)
+#define __forceinline inline __attribute__((always_inline))
+#endif
+
 // winnt.h claims BitTest for the _bittest intrinsic.  Pull it in here (windef.h
 // is the smallest header that reaches it) so its include guard is already
 // closed, then take the name back: otherwise any header that gets to winnt.h
 // after this one silently rewrites every use below into an intrinsic that takes
 // a LONG* and the game's bit fields stop compiling.  Not <windows.h>: that also
 // drags in winsock.h, and the device code includes winsock2.h.
+#if defined(_MSC_VER)
 #if defined(_M_IX86) && !defined(_X86_)
 #define _X86_		// windows.h does this before it reaches windef.h, and winnt.h
 #endif				// #errors with "No Target Architecture" without it
 #include <windef.h>
+#endif
 #undef BitTest
 #define BitTest( x, i ) ( ( (x) & (i) ) != 0 )
 #define BitSet( x, i ) ( (x) |= (i) )
@@ -190,6 +217,7 @@ inline Real deg2rad(Real rad) { return rad * (PI/180); }
 // note, this function depends on the cpu rounding mode, which we set to CHOP every frame, 
 // but apparently tends to be left in unpredictable modes by various system bits of
 // code, so use this function with caution -- it might not round in the way you want.
+#if defined(_MSC_VER)
 __forceinline long fast_float2long_round(float f)
 {
 	long i;
@@ -201,9 +229,18 @@ __forceinline long fast_float2long_round(float f)
 
 	return i;
 }
+#else
+#include <math.h>
+__forceinline long fast_float2long_round(float f)
+{
+	// fistp stores with the FPU's current rounding mode; lrintf is its C99 twin.
+	return lrintf(f);
+}
+#endif
 
 // super fast float trunc routine, works always (independent of any FPU modes)
 // code courtesy of Martin Hoffesommer (grin)
+#if defined(_MSC_VER)
 __forceinline float fast_float_trunc(float f)
 {
   // EDX, not EBX, for the zero: an __asm block has to leave EBX/ESI/EDI the way it
@@ -223,6 +260,13 @@ __forceinline float fast_float_trunc(float f)
   }
   return f;
 }
+#else
+__forceinline float fast_float_trunc(float f)
+{
+  // Truncation toward zero, independent of FPU mode; truncf is its C99 twin.
+  return truncf(f);
+}
+#endif
 
 /* floor and ceil, off the truncation above.
  *

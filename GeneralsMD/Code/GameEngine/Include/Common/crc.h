@@ -32,7 +32,9 @@
 #define _CRC_H_
 
 #include "Lib/BaseType.h"
-#include "winsock2.h" // for htonl
+
+// Platform abstraction for CRC32
+#include "PAL_Timing.h"
 
 #ifdef _DEBUG
 
@@ -43,8 +45,7 @@ public:
 
 	void computeCRC( const void *buf, Int len );		///< Compute the CRC for a buffer, added into current CRC
 	void clear( void ) { crc = 0; }									///< Clears the CRC to 0
-//	UnsignedInt get( void ) { return htonl(crc); }	///< Get the combined CRC
-	UnsignedInt get( void );
+	UnsignedInt get( void ); ///< Get the combined CRC
 
 private:
 	void addCRC( UnsignedByte val );									///< CRC a 4-byte block
@@ -66,54 +67,8 @@ public:
     if (!buf||len<1)
       return;
     
-    /* C++ version left in for reference purposes
-	  for (UnsignedByte *uintPtr=(UnsignedByte *)buf;len>0;len--,uintPtr++)
-    {
-    	int hibit;
-    	if (crc & 0x80000000) 
-      {
-		    hibit = 1;
-	    } 
-      else 
-      {
-		    hibit = 0;
-	    }
-
-	    crc <<= 1;
-	    crc += *uintPtr;
-	    crc += hibit;
-    }
-    */
-
-    // ASM version, verified by comparing resulting data with C++ version data
-    unsigned *crcPtr=&crc;
-    // Same rule as fast_float_trunc in BaseType.h: EBX, ESI and EDI belong to the
-    // caller, and this block uses all three.  Nothing has crashed on it yet, but that
-    // is luck -- whichever of them the compiler happens to hold a live value in is
-    // gone when the block ends.
-    _asm
-    {
-      push ebx
-      push esi
-      push edi
-      mov esi,[buf]
-      mov ecx,[len]
-      dec ecx
-      mov edi,[crcPtr]
-      mov ebx,dword ptr [edi]
-      xor eax,eax
-    lp:
-      mov al,byte ptr [esi]
-      shl ebx,1
-      inc esi
-      adc ebx,eax
-      dec ecx
-      jns lp
-      mov dword ptr [edi],ebx
-      pop edi
-      pop esi
-      pop ebx
-    };
+    // Portable CRC32 implementation (slicing-by-8)
+    crc = Platform_CRC32(buf, len, crc);
   }
 
   /// Clears the CRC to 0

@@ -35,7 +35,7 @@
 #ifndef FFSHADER_H
 #define FFSHADER_H
 
-#include <d3d9.h>
+#include "ffshader_d3d.h"
 
 #include <string>
 

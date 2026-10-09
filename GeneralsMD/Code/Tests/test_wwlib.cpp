@@ -45,7 +45,11 @@
 #include "mutex.h"
 
 #include <stdlib.h>
+#if defined(PLATFORM_LINUX) || defined(__linux__) || defined(_UNIX)
+#include "win.h" // GetTickCount shim; the test needs nothing else from Win32.
+#else
 #include <windows.h>
+#endif
 
 //////////////////////////////////////////////////////////////////////////////
 // Helpers
@@ -1345,7 +1349,8 @@ TEST(cpudetect_logs_are_printable)
 class LockLoopWorker : public ThreadClass
 {
 public:
-	LockLoopWorker(FastCriticalSectionClass &lock) : ThreadClass("LockLoopWorker"), m_lock(lock) {}
+	LockLoopWorker(FastCriticalSectionClass &lock) : ThreadClass("LockLoopWorker"), m_lock(lock), m_entered(false) {}
+	volatile bool m_entered;
 
 protected:
 	virtual void Thread_Function()
@@ -1353,6 +1358,7 @@ protected:
 		while (running)
 		{
 			FastCriticalSectionClass::LockClass lock(m_lock);
+			m_entered = true;
 			for (volatile int i = 0; i < 2000; ++i) {}
 		}
 	}
@@ -1370,7 +1376,9 @@ TEST(threadclass_stop_deadlocks_if_the_caller_holds_the_workers_lock)
 	FastCriticalSectionClass lock;
 	LockLoopWorker worker(lock);
 	worker.Execute();
-	ThreadClass::Sleep_Ms(20); // let it get into its loop
+	while (!worker.m_entered) {
+		ThreadClass::Sleep_Ms(1);
+	}
 
 	unsigned start = GetTickCount();
 	{
@@ -1390,7 +1398,9 @@ TEST(threadclass_stop_returns_promptly_when_called_unlocked)
 	FastCriticalSectionClass lock;
 	LockLoopWorker worker(lock);
 	worker.Execute();
-	ThreadClass::Sleep_Ms(20);
+	while (!worker.m_entered) {
+		ThreadClass::Sleep_Ms(1);
+	}
 
 	unsigned start = GetTickCount();
 	worker.Stop(300);

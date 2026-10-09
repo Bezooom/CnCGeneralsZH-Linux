@@ -279,6 +279,10 @@ protected:
 // Fits in 4 bits for now
 enum {MAX_WALL_PIECES = 128};
 
+// (MSVC treats `friend class PathfindCell` below as a forward declaration;
+// standard C++ does not, so spell it out.)
+class PathfindCell;
+
 class PathfindCellInfo
 {
 	friend class PathfindCell;

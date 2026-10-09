@@ -35,8 +35,11 @@ typedef unsigned char *POINTER;
 /* UINT2 defines a two byte word */
 typedef unsigned short int UINT2;
 
-/* UINT4 defines a four byte word */
-typedef unsigned long int UINT4;
+/* UINT4 defines a four byte word. `unsigned long` is 64 bits on LP64 Linux,
+   which silently breaks MD5 (and anything else using UINT4 as a 32-bit word).
+   uint32_t is four bytes on every target here. */
+#include <stdint.h>
+typedef uint32_t UINT4;
 
 /* PROTO_LIST is defined depending on how PROTOTYPES is defined above.
 If using PROTOTYPES, then PROTO_LIST returns the list, otherwise it

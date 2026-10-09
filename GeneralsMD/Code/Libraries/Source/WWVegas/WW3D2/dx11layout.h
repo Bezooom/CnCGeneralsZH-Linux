@@ -39,7 +39,9 @@
 #ifndef DX11LAYOUT_H
 #define DX11LAYOUT_H
 
+#ifdef _WIN32
 #include <d3d9.h>
+#endif
 #include <d3d11.h>
 
 // D3D9 allows eight texture coordinate sets and the engine's widest format uses four.

@@ -26,15 +26,31 @@
 // July 2002 Bryan Cleveland
 
 #include "W3DDevice/GameClient/W3DWebBrowser.h"
+#if defined(_WIN32)
 #include "WW3D2/Texture.h"
+#else
+#include "WW3D2/texture.h"
+#endif
+#if defined(_WIN32)
 #include "WW3D2/TextureLoader.h"
+#else
+#include "WW3D2/textureloader.h"
+#endif
+#if defined(_WIN32)
 #include "WW3D2/SurfaceClass.h"
+#else
+#include "WW3D2/surfaceclass.h"
+#endif
 #include "GameClient/Image.h"
 #include "GameClient/GameWindow.h"
 #include "vector2i.h"
 #include "d3dx9runtime.h"
 #include "WW3D2/dx8wrapper.h"
+#if defined(_WIN32)
 #include "WW3D2/dx8WebBrowser.h"
+#else
+#include "WW3D2/dx8webbrowser.h"
+#endif
 
 W3DWebBrowser::W3DWebBrowser() : WebBrowser() {
 }
@@ -57,6 +73,7 @@ Bool W3DWebBrowser::createBrowserWindow(char *tag, GameWindow *win)
 		return FALSE;
 	}
 
+#ifdef _WIN32
 	CComQIPtr<IDispatch> idisp(m_dispatch);
 	if (m_dispatch == NULL)
 	{
@@ -64,6 +81,9 @@ Bool W3DWebBrowser::createBrowserWindow(char *tag, GameWindow *win)
 	}
 
 	DX8WebBrowser::CreateBrowser(windowName.str(), url->m_url.str(), x, y, w, h, 0, BROWSEROPTION_SCROLLBARS | BROWSEROPTION_3DBORDER, (LPDISPATCH)this);
+#else
+	(void)tag; (void)win; (void)x; (void)y; (void)w; (void)h;
+#endif
 
 	return TRUE;
 }

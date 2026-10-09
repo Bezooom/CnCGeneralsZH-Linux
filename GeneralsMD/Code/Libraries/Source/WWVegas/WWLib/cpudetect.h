@@ -50,6 +50,10 @@
 typedef signed __int64 sint64;
 #elif defined (_UNIX)
 typedef signed long long sint64;
+// cpudetect.cpp spells the 64-bit type directly; map it on non-MSVC.
+#if !defined(_MSC_VER)
+typedef signed long long __int64;
+#endif
 #endif
 
 class CPUDetectInitClass;

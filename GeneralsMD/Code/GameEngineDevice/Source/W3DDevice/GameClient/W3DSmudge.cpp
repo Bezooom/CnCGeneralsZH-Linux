@@ -27,14 +27,26 @@
 // Author: Mark Wilczynski, June 2003
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 
+#if defined(_WIN32)
 #include "Lib/Basetype.h"
+#else
+#include "Lib/BaseType.h"
+#endif
 #include "always.h"
 #include "W3DDevice/GameClient/W3DSmudge.h"
 #include "W3DDevice/GameClient/W3DShaderManager.h"
 #include "Common/GameMemory.h"
 #include "Common/GlobalData.h"
+#if defined(_WIN32)
 #include "GameClient/view.h"
+#else
+#include "GameClient/View.h"
+#endif
+#if defined(_WIN32)
 #include "GameClient/display.h"
+#else
+#include "GameClient/Display.h"
+#endif
 #include "WW3D2/texture.h"
 #include "WW3D2/dx8indexbuffer.h"
 #include "WW3D2/dx8wrapper.h"

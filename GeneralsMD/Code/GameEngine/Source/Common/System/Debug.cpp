@@ -765,6 +765,11 @@ void ReleaseCrash(const char *reason)
 		_exit(1);
 	}
 
+#if !defined(_MSC_VER)
+	// Linux: no crash dialogs (Phase-5 UI work); the log above is the report.
+	fprintf(stderr, "Fatal error - see ReleaseCrashInfo log for details.\n");
+	_exit(1);
+#else
 #if defined(_DEBUG) || defined(_INTERNAL)
 	/* static */ char buff[8192]; // not so static so we can be threadsafe
 	_snprintf(buff, 8192, "Sorry, a serious error occurred. (%s)", reason);
@@ -776,15 +781,16 @@ void ReleaseCrash(const char *reason)
 //	::MessageBox(NULL, "You have encountered a serious error.  Serious errors can be caused by many things including viruses, overheated hardware and hardware that does not meet the minimum specifications for the game. Please visit the forums at www.generals.ea.com for suggested courses of action or consult your manual for Technical Support contact information.", "Technical Difficulties...", MB_OK|MB_TASKMODAL|MB_ICONERROR);
 
 // crash error message changed again 8/22/03 M Lorenzen... made this message box modal to the system so it will appear on top of any task-modal windows, splash-screen, etc.
-  ::MessageBox(NULL, "You have encountered a serious error.  Serious errors can be caused by many things including viruses, overheated hardware and hardware that does not meet the minimum specifications for the game. Please visit the forums at www.generals.ea.com for suggested courses of action or consult your manual for Technical Support contact information.", 
-   "Technical Difficulties...", 
+  ::MessageBox(NULL, "You have encountered a serious error.  Serious errors can be caused by many things including viruses, overheated hardware and hardware that does not meet the minimum specifications for the game. Please visit the forums at www.generals.ea.com for suggested courses of action or consult your manual for Technical Support contact information.",
+   "Technical Difficulties...",
    MB_OK|MB_SYSTEMMODAL|MB_ICONERROR);
 
 
-#endif
+#endif // _DEBUG/_INTERNAL dialog (Linux returned above)
+#endif // Linux headless crash path above
 
 	_exit(1);
-}  
+}
 
 void ReleaseCrashLocalized(const AsciiString& p, const AsciiString& m)
 {
@@ -798,33 +804,39 @@ void ReleaseCrashLocalized(const AsciiString& p, const AsciiString& m)
 	UnicodeString mesg = TheGameText->fetch(m);
 
 
-	/// do additional reporting on the crash, if possible
+ 	/// do additional reporting on the crash, if possible
 
-	if (!DX8Wrapper_IsWindowed) {
-		if (ApplicationHWnd) {
-			ShowWindow(ApplicationHWnd, SW_HIDE);
-		}
-	}
+#if defined(_MSC_VER)
+ 	if (!DX8Wrapper_IsWindowed) {
+ 		if (ApplicationHWnd) {
+ 			ShowWindow(ApplicationHWnd, SW_HIDE);
+ 		}
+ 	}
 
-	if (isUnattendedRun())
-	{
-		// nobody to read it; the log below is the report - see ReleaseCrash above
-	}
-	else if (TheSystemIsUnicode)
-	{
-		::MessageBoxW(NULL, mesg.str(), prompt.str(), MB_OK|MB_SYSTEMMODAL|MB_ICONERROR);
-	}
-	else
-	{
-		// However, if we're using the default version of the message box, we need to 
-		// translate the string into an AsciiString
-		AsciiString promptA, mesgA;
-		promptA.translate(prompt);
-		mesgA.translate(mesg);
-		//Make sure main window is not TOP_MOST
-		::SetWindowPos(ApplicationHWnd, HWND_NOTOPMOST, 0, 0, 0, 0,SWP_NOSIZE |SWP_NOMOVE);
-		::MessageBoxA(NULL, mesgA.str(), promptA.str(), MB_OK|MB_TASKMODAL|MB_ICONERROR);
-	}
+ 	if (isUnattendedRun())
+ 	{
+ 		// nobody to read it; the log below is the report - see ReleaseCrash above
+ 	}
+ 	else if (TheSystemIsUnicode)
+ 	{
+ 		::MessageBoxW(NULL, mesg.str(), prompt.str(), MB_OK|MB_SYSTEMMODAL|MB_ICONERROR);
+ 	}
+ 	else
+ 	{
+ 		// However, if we're using the default version of the message box, we need to 
+ 		// translate the string into an AsciiString
+ 		AsciiString promptA, mesgA;
+ 		promptA.translate(prompt);
+ 		mesgA.translate(mesg);
+ 		//Make sure main window is not TOP_MOST
+ 		::SetWindowPos(ApplicationHWnd, HWND_NOTOPMOST, 0, 0, 0, 0,SWP_NOSIZE |SWP_NOMOVE);
+ 		::MessageBoxA(NULL, mesgA.str(), promptA.str(), MB_OK|MB_TASKMODAL|MB_ICONERROR);
+ 	}
+#else
+ 	// Linux: no windows and no crash dialogs (Phase-5 UI work); the file
+ 	// log below is the report. prompt/mesg are still fetched for it.
+ 	(void)TheSystemIsUnicode;
+#endif
 
 	char prevbuf[ _MAX_PATH ];
 	char curbuf[ _MAX_PATH ];

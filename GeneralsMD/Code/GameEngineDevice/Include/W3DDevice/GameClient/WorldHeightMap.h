@@ -33,10 +33,22 @@
 #define WorldHeightMap_H
 
 #include "Lib/BaseType.h"
+#if defined(_WIN32)
 #include "WWLib/RefCount.h"
+#else
+#include "WWLib/refcount.h"
+#endif
+#if defined(_WIN32)
 #include "WWMath/Vector3.h"
+#else
+#include "WWMath/vector3.h"
+#endif
 #include "W3DDevice/GameClient/TileData.h"
+#if defined(_WIN32)
 #include "../../gameengine/include/common/MapObject.h"
+#else
+#include "Common/MapObject.h"
+#endif
 
 #include "Common/STLTypedefs.h"
 typedef std::vector<ICoord2D> VecICoord2D;
@@ -84,6 +96,10 @@ typedef struct {
 
 
 class TextureClass;
+#if !defined(_WIN32)
+class TerrainTextureClass;
+class AlphaTerrainTextureClass;
+#endif
 class ChunkInputStream;
 class InputStream;
 class OutputStream;

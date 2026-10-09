@@ -31,10 +31,22 @@
 #define __W3DParticleSys_H_
 
 #include "GameClient/ParticleSys.h"
+#if defined(_WIN32)
 #include "WW3D2/PointGr.h"
+#else
+#include "WW3D2/pointgr.h"
+#endif
 #include "WW3D2/streak.h"
+#if defined(_WIN32)
 #include "WW3D2/RInfo.h"
+#else
+#include "WW3D2/rinfo.h"
+#endif
+#if defined(_WIN32)
 #include "WWLib/BitType.h"
+#else
+#include "WWLib/bittype.h"
+#endif
 
 //=============================================================================
 /** W3D implementation of the game display which is responsible for creating

@@ -44,18 +44,38 @@
 //-----------------------------------------------------------------------------
 
 #include "W3DDevice/GameClient/W3DTerrainTracks.h"
+#if defined(_WIN32)
 #include "W3DDevice/GameClient/heightmap.h"
+#else
+#include "W3DDevice/GameClient/HeightMap.h"
+#endif
 #include "Common/PerfTimer.h"
+#if defined(_WIN32)
 #include "common/GlobalData.h"
+#else
+#include "Common/GlobalData.h"
+#endif
+#if defined(_WIN32)
 #include "common/Debug.h"
+#else
+#include "Common/Debug.h"
+#endif
 #include "texture.h"
 #include "colmath.h"
 #include "coltest.h"
 #include "rinfo.h"
 #include "camera.h"
 #include "assetmgr.h"
+#if defined(_WIN32)
 #include "WW3D2/DX8Wrapper.h"
+#else
+#include "WW3D2/dx8wrapper.h"
+#endif
+#if defined(_WIN32)
 #include "WW3D2/Scene.h"
+#else
+#include "WW3D2/scene.h"
+#endif
 #include "GameLogic/TerrainLogic.h"
 #include "GameLogic/Object.h"
 #include "GameClient/Drawable.h"

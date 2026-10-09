@@ -28,18 +28,33 @@
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 
 #include "Lib/BaseType.h"
+#if !defined(_WIN32)
+#include "WWLib/mmsys.h"
+#endif
 #include "camera.h"
 #include "simplevec.h"
 #include "dx8wrapper.h"
+#if defined(_WIN32)
 #include "common/MapObject.h"
+#else
+#include "Common/MapObject.h"
+#endif
+#if defined(_WIN32)
 #include "common/PerfTimer.h"
+#else
+#include "Common/PerfTimer.h"
+#endif
 #include "W3DDevice/GameClient/HeightMap.h"
 #include "W3DDevice/GameClient/W3DPoly.h"
 #include "W3DDevice/GameClient/W3DShaderManager.h"
 #include "assetmgr.h"
 #include "W3DDevice/GameClient/W3DShroud.h"
 #include "WW3D2/textureloader.h"
+#if defined(_WIN32)
 #include "common/GlobalData.h"
+#else
+#include "Common/GlobalData.h"
+#endif
 #include "GameLogic/PartitionManager.h"
 
 #ifdef _INTERNAL

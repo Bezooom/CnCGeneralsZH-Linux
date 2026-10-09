@@ -52,8 +52,16 @@
 #include "W3DDevice/Common/W3DRadar.h"
 #include "W3DDevice/GameClient/HeightMap.h"
 #include "W3DDevice/GameClient/W3DShroud.h"
+#if defined(_WIN32)
 #include "WW3D2/Texture.h"
+#else
+#include "WW3D2/texture.h"
+#endif
+#if defined(_WIN32)
 #include "WW3D2/DX8Caps.h"
+#else
+#include "WW3D2/dx8caps.h"
+#endif
 
 #ifdef _INTERNAL
 // for occasional debugging...

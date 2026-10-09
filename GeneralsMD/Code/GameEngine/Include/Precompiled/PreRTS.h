@@ -36,10 +36,11 @@
 class STLSpecialAlloc;
 
 
-// We actually don't use Windows for much other than timeGetTime, but it was included in 40 
+// We actually don't use Windows for much other than timeGetTime, but it was included in 40
 // different .cpp files, so I bit the bullet and included it here.
 // PLEASE DO NOT ABUSE WINDOWS OR IT WILL BE REMOVED ENTIRELY. :-)
-//--------------------------------------------------------------------------------- System Includes 
+//--------------------------------------------------------------------------------- System Includes
+#if defined(_MSC_VER)
 #define WIN32_LEAN_AND_MEAN
 // winuser.h declares AnimateWindow() only for WINVER >= 0x0500, which VC6 never
 // reached, so GameClient could name a class AnimateWindow.  A modern SDK always
@@ -94,6 +95,99 @@ class STLSpecialAlloc;
 #endif
 
 #include <dinput.h>
+#else
+// Linux: portable CRT subset of the block above plus the compat shims that
+// cover what game sources actually use (HANDLE/DWORD/etc. via win.h,
+// timeGetTime via mmsys.h, TCHAR via tchar.h, D3DX math via d3dx9math.h).
+// ATL/COM/shell/MAPI/SNMP/VFW/WinInet/registry/DirectInput have no Linux
+// twin here; their users are ported per-file in later phases.
+#include <assert.h>
+#include <ctype.h>
+#include <float.h>
+#include <limits.h>
+#include <math.h>
+#include <memory.h>
+#include <stdarg.h>
+#include <stddef.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <strings.h>
+#include <sys/stat.h>
+#include <sys/timeb.h>
+#include <sys/types.h>
+#include <time.h>
+#include <unistd.h>
+#include "win.h"
+#include "mmsys.h"
+#include "tchar.h"
+#include "d3dx9math.h"
+// MSVC CRT names used across GameEngine (stat family, mkdir, chmod...).
+// _stat as a macro (not a typedef) so `struct _stat` also maps to struct stat.
+#define _stat stat
+#define _mkdir(p) mkdir(p, 0755)
+#define _getcwd getcwd
+#define _chmod chmod
+#define _unlink unlink
+#define _rmdir rmdir
+#define _S_IFDIR S_IFDIR
+#define _S_IFREG S_IFREG
+#define _S_IWRITE S_IWUSR
+#define _S_IREAD S_IRUSR
+#ifndef _MAX_PATH
+#define _MAX_PATH 260
+#endif
+#ifndef _MAX_DIR
+#define _MAX_DIR 256
+#endif
+#ifndef _MAX_DRIVE
+#define _MAX_DRIVE 3
+#endif
+#ifndef _MAX_FNAME
+#define _MAX_FNAME 256
+#endif
+#ifndef _MAX_EXT
+#define _MAX_EXT 256
+#endif
+// Own-exe path (several TUs): /proc/self/exe twin of GetModuleFileName(NULL,...).
+static inline DWORD GameGetModuleFileName(HMODULE hModule, char *buf, DWORD size)
+{
+  (void)hModule;
+  if (size == 0)
+    return 0;
+  ssize_t n = readlink("/proc/self/exe", buf, (size_t)size - 1);
+  if (n < 0)
+    return 0;
+  buf[n] = 0;
+  return (DWORD)n;
+}
+#define GetModuleFileName GameGetModuleFileName
+// Double-click time (GlobalData default): the Windows default is 500ms and
+// there is no Linux desktop setting to query headless.
+static inline unsigned int GameGetDoubleClickTime(void) { return 500; }
+#define GetDoubleClickTime GameGetDoubleClickTime
+// Screen metrics (borderless-window sizing): 1920x1080, matching WWLib/win.h's
+// GetSystemMetrics - the borderless tests assert the parsed resolution equals
+// these, so the two spellings must agree. Borderless is the only in-tree user.
+#define SM_CXSCREEN 0
+#define SM_CYSCREEN 1
+static inline int GameGetSystemMetrics(int code)
+{
+  if (code == SM_CXSCREEN)
+    return 1920;
+  if (code == SM_CYSCREEN)
+    return 1080;
+  return 0;
+}
+#define GetSystemMetrics GameGetSystemMetrics
+// CreateDirectory returning BOOL like the API (mkdir returns 0 on success).
+static inline BOOL GameCreateDirectory(const char *path, void *unused)
+{
+  (void)unused;
+  return mkdir(path, 0755) == 0 ? TRUE : FALSE;
+}
+#define CreateDirectory GameCreateDirectory
+#endif
 
 //------------------------------------------------------------------------------------ STL Includes
 // srj sez: no, include STLTypesdefs below, instead, thanks
@@ -110,7 +204,7 @@ class STLSpecialAlloc;
 
 //------------------------------------------------------------------------------------ RTS Includes
 // Icky. These have to be in this order.
-#include "Lib/Basetype.h"
+#include "Lib/BaseType.h"
 #include "Common/STLTypedefs.h"
 #include "Common/Errors.h"
 #include "Common/Debug.h"

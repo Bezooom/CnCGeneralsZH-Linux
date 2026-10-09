@@ -43,7 +43,13 @@
 
 
 #include "wwdebug.h"
+#if defined(PLATFORM_LINUX) || defined(__linux__) || defined(_LINUX)
+// Linux: no windows.h. POSIX replacements below.
+#include <errno.h>
+#include <unistd.h>
+#else
 #include <windows.h>
+#endif
 //#include "win.h" can use this if allowed to see wwlib
 #include <stdlib.h>
 #include <stdarg.h>
@@ -65,6 +71,22 @@ static ProfileFunc		_CurProfileStopHandler = NULL;
 
 void Convert_System_Error_To_String(int id, char* buffer, int buf_len)
 {
+#if defined(PLATFORM_LINUX) || defined(__linux__) || defined(_LINUX)
+	if (buffer != NULL && buf_len > 0) {
+#if (_POSIX_C_SOURCE >= 200112L || _XOPEN_SOURCE >= 600) && !defined(__ANDROID__)
+		// XSI-compliant strerror_r returns int.
+		if (strerror_r(id, buffer, (size_t)buf_len) != 0) {
+			snprintf(buffer, (size_t)buf_len, "Unknown error %d", id);
+		}
+#else
+		// GNU-specific strerror_r returns char*.
+		char* msg = strerror_r(id, buffer, (size_t)buf_len);
+		if (msg != buffer) {
+			snprintf(buffer, (size_t)buf_len, "%s", msg);
+		}
+#endif
+	}
+#else
 #ifndef _UNIX
 	FormatMessage(
 		FORMAT_MESSAGE_FROM_SYSTEM,
@@ -75,11 +97,16 @@ void Convert_System_Error_To_String(int id, char* buffer, int buf_len)
 		buf_len,
 		NULL);
 #endif
+#endif
 }
 
 int Get_Last_System_Error()
 {
+#if defined(PLATFORM_LINUX) || defined(__linux__) || defined(_LINUX)
+	return errno;
+#else
 	return GetLastError();
+#endif
 }
 
 /***********************************************************************************************
@@ -295,6 +322,14 @@ void WWDebug_Assert_Fail(const char * expr,const char * file, int line)
 
 	} else {
 
+#if defined(PLATFORM_LINUX) || defined(__linux__) || defined(_LINUX)
+		// Linux: no MessageBox/ExitProcess. Log to stderr and abort;
+		// Is_Trying_To_Exit() is a Win32-only Except.h hook.
+		fprintf(stderr, "WWDebug_Assert_Fail: %s (%d) Assert: %s\n", file, line, expr);
+		fflush(stderr);
+		raise(SIGABRT);
+		_exit(3);
+#else
 		/*
 		// If the exception handler is try to quit the game then don't show an assert.
 		*/
@@ -313,9 +348,14 @@ void WWDebug_Assert_Fail(const char * expr,const char * file, int line)
       }
 
 		if (code == IDRETRY) {
-			_asm int 3;
+#if defined(_MSC_VER)
+			__asm int 3;
+#else
+			__builtin_trap();
+#endif
       	return;
 		}
+#endif
    }
 }
 #endif
@@ -460,6 +500,14 @@ void WWDebug_Profile_Stop( const char * title)
  *=============================================================================================*/
 void WWDebug_DBWin32_Message_Handler( const char * str )
 {
+#if defined(PLATFORM_LINUX) || defined(__linux__) || defined(_LINUX)
+	// Linux: no DBWIN32 shared-memory viewer. Route to stderr.
+	if (str != NULL) {
+		fprintf(stderr, "%s", str);
+		fflush(stderr);
+	}
+	return;
+#else
 
     HANDLE heventDBWIN;  /* DBWIN32 synchronization object */
     HANDLE heventData;   /* data passing synch object */
@@ -517,5 +565,6 @@ void WWDebug_DBWin32_Message_Handler( const char * str )
     CloseHandle(heventDBWIN);
 
     return;
+#endif // !Linux
 }
 #endif // WWDEBUG

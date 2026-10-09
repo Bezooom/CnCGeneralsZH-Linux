@@ -54,7 +54,12 @@ typedef signed int      sint;
 typedef float				float32;
 typedef double				float64;
 
+#ifdef _WIN32
 typedef unsigned long   DWORD;
+#else
+#include <stdint.h>
+typedef uint32_t DWORD;
+#endif
 typedef unsigned short	WORD;
 typedef unsigned char   BYTE;
 typedef int             BOOL;

@@ -55,7 +55,11 @@
 // USER INCLUDES //////////////////////////////////////////////////////////////
 #include "Common/GameMemory.h"
 #include "GameClient/DisplayString.h"
+#if defined(_WIN32)
 #include "WW3D2/Render2DSentence.h"
+#else
+#include "WW3D2/render2dsentence.h"
+#endif
 
 // FORWARD REFERENCES /////////////////////////////////////////////////////////
 class W3DDisplayStringManager;

@@ -40,7 +40,7 @@
 #include "Common/SubsystemInterface.h"
 #include "GameClient/ClientRandomValue.h"
 
-#include "WWMath/Matrix3D.h"		///< @todo Replace with our own matrix library
+#include "WWMath/matrix3d.h"		///< @todo Replace with our own matrix library
 #include "Common/STLTypedefs.h"
 
  
@@ -57,7 +57,7 @@ class DebugWindowDialog;		// really ParticleEditorDialog
 class RenderInfoClass;			// ick
 class Shadow;
 
-enum ParticleSystemID
+enum ParticleSystemID : int
 {
 	INVALID_PARTICLE_SYSTEM_ID = 0
 };
@@ -88,7 +88,7 @@ struct RGBColorKeyframe
 	UnsignedInt frame;
 };
 
-enum ParticlePriorityType
+enum ParticlePriorityType : int
 {
 	INVALID_PRIORITY = 0, 
 	PARTICLE_PRIORITY_LOWEST = 1,

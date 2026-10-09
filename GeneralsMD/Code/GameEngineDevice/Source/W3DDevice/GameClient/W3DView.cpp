@@ -34,7 +34,9 @@
 
 // SYSTEM INCLUDES ////////////////////////////////////////////////////////////////////////////////
 #include <stdlib.h>
+#ifdef _WIN32
 #include <windows.h>
+#endif
 
 // USER INCLUDES //////////////////////////////////////////////////////////////////////////////////
 #include "Common/BuildAssistant.h"
@@ -85,19 +87,45 @@
 #include "W3DDevice/GameClient/Module/W3DModelDraw.h"
 #include "W3DDevice/GameClient/W3DCustomScene.h"
 
+#if defined(_WIN32)
 #include "WW3D2/DX8Renderer.h"
+#else
+#include "WW3D2/dx8renderer.h"
+#endif
+#if defined(_WIN32)
 #include "WW3D2/Light.h"
+#else
+#include "WW3D2/light.h"
+#endif
+#if defined(_WIN32)
 #include "WW3D2/Camera.h"
+#else
+#include "WW3D2/camera.h"
+#endif
+#if defined(_WIN32)
 #include "WW3D2/Coltype.h"
+#else
+#include "WW3D2/coltype.h"
+#endif
+#if defined(_WIN32)
 #include "WW3D2/PredLod.h"
+#else
+#include "WW3D2/predlod.h"
+#endif
+#if defined(_WIN32)
 #include "WW3D2/WW3D.h"
+#else
+#include "WW3D2/ww3d.h"
+#endif
 #include "WW3D2/dx11runtime.h"
 
 #include "W3DDevice/GameClient/camerashakesystem.h"
 
+#ifdef _WIN32
 #include "WinMain.h"  /** @todo Remove this, it's only here because we
 													are using timeGetTime, but we can remove that
 													when we have our own timer */
+#endif
 #ifdef _INTERNAL
 // for occasional debugging...
 //#pragma optimize("", off)

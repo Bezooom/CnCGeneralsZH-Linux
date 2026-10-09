@@ -33,6 +33,14 @@
 
 #include <stddef.h>
 #include <string.h>
+#include <wchar.h>
+
+// glibc 2.38 supplies all four BSD bounded-copy functions under __USE_MISC.
+#if defined(__GLIBC__) && defined(__USE_MISC)
+#if __GLIBC_PREREQ(2, 38)
+#define WWLIB_HAS_SYSTEM_STRL_FUNCTIONS
+#endif
+#endif
 
 // Number of characters before the first zero character.
 template<typename T> size_t strlen_t(const T *str)
@@ -85,7 +93,10 @@ template<typename T> size_t strlcat_t(T *dst, const T *src, size_t dstsize)
 	return dstlen + srclen;						// length it tried to create
 }
 
+#ifndef WWLIB_HAS_SYSTEM_STRL_FUNCTIONS
 inline size_t strlcpy(char *dst, const char *src, size_t dstsize) { return strlcpy_t(dst, src, dstsize); }
 inline size_t strlcat(char *dst, const char *src, size_t dstsize) { return strlcat_t(dst, src, dstsize); }
 inline size_t wcslcpy(wchar_t *dst, const wchar_t *src, size_t dstsize) { return strlcpy_t(dst, src, dstsize); }
 inline size_t wcslcat(wchar_t *dst, const wchar_t *src, size_t dstsize) { return strlcat_t(dst, src, dstsize); }
+#endif
+#undef WWLIB_HAS_SYSTEM_STRL_FUNCTIONS

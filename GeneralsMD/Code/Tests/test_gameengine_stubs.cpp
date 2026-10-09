@@ -26,8 +26,11 @@
 #include "GameClient/GUICallbacks.h"
 #include "GameClient/Shadow.h"
 #include "GameLogic/TerrainLogic.h"
+#include "GameNetwork/WOLBrowser/WebBrowser.h"
 
+#if defined(_MSC_VER)
 #include <windows.h>
+#endif
 
 //////////////////////////////////////////////////////////////////////////////
 // MapObject - the map file's object list, owned by WorldHeightMap.cpp
@@ -114,3 +117,20 @@ int getQR2HostingStatus( void ) { return 0; }
 /* StackDump takes WinMain's address to work out where the exe's own code
    starts; the test is a console app and never gets here. */
 int WINAPI WinMain( HINSTANCE, HINSTANCE, LPSTR, int ) { return 0; }
+
+/* Renderer/COM/browser globals owned by GameEngineDevice/the exe on Windows.
+   The headless tests never create a device, a browser, or a window, so these
+   are inert definitions that satisfy the linker. */
+Int DX8Wrapper_PreserveFPU = 0;
+bool DX8Wrapper_IsWindowed = false;
+HINSTANCE ApplicationHInstance = NULL;
+CComModule _Module;
+CComObject<WebBrowser> *TheWebBrowser = NULL;
+
+WebBrowserURL *WebBrowser::findURL(AsciiString) { return NULL; }
+WebBrowserURL *WebBrowser::makeNewURL(AsciiString) { return NULL; }
+const FieldParse WebBrowserURL::m_URLFieldParseTable[] =
+{
+	{ "URL", INI::parseAsciiString, NULL, offsetof(WebBrowserURL, m_url) },
+	{ NULL, NULL, NULL, 0 },
+};

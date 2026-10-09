@@ -30,7 +30,7 @@
 // INCLUDES ///////////////////////////////////////////////////////////////////////////////////////
 #include "PreRTS.h"	// This must go first in EVERY cpp file int the GameEngine
 
-#include "GameSpy/ghttp/ghttp.h"
+#include "gamespy/ghttp/ghttp.h"
 
 #include "Common/AudioAffect.h"
 #include "Common/AudioSettings.h"
@@ -40,7 +40,7 @@
 #include "Common/GameLOD.h"
 #include "Common/OptionsCatalog.h"
 #include "Common/Registry.h"
-#include "Common/Version.h"
+#include "Common/version.h"
 
 #include "GameClient/GameClient.h"
 #include "GameClient/InGameUI.h"
@@ -1347,14 +1347,14 @@ static void saveOptions( void )
 	GadgetComboBoxGetSelectedPos(comboBoxLANIP, &index);
 	if (index>=0 && TheGlobalData)
 	{
-		ip = (UnsignedInt)GadgetComboBoxGetItemData(comboBoxLANIP, index);
+		ip = (UnsignedInt)(uintptr_t)GadgetComboBoxGetItemData(comboBoxLANIP, index);
 		TheWritableGlobalData->m_defaultIP = ip;
 		pref->setLANIPAddress(ip);
 	}
 	GadgetComboBoxGetSelectedPos(comboBoxOnlineIP, &index);
 	if (index>=0)
 	{
-		ip = (UnsignedInt)GadgetComboBoxGetItemData(comboBoxOnlineIP, index);
+		ip = (UnsignedInt)(uintptr_t)GadgetComboBoxGetItemData(comboBoxOnlineIP, index);
 		pref->setOnlineIPAddress(ip);
 	}
 
@@ -1366,7 +1366,11 @@ static void saveOptions( void )
 		UnicodeString uStr = GadgetTextEntryGetText(textEntryHTTPProxy);
 		AsciiString aStr;
 		aStr.translate(uStr);
+#if defined(__linux__) && !defined(_WIN32)
+		SetStringInRegistry(AsciiString(""), AsciiString("Proxy"), aStr);
+#else
 		SetStringInRegistry("", "Proxy", aStr.str());
+#endif
 		ghttpSetProxy(aStr.str());
 	}
 

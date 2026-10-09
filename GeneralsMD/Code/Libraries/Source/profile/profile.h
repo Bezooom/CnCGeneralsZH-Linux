@@ -22,7 +22,7 @@
 // $Revision: #4 $
 // $DateTime: 2003/08/14 13:43:29 $
 //
-// ©2003 Electronic Arts
+// ï¿½2003 Electronic Arts
 //
 // Profiling module
 //////////////////////////////////////////////////////////////////////////////
@@ -31,6 +31,14 @@
 #endif
 #ifndef PROFILE_H // Include guard
 #define PROFILE_H
+
+#if !defined(_MSC_VER)
+// 64-bit integers spelled in this public header. (Identical to the
+// _UNIX typedefs in WWDebug/wwprofile.h, so co-inclusion is legal;
+// function-level shims live in profile_linux.h for the .cpps only.)
+typedef long long __int64;
+typedef long long _int64;
+#endif
 
 #if defined(_DEBUG) && defined(_INTERNAL)
 	#error "Only either _DEBUG or _INTERNAL should ever be defined"

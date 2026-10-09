@@ -204,7 +204,12 @@ class fixed
 	private:
 		union {
 			struct {
-#ifdef BIG_ENDIAN
+				/* NOTE: the original test was `#ifdef BIG_ENDIAN`, but that
+				   name is also defined by glibc's <endian.h>, so the layout
+				   flipped depending on which TU included system headers
+				   first (silent ODR violation). The compiler builtin is
+				   always defined consistently. */
+#if defined(__BYTE_ORDER__) && (__BYTE_ORDER__ == __ORDER_BIG_ENDIAN__)
 				unsigned char Whole;
 				unsigned char Fraction;
 #else

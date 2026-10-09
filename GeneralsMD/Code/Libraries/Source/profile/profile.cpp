@@ -22,15 +22,19 @@
 // $Revision: #6 $
 // $DateTime: 2003/08/14 13:43:29 $
 //
-// ©2003 Electronic Arts
+// ï¿½2003 Electronic Arts
 //
 // Profile module main code
 //////////////////////////////////////////////////////////////////////////////
 #include "_pch.h"
 #include <new>
+#include <stdlib.h>
+#include <string.h>
+#if defined(_MSC_VER)
 #include "mmsystem.h"
 
 #pragma comment (lib,"winmm")
+#endif
 
 // yuk, I'm doing this so weird because the destructor
 // of cmd must never be called...
@@ -43,14 +47,34 @@ static bool __RegisterDebugCmdGroup_Profile=Debug::AddCommands("profile",&cmd);
 
 void *ProfileAllocMemory(unsigned numBytes)
 {
+#if !defined(_MSC_VER)
+  void *p = malloc(numBytes ? numBytes : 1);
+  if (!p)
+    DCRASH_RELEASE("Profile mem alloc failed");
+  return p;
+#else
   HGLOBAL h=GlobalAlloc(GMEM_FIXED,numBytes);
   if (!h)
     DCRASH_RELEASE("Debug mem alloc failed");
   return (void *)h;
+#endif
 }
 
 void *ProfileReAllocMemory(void *oldPtr, unsigned newSize)
 {
+#if !defined(_MSC_VER)
+  if (!oldPtr)
+    return newSize ? ProfileAllocMemory(newSize) : 0;
+  if (!newSize)
+  {
+    free(oldPtr);
+    return 0;
+  }
+  void *p = realloc(oldPtr, newSize);
+  if (!p)
+    DCRASH_RELEASE("Profile mem realloc failed");
+  return p;
+#else
   // Windows doesn't like ReAlloc with NULL handle/ptr...
   if (!oldPtr)
     return newSize?ProfileAllocMemory(newSize):0;
@@ -77,12 +101,17 @@ void *ProfileReAllocMemory(void *oldPtr, unsigned newSize)
   }
 
   return (void *)h;
+#endif
 }
 
 void ProfileFreeMemory(void *ptr)
 {
+#if !defined(_MSC_VER)
+  free(ptr);
+#else
   if (ptr)
     GlobalFree((HGLOBAL)ptr);
+#endif
 }
 
 //////////////////////////////////////////////////////////////////////////////
@@ -299,7 +328,11 @@ void Profile::StopRange(const char *range)
       m_frameNames[k].lastGlobalIndex=m_rec;
       m_recNames=(char **)ProfileReAllocMemory(m_recNames,(m_rec+1)*sizeof(char *));
       m_recNames[m_rec]=(char *)ProfileAllocMemory(strlen(range)+1+6);
+#if defined(_MSC_VER)
       wsprintf(m_recNames[m_rec++],"%s:%i",range,++m_frameNames[k].frames);
+#else
+      snprintf(m_recNames[m_rec++],strlen(range)+1+6,"%s:%i",range,++m_frameNames[k].frames);
+#endif
     }
     else
       atIndex=m_frameNames[k].lastGlobalIndex;

@@ -130,6 +130,9 @@ enum Anim2DStatus
 
 // ------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------
+// (MSVC treats `friend class X` as a forward declaration; standard C++
+// does not, so spell it out.)
+class Anim2DCollection;
 class Anim2D : public MemoryPoolObject,
 							 public Snapshot
 {

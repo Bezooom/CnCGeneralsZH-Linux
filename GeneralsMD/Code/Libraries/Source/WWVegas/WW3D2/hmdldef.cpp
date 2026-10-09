@@ -42,7 +42,11 @@
 #include <string.h>
 #include "w3d_file.h"
 #include "chunkio.h"
+#if defined(_WIN32)
 #include "snappts.h"
+#else
+#include "snapPts.h"
+#endif
 
 
 /***********************************************************************************************

@@ -34,7 +34,11 @@
  * Functions:                                                                                  *
  * - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
 
+#if defined(_WIN32)
 #include "snappts.h"
+#else
+#include "snapPts.h"
+#endif
 #include "chunkio.h"
 #include "w3d_file.h"
 #include "w3derr.h"

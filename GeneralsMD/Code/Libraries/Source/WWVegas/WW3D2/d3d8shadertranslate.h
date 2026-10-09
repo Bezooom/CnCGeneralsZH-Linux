@@ -42,7 +42,7 @@
 #ifndef D3D8SHADERTRANSLATE_H
 #define D3D8SHADERTRANSLATE_H
 
-#include <d3d9.h>
+#include "ww3d_d3d9.h"
 #include <string>
 
 // The D3D8 vertex declaration tokens, so the declaration arrays the engine already

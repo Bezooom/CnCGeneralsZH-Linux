@@ -22,7 +22,7 @@
 // $Revision: #3 $
 // $DateTime: 2003/07/09 10:57:23 $
 //
-// ©2003 Electronic Arts
+// ï¿½2003 Electronic Arts
 //
 // Function level profiling
 //////////////////////////////////////////////////////////////////////////////
@@ -31,6 +31,10 @@
 #endif
 #ifndef PROFILE_FUNCLEVEL_H // Include guard
 #define PROFILE_FUNCLEVEL_H
+
+#if !defined(_MSC_VER)
+#include <stdint.h> // uintptr_t for GetId
+#endif
 
 /**
   \brief The function level profiler.
@@ -127,7 +131,7 @@ public:
       \param frame number of recorded frame, or Total
       \return number of calls
     */
-    unsigned _int64 GetCalls(unsigned frame) const;
+    unsigned long long GetCalls(unsigned frame) const;
 
     /**
       \brief Determine time spend in this function and its children.
@@ -135,7 +139,7 @@ public:
       \param frame number of recorded frame, or Total
       \return time spend (in CPU ticks)
     */
-    unsigned _int64 GetTime(unsigned frame) const;
+    unsigned long long GetTime(unsigned frame) const;
 
     /**
       \brief Determine time spend in this function only (exclude
@@ -144,7 +148,7 @@ public:
       \param frame number of recorded frame, or Total
       \return time spend in this function alone (in CPU ticks)
     */
-    unsigned _int64 GetFunctionTime(unsigned frame) const;
+    unsigned long long GetFunctionTime(unsigned frame) const;
 
     /**
       \brief Determine the list of caller Ids.
@@ -185,7 +189,10 @@ public:
     */
     unsigned GetId(void) const
     {
-      return unsigned(m_threadID);
+      // Thread pointer as an ID (used for log filenames); truncated to 32
+      // bits like the original cast, via uintptr_t to stay warning-clean
+      // on 64-bit.
+      return unsigned((uintptr_t)m_threadID);
     }
 
   private:

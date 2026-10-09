@@ -64,10 +64,12 @@ class STLSpecialAlloc;
 
 // FORWARD DECLARATIONS
 class Object;
-enum NameKeyType;
-enum ObjectID;
-enum DrawableID;
-enum ParticleSystemID;
+// Opaque enum declarations need a fixed underlying type outside MSVC;
+// every one of these is forced 32-bit by a FORCE_*_LONG_SIZE sentinel.
+enum NameKeyType : int;
+enum ObjectID : int;
+enum DrawableID : int;
+enum ParticleSystemID : int;
 
 #include <algorithm>
 #include <bitset>

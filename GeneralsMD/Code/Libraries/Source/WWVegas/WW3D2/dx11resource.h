@@ -35,7 +35,9 @@
 #ifndef DX11RESOURCE_H
 #define DX11RESOURCE_H
 
+#ifdef _WIN32
 #include <d3d9.h>
+#endif
 #include <d3d11.h>
 
 // Wall time in milliseconds, for the per-frame costs the backend and the texture copies report.

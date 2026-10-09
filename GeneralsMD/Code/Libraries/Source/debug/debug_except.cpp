@@ -22,14 +22,23 @@
 // $Revision: #1 $
 // $DateTime: 2003/07/03 11:55:26 $
 //
-// ©2003 Electronic Arts
+// ï¿½2003 Electronic Arts
 //
 // Unhandled exception handler
 //////////////////////////////////////////////////////////////////////////////
 #include "_pch.h"
+
+#if !defined(_MSC_VER)
+#include <signal.h>
+#include <stdio.h>
+#include <string.h>
+#include <unistd.h>
+#include <ucontext.h>
+#else
 #include <commctrl.h>
 
 #pragma comment (lib,"comctl32")
+#endif
 
 DebugExceptionhandler::DebugExceptionhandler(void)
 {
@@ -38,6 +47,40 @@ DebugExceptionhandler::DebugExceptionhandler(void)
 
 const char *DebugExceptionhandler::GetExceptionType(struct _EXCEPTION_POINTERS *exptr, char *explanation)
 {
+#if !defined(_MSC_VER)
+  // Linux: ExceptionCode carries EXCEPTION_LINUX_SIGNAL(sig).
+  unsigned code = exptr->ExceptionRecord->ExceptionCode;
+  int sig = (int)(code & 0xffffu);
+  const char *addr = "";
+  static char addrBuf[64];
+  if (exptr->ExceptionRecord->ExceptionAddress)
+  {
+    snprintf(addrBuf, sizeof(addrBuf), " at address %p",
+             exptr->ExceptionRecord->ExceptionAddress);
+    addr = addrBuf;
+  }
+  switch (sig)
+  {
+    case SIGSEGV:
+      snprintf(explanation, 512, "The thread tried to read from or write to a virtual address for which it does not have the appropriate access%s.", addr);
+      return "EXCEPTION_ACCESS_VIOLATION";
+    case SIGFPE:
+      strcpy(explanation, "A floating-point or integer arithmetic fault occurred (divide by zero or overflow).");
+      return "EXCEPTION_FLT_DIVIDE_BY_ZERO";
+    case SIGILL:
+      strcpy(explanation, "The thread tried to execute an invalid instruction.");
+      return "EXCEPTION_ILLEGAL_INSTRUCTION";
+    case SIGABRT:
+      strcpy(explanation, "The thread aborted (assert, abort() or uncaught exception).");
+      return "EXCEPTION_ABORT";
+    case SIGBUS:
+      strcpy(explanation, "The thread accessed misaligned or non-existent physical memory.");
+      return "EXCEPTION_DATATYPE_MISALIGNMENT";
+    default:
+      snprintf(explanation, 512, "Unknown signal %d%s.", sig, addr);
+      return "EXCEPTION_UNKNOWN";
+  }
+#else
   #define EX(code,text)   \
     case EXCEPTION_##code: strcpy(explanation,text); return "EXCEPTION_" #code;
 
@@ -98,13 +141,167 @@ const char *DebugExceptionhandler::GetExceptionType(struct _EXCEPTION_POINTERS *
 		EX(STACK_OVERFLOW,"The thread used up its stack.")
     case 0xE06D7363: strcpy(explanation,"Microsoft C++ Exception"); return "EXCEPTION_MS";
     default:
+#if defined(_MSC_VER)
       wsprintf(explanation,"Unknown exception code 0x%08x",exptr->ExceptionRecord->ExceptionCode);
+#else
+      snprintf(explanation,512,"Unknown exception code 0x%08x",exptr->ExceptionRecord->ExceptionCode);
+#endif
       return "EXCEPTION_UNKNOWN";
   }
 
   #undef EX
+#endif // Linux GetExceptionType twin above (the Windows original follows in #else)
 }
 
+#if !defined(_MSC_VER)
+// Linux twins of the register loggers below (x86_64 context).
+void DebugExceptionhandler::LogExceptionLocation(Debug &dbg, struct _EXCEPTION_POINTERS *exptr)
+{
+  struct _CONTEXT &ctx = *exptr->ContextRecord;
+
+  char buf[512];
+  DebugStackwalk::Signature::GetSymbol((uintptr_t)ctx.Rip, buf, sizeof(buf));
+  dbg << "Exception occured at\n" << buf << ".";
+}
+
+void DebugExceptionhandler::LogRegisters(Debug &dbg, struct _EXCEPTION_POINTERS *exptr)
+{
+  struct _CONTEXT &ctx = *exptr->ContextRecord;
+
+  dbg << Debug::FillChar('0')
+      << Debug::Hex()
+      <<  "RAX:" << Debug::Width(16) << ctx.Rax
+      << " RBX:" << Debug::Width(16) << ctx.Rbx
+      << " RCX:" << Debug::Width(16) << ctx.Rcx << "\n"
+      <<  "RDX:" << Debug::Width(16) << ctx.Rdx
+      << " RSI:" << Debug::Width(16) << ctx.Rsi
+      << " RDI:" << Debug::Width(16) << ctx.Rdi << "\n"
+      <<  "R8: " << Debug::Width(16) << ctx.R8
+      << " R9: " << Debug::Width(16) << ctx.R9
+      << " R10:" << Debug::Width(16) << ctx.R10 << "\n"
+      <<  "R11:" << Debug::Width(16) << ctx.R11
+      << " R12:" << Debug::Width(16) << ctx.R12
+      << " R13:" << Debug::Width(16) << ctx.R13 << "\n"
+      <<  "R14:" << Debug::Width(16) << ctx.R14
+      << " R15:" << Debug::Width(16) << ctx.R15 << "\n"
+      <<  "RIP:" << Debug::Width(16) << ctx.Rip
+      << " RSP:" << Debug::Width(16) << ctx.Rsp
+      << " RBP:" << Debug::Width(16) << ctx.Rbp << "\n"
+      <<  "Flags:" << Debug::Bin() << Debug::Width(64) << ctx.EFlags << Debug::Hex() << "\n"
+      << Debug::FillChar() << Debug::Dec();
+}
+
+void DebugExceptionhandler::LogFPURegisters(Debug &dbg, struct _EXCEPTION_POINTERS *exptr)
+{
+  (void)exptr;
+  dbg << "FP registers not available\n";
+}
+
+// Linux entry point used by the signal handler in debug_debug.cpp.
+// Same logging flow as the Windows filter below, minus the crash dialog:
+// after logging, the process is gone (async-signal-safe subset only).
+long DebugExceptionhandler::ExceptionFilter(struct _EXCEPTION_POINTERS *pExPtrs)
+{
+  static bool inExceptionFilter;
+  if (inExceptionFilter)
+  {
+    const char msg[] = "Exception in exception handler\n";
+    write(STDERR_FILENO, msg, sizeof(msg) - 1);
+    _exit(3);
+  }
+  inExceptionFilter = true;
+
+  Debug &dbg = Debug::Instance;
+
+  ++dbg.disableAssertsEtc;
+  if (dbg.curType != DebugIOInterface::StringType::MAX)
+    dbg.FlushOutput();
+  dbg.StartOutput(DebugIOInterface::StringType::Exception, "");
+
+  char regInfo[1024];
+  dbg << "\n" << Debug::RepeatChar('=', 80) << "\n";
+  dbg << GetExceptionType(pExPtrs, regInfo) << ":\n" << regInfo << "\n\n";
+  LogExceptionLocation(dbg, pExPtrs); dbg << "\n\n";
+
+  dbg.WriteBuildInfo();
+  dbg << "\n\n";
+
+  LogRegisters(dbg, pExPtrs); dbg << "\n";
+  LogFPURegisters(dbg, pExPtrs); dbg << "\n";
+
+  static DebugStackwalk::Signature sig;
+  dbg.m_stackWalk.StackWalk(sig, pExPtrs->ContextRecord);
+  dbg << sig << "\n";
+
+  dbg << "Bytes around RIP:" << Debug::MemDump::Char(
+    ((char *)(uintptr_t)pExPtrs->ContextRecord->Rip) - 32, 80);
+
+  dbg.FlushOutput();
+
+  Debug::StaticExit();
+
+  // Now die (matches EXCEPTION_EXECUTE_HANDLER on Windows).
+  _exit(3);
+  return 3;
+}
+
+#if !defined(_MSC_VER)
+// Fatal-signal funnel: fills the Linux records from siginfo/ucontext and
+// runs the filter above. One-shot (SA_RESETHAND): a second fault while
+// logging dies immediately instead of recursing.
+static void Debug_SignalHandler(int sig, siginfo_t *info, void *ucontext)
+{
+  static _EXCEPTION_RECORD record;
+  static _CONTEXT ctx;
+
+  ucontext_t *uc = (ucontext_t *)ucontext;
+  if (uc)
+  {
+    greg_t *r = uc->uc_mcontext.gregs;
+    ctx.Rip = (unsigned long)r[REG_RIP];
+    ctx.Rsp = (unsigned long)r[REG_RSP];
+    ctx.Rbp = (unsigned long)r[REG_RBP];
+    ctx.Rax = (unsigned long)r[REG_RAX];
+    ctx.Rbx = (unsigned long)r[REG_RBX];
+    ctx.Rcx = (unsigned long)r[REG_RCX];
+    ctx.Rdx = (unsigned long)r[REG_RDX];
+    ctx.Rsi = (unsigned long)r[REG_RSI];
+    ctx.Rdi = (unsigned long)r[REG_RDI];
+    ctx.R8 = (unsigned long)r[REG_R8];
+    ctx.R9 = (unsigned long)r[REG_R9];
+    ctx.R10 = (unsigned long)r[REG_R10];
+    ctx.R11 = (unsigned long)r[REG_R11];
+    ctx.R12 = (unsigned long)r[REG_R12];
+    ctx.R13 = (unsigned long)r[REG_R13];
+    ctx.R14 = (unsigned long)r[REG_R14];
+    ctx.R15 = (unsigned long)r[REG_R15];
+    ctx.EFlags = (unsigned long)r[REG_EFL];
+  }
+
+  record.ExceptionCode = EXCEPTION_LINUX_SIGNAL(sig);
+  record.ExceptionFlags = 0;
+  record.ExceptionAddress = (info ? info->si_addr : NULL);
+
+  static _EXCEPTION_POINTERS ptrs = { &record, &ctx };
+  DebugExceptionhandler::ExceptionFilter(&ptrs);
+}
+
+void Debug_InstallSignalHandlers(void)
+{
+  struct sigaction sa;
+  memset(&sa, 0, sizeof(sa));
+  sa.sa_sigaction = Debug_SignalHandler;
+  sigemptyset(&sa.sa_mask);
+  sa.sa_flags = SA_SIGINFO | SA_RESETHAND;
+
+  sigaction(SIGSEGV, &sa, NULL);
+  sigaction(SIGFPE, &sa, NULL);
+  sigaction(SIGILL, &sa, NULL);
+  sigaction(SIGABRT, &sa, NULL);
+  sigaction(SIGBUS, &sa, NULL);
+}
+#endif
+#else
 void DebugExceptionhandler::LogExceptionLocation(Debug &dbg, struct _EXCEPTION_POINTERS *exptr)
 {
   struct _CONTEXT &ctx=*exptr->ContextRecord;
@@ -409,3 +606,4 @@ LONG __stdcall DebugExceptionhandler::ExceptionFilter(struct _EXCEPTION_POINTERS
   // Now die
   return EXCEPTION_EXECUTE_HANDLER;
 }
+#endif // !defined(_MSC_VER)

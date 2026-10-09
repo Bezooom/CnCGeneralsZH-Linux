@@ -18,7 +18,11 @@
 
 #include <string>
 #include <stdio.h>
-#include "registry.h"
+#include "Registry.h"
+#if !defined(_MSC_VER)
+// Linux: _snprintf mapping.
+#include "WinCompat.h"
+#endif
 
 void FormatURLFromRegistry( std::string& gamePatchURL, std::string& mapPatchURL,
 													 std::string& configURL, std::string& motdURL )

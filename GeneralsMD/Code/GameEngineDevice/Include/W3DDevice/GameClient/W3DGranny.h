@@ -26,7 +26,11 @@
 #include "hanim.h"
 #include "proto.h"
 #include "rendobj.h"
+#if defined(_WIN32)
 #include "LightEnvironment.h"
+#else
+#include "lightenvironment.h"
+#endif
 #include "w3d_file.h"
 #include "dx8vertexbuffer.h"
 #include "dx8indexbuffer.h"

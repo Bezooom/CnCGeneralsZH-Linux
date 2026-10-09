@@ -29,10 +29,29 @@
 
 
 #include "Common/GameMemory.h"
+#if !defined(_WIN32)
+#include "WWLib/mmsys.h"
+#endif
+#if defined(_WIN32)
 #include "WW3D2/DX8Wrapper.h"
+#else
+#include "WW3D2/dx8wrapper.h"
+#endif
+#if defined(_WIN32)
 #include "WW3D2/RendObj.h"
+#else
+#include "WW3D2/rendobj.h"
+#endif
+#if defined(_WIN32)
 #include "WW3D2/HAnim.h"
+#else
+#include "WW3D2/hanim.h"
+#endif
+#if defined(_WIN32)
 #include "WW3D2/Camera.h"
+#else
+#include "WW3D2/camera.h"
+#endif
 
 #include "assetmgr.h"
 
@@ -66,7 +85,7 @@ static class MouseThreadClass : public ThreadClass
 {
 
 public:
-	MouseThreadClass::MouseThreadClass() : ThreadClass() {}
+	MouseThreadClass() : ThreadClass() {}
 
 	void Thread_Function();
 
@@ -387,12 +406,14 @@ void W3DMouse::setCursor( MouseCursor cursor )
 	if( m_currentCursor == cursor && m_currentD3DCursor == cursor)
 		return;
 
-	//make sure Windows didn't reset our cursor
-	if (m_currentRedrawMode == RM_DX8)
-	{
-		SetCursor(NULL);	//Kill Windows Cursor
+		//make sure Windows didn't reset our cursor
+		if (m_currentRedrawMode == RM_DX8)
+		{
+#ifdef _WIN32
+			SetCursor(NULL);	//Kill Windows Cursor
+#endif
 
-		LPDIRECT3DDEVICE9 m_pDev=DX8Wrapper::_Get_D3D_Device();
+			LPDIRECT3DDEVICE9 m_pDev=DX8Wrapper::_Get_D3D_Device();
 		Bool doImageChange=FALSE;
 
 		if (m_pDev != NULL)
@@ -426,7 +447,9 @@ void W3DMouse::setCursor( MouseCursor cursor )
 	}
 	else if (m_currentRedrawMode == RM_POLYGON)
 	{
+#ifdef _WIN32
 		SetCursor(NULL);	//Kill Windows Cursor
+#endif
 		m_currentD3DCursor=NONE;
 		m_currentW3DCursor=NONE;
 		m_currentPolygonCursor = cursor;
@@ -434,9 +457,9 @@ void W3DMouse::setCursor( MouseCursor cursor )
 	}
 	else if (m_currentRedrawMode == RM_W3D)
 	{
+#ifdef _WIN32
 		SetCursor(NULL);	//Kill Windows Cursor
-		m_currentD3DCursor=NONE;
-		m_currentPolygonCursor=NONE;
+#endif
 		if (cursor != m_currentW3DCursor)
 		{
 			// set the new model visible
@@ -494,11 +517,13 @@ void W3DMouse::draw(void)
 
 			if (TheDisplay && !TheDisplay->getWindowed())
 			{	//if we're full-screen, need to manually move cursor image
+#ifdef _WIN32
 				POINT ptCursor;
 
 				GetCursorPos( &ptCursor );
 				ScreenToClient( ApplicationHWnd, &ptCursor );
 				m_pDev->SetCursorPosition( ptCursor.x, ptCursor.y, D3DCURSOR_IMMEDIATE_UPDATE);
+#endif
 			}
 			//Check if animated cursor and new frame
 			if (m_currentFrames > 1)

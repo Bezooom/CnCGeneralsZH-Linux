@@ -30,7 +30,7 @@
 #include "GameNetwork/NetPacket.h"
 #include "GameNetwork/NetCommandMsg.h"
 #include "GameNetwork/NetworkDefs.h"
-#include "GameNetwork/NetworkUtil.h"
+#include "GameNetwork/networkutil.h"
 #include "GameNetwork/GameMessageParser.h"
 
 #ifdef _INTERNAL

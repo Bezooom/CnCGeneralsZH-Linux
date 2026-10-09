@@ -1413,7 +1413,7 @@ FontCharsClass::Store_GDI_Char (WCHAR ch)
 			//
 			//	Get the pixel color at this location
 			//
-			uint8 pixel_value = GDIBitmapBits[index];
+			uint8 pixel_value = GDIBitmapBits ? GDIBitmapBits[index] : 0;
 			index += 3;
 #ifdef TEST_PLACEMENT
  			if (row==CharHeight-1&&col==0) {

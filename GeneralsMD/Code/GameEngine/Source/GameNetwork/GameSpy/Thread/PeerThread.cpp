@@ -34,7 +34,7 @@
 #include "Common/Registry.h"
 #include "Common/StackDump.h"
 #include "Common/UserPreferences.h"
-#include "Common/Version.h"
+#include "Common/version.h"
 #include "GameNetwork/IPEnumeration.h"
 #include "GameNetwork/GameSpy/BuddyThread.h"
 #include "GameNetwork/GameSpy/PeerDefs.h"
@@ -513,7 +513,7 @@ Int PeerThreadClass::findServer( SBServer server )
 	return addServerToMap(server);
 }
 
-static enum CallbackType
+enum CallbackType
 {
 	CALLBACK_CONNECT,
 	CALLBACK_ERROR,
@@ -1157,7 +1157,7 @@ void checkQR2Queries( PEER peer, SOCKET sock )
 		if (SOCKET_ERROR == error || 0 == error)
 			return;
 		//else we have data
-		error = recvfrom(sock, indata, INBUF_LEN - 1, 0, (struct sockaddr *)&saddr, &saddrlen);
+		error = recvfrom(sock, indata, INBUF_LEN - 1, 0, (struct sockaddr *)&saddr, (socklen_t *)&saddrlen);
 		if (error != SOCKET_ERROR)
 		{
 			indata[error] = '\0';
@@ -1171,7 +1171,9 @@ static UnsignedInt localIP = 0;
 void PeerThreadClass::Thread_Function()
 {
 	try {
+#if defined(_MSC_VER)
 	_set_se_translator( DumpExceptionInfo ); // Hook that allows stack trace.
+#endif
 
 	PEER peer;
 

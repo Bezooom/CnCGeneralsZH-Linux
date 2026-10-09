@@ -30,7 +30,15 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <stdarg.h>
 #include <new>      // needed for placement new prototype
+
+#if !defined(_MSC_VER)
+#include <fcntl.h>
+#include <unistd.h>
+#include <time.h>
+#include <sys/stat.h>
+#endif
 
 // a little dummy variable that makes the linker actually include
 // us...
@@ -38,16 +46,28 @@ extern "C" bool __DebugIncludeInLink1;
 bool __DebugIncludeInLink1;
 
 // This part is a little tricky (and not portable to other compilers).
-// MSVC initializes all static C++ variables by calling a list of 
+// MSVC initializes all static C++ variables by calling a list of
 // function pointers contained in data segments called .CRT$XCA to
 // .CRT$XCZ. We jam in our own two functions at the very beginning
 // and end of this list (B and Y respectively since the A and Z segments
 // contain list delimiters).
+#if defined(_MSC_VER)
 #pragma data_seg(".CRT$XCB")
 void *Debug::PreStatic=&Debug::PreStaticInit;
 #pragma data_seg(".CRT$XCY")
 void *Debug::PostStatic=&Debug::PostStaticInit;
 #pragma data_seg()
+#else
+// Linux twin: GCC constructor priorities (lower runs first; 0-100 are
+// reserved). PreStaticInit only memsets Instance POD state, so running it
+// first is all the ordering it needs; PostStaticInit touches nothing that
+// other static initializers provide, so default priority is fine (all
+// constructors still complete before main()).
+void *Debug::PreStatic=NULL;
+void *Debug::PostStatic=NULL;
+void Debug::LinuxPreStatic(void) { Debug::PreStaticInit(); }
+void Debug::LinuxPostStatic(void) { Debug::PostStaticInit(); }
+#endif
 
 Debug::LogDescription::LogDescription(const char *fileOrGroup, const char *description)
 {
@@ -58,7 +78,7 @@ Debug::LogDescription::LogDescription(const char *fileOrGroup, const char *descr
 Debug Debug::Instance;
 
 // more class static members
-unsigned Debug::curStackFrame;
+uintptr_t Debug::curStackFrame;
 
 // this constructor is empty on purpose because all construction
 // work is done in PreStaticInit (and some in PostStaticInit)
@@ -101,9 +121,15 @@ void Debug::PreStaticInit(void)
   Instance.timeStamp=false;
   Instance.m_radix=10;
   Instance.m_fillChar=' ';
-  
+
+#if !defined(_MSC_VER)
+  // Linux twin of SetUnhandledExceptionFilter below: fatal signals funnel
+  // into DebugExceptionhandler::ExceptionFilter, which logs and dies.
+  Debug_InstallSignalHandlers();
+#else
   /// install exception handler
   SetUnhandledExceptionFilter(DebugExceptionhandler::ExceptionFilter);
+#endif
 }
 
 void Debug::PostStaticInit(void)
@@ -121,10 +147,61 @@ void Debug::PostStaticInit(void)
 
   /// exec dbgcmd file
   char ioBuffer[2048];
+#if !defined(_MSC_VER)
+  // Linux twin of GetModuleFileName(NULL,...): <exe>.dbgcmd next to us.
+  {
+    ssize_t exeLen = readlink("/proc/self/exe", ioBuffer, sizeof(ioBuffer) - 1);
+    if (exeLen > 0)
+      ioBuffer[exeLen] = 0;
+    else
+      strcpy(ioBuffer, "generals");
+  }
+#else
   GetModuleFileName(NULL,ioBuffer,sizeof(ioBuffer));
+#endif
   char *q=strrchr(ioBuffer,'.');
   if (q)
     strcpy(q,".dbgcmd");
+#if !defined(_MSC_VER)
+  int h=open(ioBuffer,O_RDONLY);
+  if (h<0)
+    h=open("default.dbgcmd",O_RDONLY);
+  if (h>=0)
+  {
+    char cmdBuffer[512];
+    unsigned long ioCur=0,ioUsed=0,cmdCur=0;
+    ssize_t got;
+    got=read(h,ioBuffer,sizeof(ioBuffer));
+    ioUsed=got>0?(unsigned long)got:0;
+    for (;;)
+    {
+      if (ioCur==ioUsed)
+      {
+        got=read(h,ioBuffer,sizeof(ioBuffer));
+        ioUsed=got>0?(unsigned long)got:0;
+        ioCur=0;
+      }
+      if (ioCur==ioUsed||ioBuffer[ioCur]=='\n'||ioBuffer[ioCur]=='\r')
+      {
+        if (cmdCur)
+        {
+          Instance.ExecCommand(cmdBuffer,cmdBuffer+cmdCur);
+          cmdCur=0;
+        }
+        if (ioCur==ioUsed)
+          break;
+        ioCur++;
+      }
+      else
+      {
+        if (cmdCur<sizeof(cmdBuffer))
+          cmdBuffer[cmdCur++]=ioBuffer[ioCur];
+        ioCur++;
+      }
+    }
+    close(h);
+  }
+#else
   HANDLE h=CreateFile(ioBuffer,GENERIC_READ,0,NULL,OPEN_EXISTING,
                       FILE_ATTRIBUTE_NORMAL,NULL);
   if (h==INVALID_HANDLE_VALUE)
@@ -162,6 +239,7 @@ void Debug::PostStaticInit(void)
     }
     CloseHandle(h);
   }
+#endif
   else
   {
     // exec default commands
@@ -180,6 +258,8 @@ void Debug::PostStaticInit(void)
   }
 
   // check: are we using an old dbghelp.dll?
+  // (Windows-only: IsOldDbghelp() is hardcoded false on Linux.)
+#if defined(_MSC_VER)
   if (DebugStackwalk::IsOldDbghelp())
   {
     // give a serious hint
@@ -197,6 +277,7 @@ void Debug::PostStaticInit(void)
     // flush output only if there is already an active I/O class
     Instance.FlushOutput(false);
   }
+#endif
 }
 
 void Debug::StaticExit(void)
@@ -222,7 +303,7 @@ void Debug::StaticExit(void)
     }
 }
 
-Debug& Debug::operator<<(RepeatChar &c)
+Debug& Debug::operator<<(RepeatChar c)
 {
   // the old loop decremented before testing, so it always overshot into
   // negative territory and the single char tail below never ran: any count >=10
@@ -246,7 +327,13 @@ Debug::Format::Format(const char *format, ...)
 {
   va_list va;
   va_start(va,format);
+#if defined(_MSC_VER)
   _vsnprintf(m_buffer,sizeof(m_buffer)-1,format,va);
+#else
+  // NB: _vsnprintf's count excludes the NUL (511 usable chars here) while
+  // vsnprintf's includes it, so pass the full size to keep 511 usable.
+  vsnprintf(m_buffer,sizeof(m_buffer),format,va);
+#endif
   va_end(va);
   // _vsnprintf writes no NUL when it fills the buffer exactly, and m_buffer has
   // no initialiser - the operator<< below would then strlen past the object
@@ -258,15 +345,22 @@ Debug::~Debug()
   // again, do not put any code in here
 }
 
+#if defined(_MSC_VER)
 static void LocalSETranslator(unsigned, struct _EXCEPTION_POINTERS *pExPtrs)
 {
   // simply call our regular exception handler
   DebugExceptionhandler::ExceptionFilter(pExPtrs);
 }
+#endif
 
 void Debug::InstallExceptionHandler(void)
 {
+#if defined(_MSC_VER)
   _set_se_translator(LocalSETranslator);
+#else
+  // Linux: fatal signals are caught by Debug_InstallSignalHandlers()
+  // (see PreStaticInit); there is no SE translator to install.
+#endif
 }
 
 bool Debug::SkipNext(void)
@@ -278,13 +372,19 @@ bool Debug::SkipNext(void)
 
   // do not implement this function inline, we do need
   // a valid frame pointer here!
+#if !defined(_MSC_VER)
+  // Linux twin of the [ebp+4] read below: caller's return address.
+  // (Needs -fno-omit-frame-pointer, which the Linux build sets.)
+  curStackFrame=(uintptr_t)__builtin_return_address(0);
+#else
   unsigned help;
-  _asm 
+  _asm
   {
     mov eax,[ebp+4]   // return address
     mov help,eax
   };
   curStackFrame=help;
+#endif
 
   // do we know if to skip the following code?
   FrameHashEntry *e=Instance.LookupFrame(curStackFrame);
@@ -370,6 +470,7 @@ bool Debug::AssertDone(void)
     FlushOutput();
 
     // show dialog box only if running windowed
+#if defined(_MSC_VER)
     if (IsWindowed())
     {
       /// @todo replace MessageBox with custom dialog w/ 4 options: abort, skip 1, skip all, break
@@ -385,15 +486,15 @@ bool Debug::AssertDone(void)
           break;
         case IDIGNORE:
           {
-            // build 'pattern'
-            char help[200];
-            __ASSERT(strlen(curFrameEntry->fileOrGroup)<190);
-            wsprintf(help,"%s(%i)",curFrameEntry->fileOrGroup,
-                                   curFrameEntry->line);
-            AddPatternEntry(FrameTypeAssert,false,help);
-            curFrameEntry->status=Skip;
-          }
-          break;
+      // build 'pattern'
+      char help[200];
+      __ASSERT(strlen(curFrameEntry->fileOrGroup)<190);
+      wsprintf(help,"%s(%i)",curFrameEntry->fileOrGroup,
+                             curFrameEntry->line);
+      AddPatternEntry(FrameTypeAssert,false,help);
+      curFrameEntry->status=Skip;
+    }
+    break;
         case IDRETRY:
           _asm int 0x03
           break;
@@ -401,7 +502,8 @@ bool Debug::AssertDone(void)
           ((void)0);
       }
     }
-    else 
+    else
+#endif
     {
       // we're running fullscreen
 
@@ -416,8 +518,13 @@ bool Debug::AssertDone(void)
         // build 'pattern'
         char help[200];
         __ASSERT(strlen(curFrameEntry->fileOrGroup)<190);
+#if defined(_MSC_VER)
         wsprintf(help,"%s(%i)",curFrameEntry->fileOrGroup,
                                curFrameEntry->line);
+#else
+        snprintf(help,sizeof(help),"%s(%i)",curFrameEntry->fileOrGroup,
+                                             curFrameEntry->line);
+#endif
         AddPatternEntry(FrameTypeAssert,false,help);
 
         curFrameEntry->status=Skip;
@@ -500,8 +607,13 @@ bool Debug::CheckDone(void)
       // build 'pattern'
       char help[200];
       __ASSERT(strlen(curFrameEntry->fileOrGroup)<190);
+#if defined(_MSC_VER)
       wsprintf(help,"%s(%i)",curFrameEntry->fileOrGroup,
                              curFrameEntry->line);
+#else
+      snprintf(help,sizeof(help),"%s(%i)",curFrameEntry->fileOrGroup,
+                                           curFrameEntry->line);
+#endif
       AddPatternEntry(FrameTypeCheck,false,help);
 
       curFrameEntry->status=Skip;
@@ -638,6 +750,7 @@ bool Debug::CrashDone(bool die)
     // show dialog box only if running windowed
     if (!die)
     {
+#if defined(_MSC_VER)
       if (IsWindowed())
       {
         /// @todo replace MessageBox with custom dialog w/ 4 options: abort, skip 1, skip all, break
@@ -670,6 +783,7 @@ bool Debug::CrashDone(bool die)
         }
       }
       else
+#endif
       {
         // running fullscreen...
 
@@ -684,8 +798,13 @@ bool Debug::CrashDone(bool die)
           // build 'pattern'
           char help[200];
           __ASSERT(strlen(curFrameEntry->fileOrGroup)<190);
+#if defined(_MSC_VER)
           wsprintf(help,"%s(%i)",curFrameEntry->fileOrGroup,
                                  curFrameEntry->line);
+#else
+          snprintf(help,sizeof(help),"%s(%i)",curFrameEntry->fileOrGroup,
+                                               curFrameEntry->line);
+#endif
           AddPatternEntry(FrameTypeAssert,false,help);
 
           curFrameEntry->status=Skip;
@@ -695,8 +814,14 @@ bool Debug::CrashDone(bool die)
     else
 #endif
     {
+#if defined(_MSC_VER)
       MessageBox(NULL,help,"Game crash",
                           MB_OK|MB_ICONSTOP|MB_TASKMODAL|MB_SETFOREGROUND);
+#else
+      // Linux: the message is already in the log (flushed above); the
+      // crash report on stderr is the dialog replacement.
+      fprintf(stderr, "Game crash - see log for details.\n");
+#endif
       curFrameEntry=NULL;
       _exit(1);
     }
@@ -748,7 +873,7 @@ Debug& Debug::operator<<(int val)
   // usually having a fixed size buffer and a function
   // that doesn't check for buffer overflow isn't a good idea
   // but in this case we know how long it can be at max...
-  char help[1+32+1]; // sign, 32 digits (binary), NUL
+  char help[1+64+1]; // sign, 64 digits (binary), NUL
   AddOutput(m_prefix,strlen(m_prefix));
   return (*this) << _itoa(val,help,m_radix);
 }
@@ -758,7 +883,7 @@ Debug& Debug::operator<<(unsigned val)
   // usually having a fixed size buffer and a function
   // that doesn't check for buffer overflow isn't a good idea
   // but in this case we know how long it can be at max...
-  char help[32+1]; // 32 digits, NUL
+  char help[64+1]; // 64 digits, NUL
   AddOutput(m_prefix,strlen(m_prefix));
   return (*this) << _ultoa(val,help,m_radix);
 }
@@ -768,7 +893,9 @@ Debug& Debug::operator<<(long val)
   // usually having a fixed size buffer and a function
   // that doesn't check for buffer overflow isn't a good idea
   // but in this case we know how long it can be at max...
-  char help[1+32+1]; // sign, 32 digits, NUL
+  // (64 digits: on 64-bit targets long values print in binary with
+  // Width(64), e.g. the crash handler's flags line)
+  char help[1+64+1]; // sign, 64 digits, NUL
   AddOutput(m_prefix,strlen(m_prefix));
   return (*this) << _itoa(val,help,m_radix);
 }
@@ -778,7 +905,7 @@ Debug& Debug::operator<<(unsigned long val)
   // usually having a fixed size buffer and a function
   // that doesn't check for buffer overflow isn't a good idea
   // but in this case we know how long it can be at max...
-  char help[32+1]; // 32 digits, NUL
+  char help[64+1]; // 64 digits, NUL
   AddOutput(m_prefix,strlen(m_prefix));
   return (*this) << _ultoa(val,help,m_radix);
 }
@@ -834,7 +961,11 @@ Debug& Debug::operator<<(__int64 val)
   return (*this) << _i64toa(val,help,m_radix);
 }
 
+#if defined(_MSC_VER)
 Debug& Debug::operator<<(unsigned __int64 val)
+#else
+Debug& Debug::operator<<(unsigned long long val)
+#endif
 {
   // usually having a fixed size buffer and a function
   // that doesn't check for buffer overflow isn't a good idea
@@ -849,7 +980,8 @@ Debug& Debug::operator<<(const void *ptr)
   (*this) << "ptr:";
   if (ptr)
   {
-    char help[9];
+    // 16 hex digits on 64-bit targets (8 on 32-bit) plus NUL.
+    char help[17];
     (*this) << "0x" << _ultoa((unsigned long)ptr,help,16);
   }
   else
@@ -880,9 +1012,10 @@ Debug& Debug::operator<<(const MemDump &dump)
   const unsigned char *cur=dump.m_startPtr;
   for (unsigned i=0;i<dump.m_numItems;i+=itemPerLine,cur+=itemPerLine*dump.m_bytePerItem)
   {
-    // address
-    char buf[9];
-    sprintf(buf,"%08x",dump.m_absAddr?unsigned(cur):cur-dump.m_startPtr);
+    // address (%08lx pads small offsets exactly like the old %08x;
+    // full 64-bit addresses print in full rather than truncated)
+    char buf[17];
+    sprintf(buf,"%08lx",dump.m_absAddr?(unsigned long)cur:(unsigned long)(cur-dump.m_startPtr));
     operator<<(buf);
 
     // items
@@ -960,9 +1093,9 @@ bool Debug::IsLogEnabled(const char *fileOrGroup)
   // to be used from the D_ISLOG macros only and those guarantee
   // that we are having real static strings let's use
   // that strings address as frame address...
-  FrameHashEntry *e=Instance.LookupFrame((unsigned)fileOrGroup);
+  FrameHashEntry *e=Instance.LookupFrame((uintptr_t)fileOrGroup);
   if (!e)
-    e=Instance.AddFrameEntry((unsigned)fileOrGroup,FrameTypeLog,fileOrGroup,0);
+    e=Instance.AddFrameEntry((uintptr_t)fileOrGroup,FrameTypeLog,fileOrGroup,0);
   if (e->status==Unknown)
     Instance.UpdateFrameStatus(*e);
   return e->status==NoSkip;
@@ -1153,7 +1286,7 @@ void Debug::Update(void)
   }
 }
 
-Debug::FrameHashEntry* Debug::AddFrameEntry(unsigned addr, unsigned type,
+Debug::FrameHashEntry* Debug::AddFrameEntry(uintptr_t addr, unsigned type,
                                             const char *fileOrGroup, int line)
 {
   __ASSERT(LookupFrame(addr)==NULL);
@@ -1180,14 +1313,23 @@ Debug::FrameHashEntry* Debug::AddFrameEntry(unsigned addr, unsigned type,
   if (type&FrameTypeLog)
   {
     // must add to list of known logs,
-    // store translated name 
+    // store translated name
     e->fileOrGroup=AddLogGroup(fileOrGroup,NULL);
   }
   else
   {
-    // no, just add file name (without path though)
-    e->fileOrGroup=fileOrGroup?strrchr(fileOrGroup,'\\'):NULL;
-    e->fileOrGroup=e->fileOrGroup?e->fileOrGroup+1:fileOrGroup;
+    // no, just add file name (without path though); both separators are
+    // honored since Windows accepts '/' as well as '\\'
+    if (fileOrGroup)
+    {
+      const char *base=strrchr(fileOrGroup,'/');
+      const char *back=strrchr(fileOrGroup,'\\');
+      if (back&&(!base||back>base))
+        base=back;
+      e->fileOrGroup=base?base+1:fileOrGroup;
+    }
+    else
+      e->fileOrGroup=NULL;
   }
 
   // add to hash
@@ -1201,7 +1343,11 @@ void Debug::UpdateFrameStatus(FrameHashEntry &entry)
   char help[512];
   if (entry.frameType==FrameTypeAssert||
       entry.frameType==FrameTypeCheck)
+#if defined(_MSC_VER)
     wsprintf(help,"%s(%i)",entry.fileOrGroup,entry.line);
+#else
+    snprintf(help,sizeof(help),"%s(%i)",entry.fileOrGroup,entry.line);
+#endif
   else
     strcpy(help,entry.fileOrGroup);
   
@@ -1223,7 +1369,10 @@ const char *Debug::AddLogGroup(const char *fileOrGroup, const char *descr)
   char help[200];
 
   // do we need to strip down fileOrGroup?
-  const char *p=strrchr(fileOrGroup,'\\');
+  const char *p=strrchr(fileOrGroup,'/');
+  const char *back=strrchr(fileOrGroup,'\\');
+  if (back&&(!p||back>p))
+    p=back;
   const char *q=strchr(p?p:fileOrGroup,'.');
   if (p||q)
   {
@@ -1269,7 +1418,11 @@ void Debug::StartOutput(DebugIOInterface::StringType type, const char *fmt, ...)
   // potentially dangerous (fixed string buffer...)
   va_list va;
   va_start(va,fmt);
+#if defined(_MSC_VER)
   wvsprintf(curSource,fmt,va);
+#else
+  vsnprintf(curSource,sizeof(curSource),fmt,va);
+#endif
   va_end(va);
   __ASSERT(curSource[sizeof(curSource)-1]==0);
 }
@@ -1290,12 +1443,23 @@ void Debug::AddOutput(const char *str, unsigned remainingLen)
       // add timestamp now?
       if (ioBuffer[curType].lastWasCR)
       {
+#if !defined(_MSC_VER)
+        struct timespec tsNow;
+        clock_gettime(CLOCK_REALTIME, &tsNow);
+        struct tm tmNow;
+        localtime_r(&tsNow.tv_sec, &tmNow);
+
+        char ts[40];
+        snprintf(ts, sizeof(ts), "[%02i:%02i.%02i.%03i] ", tmNow.tm_hour, tmNow.tm_min,
+                      tmNow.tm_sec, (int)(tsNow.tv_nsec / 1000000));
+#else
         SYSTEMTIME systime;
         GetLocalTime(&systime);
 
         char ts[40];
         wsprintf(ts,"[%02i:%02i.%02i.%03i] ",systime.wHour,systime.wMinute,
                       systime.wSecond,systime.wMilliseconds);
+#endif
 
         unsigned tsLen=strlen(ts);
         memcpy(ioBuffer[curType].buffer+ioBuffer[curType].used,ts,tsLen+1);
@@ -1375,12 +1539,30 @@ void Debug::FlushOutput(bool defaultLog)
 #ifdef HAS_LOGS
     // then force output to a very simple default log file
     // (non-Release builds only)
+#if !defined(_MSC_VER)
+    int logFd=open("default.log",O_WRONLY|O_CREAT|O_APPEND,0644);
+    if (logFd>=0)
+    {
+      const char *logBuf=ioBuffer[curType].buffer;
+      size_t logLeft=strlen(logBuf);
+      while (logLeft)
+      {
+        ssize_t w=write(logFd,logBuf,logLeft);
+        if (w<=0)
+          break;
+        logBuf+=w;
+        logLeft-=w;
+      }
+      close(logFd);
+    }
+#else
     HANDLE h=CreateFile("default.log",GENERIC_WRITE,0,NULL,
                         OPEN_ALWAYS,FILE_ATTRIBUTE_NORMAL,NULL);
     SetFilePointer(h,0,NULL,FILE_END);
     DWORD dwDummy;
     WriteFile(h,ioBuffer[curType].buffer,strlen(ioBuffer[curType].buffer),&dwDummy,NULL);
     CloseHandle(h);
+#endif
 #endif
   }
 
@@ -1615,14 +1797,21 @@ void Debug::ExecCommand(const char *cmdstart, const char *cmdend)
 }
 
 // little helper to get app window
+#if defined(_MSC_VER)
 static BOOL CALLBACK EnumThreadWndProc(HWND hwnd, LPARAM lParam)
 {
   *(HWND *)lParam=hwnd;
   return FALSE;
 }
+#endif
 
 bool Debug::IsWindowed(void)
 {
+#if !defined(_MSC_VER)
+  // Linux: headless convention - no dialogs, asserts/crashes take the
+  // auto-disable path (see AssertDone/CrashDone).
+  return false;
+#else
   // use cached result if possible
   if (m_isWindowed)
     return m_isWindowed>0;
@@ -1640,6 +1829,7 @@ bool Debug::IsWindowed(void)
   // we assume full screen if WS_CAPTION is not set
   m_isWindowed=(GetWindowLong(appHWnd,GWL_STYLE)&WS_CAPTION)?1:-1;
   return m_isWindowed>0;
+#endif
 }
 
 //////////////////////////////////////////////////////////////////////////////

@@ -27,15 +27,49 @@
 #include <sys/types.h>
 #include <sys/timeb.h>
 #include <stdlib.h>
+#if defined(_MSC_VER)
 #include <process.h>
+#endif
 #include <sys/stat.h>
+#if defined(_MSC_VER)
 #include <io.h>
+#endif
 #include <time.h>
+#include <ctype.h>
 #include "assert.h"
 #include "ftp.h"
+#if defined(_MSC_VER)
 #include "winsock.h"
+#else
+// Linux: POSIX sockets + Win32 API shims (see win.h for WSAGetLastError etc.)
+#include "WWLib/win.h"
+#include <sys/ioctl.h>
+#include <fcntl.h>
+// ioctlsocket(FIONBIO) twin: only FIONBIO is used, *argp nonzero means on.
+static int ftp_ioctlsocket(int s, long cmd, unsigned long *argp)
+{
+  (void)cmd;
+  int flags = fcntl(s, F_GETFL, 0);
+  if (flags < 0)
+    return SOCKET_ERROR;
+  if (*argp)
+    flags |= O_NONBLOCK;
+  else
+    flags &= ~O_NONBLOCK;
+  return fcntl(s, F_SETFL, flags) == 0 ? 0 : SOCKET_ERROR;
+}
+#ifdef ioctlsocket
+#undef ioctlsocket
+#endif
+#define ioctlsocket ftp_ioctlsocket
+#ifndef FIONBIO
+#define FIONBIO 0x5421
+#endif
+#endif
 #include <time.h>
+#if defined(_MSC_VER)
 #include <direct.h>
+#endif
 #include <errno.h>
 //#include "wlib/wstring.h"
 
@@ -242,6 +276,7 @@ void Cftp::ZeroStuff(void)
 }
 
 
+#if defined(_MSC_VER)
 DWORD WINAPI gethostbynameA( void * szName )
 {
 	HOSTENT *he = gethostbyname( (const char *)szName );
@@ -256,10 +291,24 @@ DWORD WINAPI gethostbynameA( void * szName )
 	gThreadFlag = 1;
 	return 0;
 }
+#endif
 
 
 int Cftp::AsyncGetHostByName(char * szName, struct sockaddr_in &address )
 {
+#if !defined(_MSC_VER)
+	// Linux: synchronous resolution (no helper thread). The caller pumps
+	// this state machine and tolerates FTP_TRYING, but succeeding at once
+	// is equally valid - and DNS for a dead patch server fails fast.
+	HOSTENT *he = gethostbyname(szName);
+	if (!he)
+		return FTP_FAILED;
+	memset(&gThreadAddress, 0, sizeof(gThreadAddress));
+	memcpy((char *)&(gThreadAddress.sin_addr), he->h_addr, he->h_length);
+	address = gThreadAddress;
+	address.sin_family = AF_INET;
+	return FTP_SUCCEEDED;
+#else
 	static int            stat = 0;
 	static unsigned long  threadid;
 
@@ -288,6 +337,7 @@ int Cftp::AsyncGetHostByName(char * szName, struct sockaddr_in &address )
 	}
 
 	return( FTP_TRYING );
+#endif
 }
 
 
@@ -400,7 +450,14 @@ HRESULT  Cftp::ConnectToServer(LPCSTR szServerName)
 		if( connect( m_iCommandSocket, (struct sockaddr *)&m_CommandSockAddr, sizeof( m_CommandSockAddr ) ) == -1 )
 		{
 			error = WSAGetLastError();
+#if !defined(_MSC_VER)
+			// POSIX reports an in-progress non-blocking connect as
+			// EINPROGRESS rather than EWOULDBLOCK.
+			if( ( error == WSAEWOULDBLOCK ) || ( error == WSAEINVAL ) || ( error == WSAEALREADY ) ||
+			    ( error == WSAEINPROGRESS ) )
+#else
 			if( ( error == WSAEWOULDBLOCK ) || ( error == WSAEINVAL ) || ( error == WSAEALREADY ) )
+#endif
 			{
 				return( FTP_TRYING );
 			}
@@ -1010,10 +1067,14 @@ unsigned long MyIPAddress( int sockfd )
 
 	if( sockfd != -1 )
 	{
-		i = sizeof( sin );
-		getsockname( sockfd, (struct sockaddr *)&sin, &i );
+		socklen_t addrlen = sizeof( sin );
+		getsockname( sockfd, (struct sockaddr *)&sin, &addrlen );
 
+#if defined(_MSC_VER)
 		ip = sin.sin_addr.S_un.S_addr;
+#else
+		ip = sin.sin_addr.s_addr;
+#endif
 	}
 	else
 	{
@@ -1129,7 +1190,14 @@ int Cftp::SendNewPort( void )
 
 		i = sizeof( m_DataSockAddr);
 
+#if defined(_MSC_VER)
 		getsockname( m_iDataSocket, (struct sockaddr *)&m_DataSockAddr, &i );
+#else
+		{
+			socklen_t addrlen = (socklen_t)i;
+			getsockname( m_iDataSocket, (struct sockaddr *)&m_DataSockAddr, &addrlen );
+		}
+#endif
 
 		listen( m_iDataSocket, 5 );
 
@@ -1835,7 +1903,13 @@ bool Prepare_Directories(const char *rootdir, const char *filename)
 		sprintf(newdir,"%s\\%s",rootdir, tempstr);
 		// An existing directory is success, not failure - every download after the
 		// first into the same subdir used to bail out here.
+		// (Linux: backslashes stay literal, so "root\a" is one directory name.
+		// The tests pin exactly this layout - real separator policy is Phase 3.4.)
+#if defined(_MSC_VER)
 		if (!CreateDirectory(newdir, NULL) && GetLastError() != ERROR_ALREADY_EXISTS)
+#else
+		if (mkdir(newdir, 0755) != 0 && errno != EEXIST)
+#endif
 			return false;
 		//if ((_mkdir(newdir) == -1) && ((errno == ENOENT || errno==EACCES)))
 			//return(false);

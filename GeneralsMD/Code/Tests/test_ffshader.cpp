@@ -26,13 +26,14 @@
 #include "ffshader.h"
 
 #include <string.h>
+#include <limits>
+#include <type_traits>
 
 static CombinerStage one_stage(DWORD colour_operation, DWORD colour_argument1,
 	DWORD colour_argument2, DWORD alpha_operation, DWORD alpha_argument1, DWORD alpha_argument2,
 	DWORD coordinate_index, bool texture_bound)
 {
-	CombinerStage stage;
-	memset(&stage, 0, sizeof(stage));
+	CombinerStage stage = {};
 	stage.ColourOperation = colour_operation;
 	stage.ColourArgument1 = colour_argument1;
 	stage.ColourArgument2 = colour_argument2;
@@ -49,12 +50,163 @@ static bool contains(const std::string & text, const char * fragment)
 	return text.find(fragment) != std::string::npos;
 }
 
+// DWORD must not become unsigned long on LP64. Do not pin structure sizes: padding
+// is host-specific, but each input word and its unsigned range are part of the contract.
+TEST(ffshader_input_words_keep_the_unsigned_32_bit_contract)
+{
+	CHECK_EQ(sizeof(DWORD), 4u);
+	CHECK(std::is_unsigned<DWORD>::value);
+	CHECK_EQ(std::numeric_limits<DWORD>::digits, 32);
+	CHECK_EQ((std::numeric_limits<DWORD>::max)(), 0xffffffffULL);
+	CHECK_EQ(sizeof(CombinerStage::ColourOperation), 4u);
+	CHECK_EQ(sizeof(CombinerStage::ColourArgument0), 4u);
+	CHECK_EQ(sizeof(CombinerStage::ColourArgument1), 4u);
+	CHECK_EQ(sizeof(CombinerStage::ColourArgument2), 4u);
+	CHECK_EQ(sizeof(CombinerStage::AlphaOperation), 4u);
+	CHECK_EQ(sizeof(CombinerStage::AlphaArgument0), 4u);
+	CHECK_EQ(sizeof(CombinerStage::AlphaArgument1), 4u);
+	CHECK_EQ(sizeof(CombinerStage::AlphaArgument2), 4u);
+	CHECK_EQ(sizeof(CombinerStage::TextureCoordinateIndex), 4u);
+	CHECK_EQ(sizeof(PixelPipelineDescription::AlphaFunction), 4u);
+}
+
+// Pin the numeric input vocabulary, not just agreement between symbolic names
+// in the tests and in the generator. On Windows these check the SDK declarations;
+// on Linux they check the standalone dictionary without including a runtime shim.
+TEST(ffshader_d3d_constants_keep_their_numeric_values)
+{
+	CHECK_EQ(D3DTOP_DISABLE, 1u);
+	CHECK_EQ(D3DTOP_SELECTARG1, 2u);
+	CHECK_EQ(D3DTOP_SELECTARG2, 3u);
+	CHECK_EQ(D3DTOP_MODULATE, 4u);
+	CHECK_EQ(D3DTOP_MODULATE2X, 5u);
+	CHECK_EQ(D3DTOP_MODULATE4X, 6u);
+	CHECK_EQ(D3DTOP_ADD, 7u);
+	CHECK_EQ(D3DTOP_ADDSIGNED, 8u);
+	CHECK_EQ(D3DTOP_ADDSIGNED2X, 9u);
+	CHECK_EQ(D3DTOP_SUBTRACT, 10u);
+	CHECK_EQ(D3DTOP_ADDSMOOTH, 11u);
+	CHECK_EQ(D3DTOP_BLENDDIFFUSEALPHA, 12u);
+	CHECK_EQ(D3DTOP_BLENDTEXTUREALPHA, 13u);
+	CHECK_EQ(D3DTOP_BLENDFACTORALPHA, 14u);
+	CHECK_EQ(D3DTOP_BLENDTEXTUREALPHAPM, 15u);
+	CHECK_EQ(D3DTOP_BLENDCURRENTALPHA, 16u);
+	CHECK_EQ(D3DTOP_MODULATEALPHA_ADDCOLOR, 18u);
+	CHECK_EQ(D3DTOP_MODULATECOLOR_ADDALPHA, 19u);
+	CHECK_EQ(D3DTOP_MODULATEINVALPHA_ADDCOLOR, 20u);
+	CHECK_EQ(D3DTOP_MODULATEINVCOLOR_ADDALPHA, 21u);
+	CHECK_EQ(D3DTOP_BUMPENVMAP, 22u);
+	CHECK_EQ(D3DTOP_DOTPRODUCT3, 24u);
+	CHECK_EQ(D3DTOP_MULTIPLYADD, 25u);
+	CHECK_EQ(D3DTOP_LERP, 26u);
+	CHECK_EQ(D3DCMP_NEVER, 1u);
+	CHECK_EQ(D3DCMP_LESS, 2u);
+	CHECK_EQ(D3DCMP_EQUAL, 3u);
+	CHECK_EQ(D3DCMP_LESSEQUAL, 4u);
+	CHECK_EQ(D3DCMP_GREATER, 5u);
+	CHECK_EQ(D3DCMP_NOTEQUAL, 6u);
+	CHECK_EQ(D3DCMP_GREATEREQUAL, 7u);
+	CHECK_EQ(D3DCMP_ALWAYS, 8u);
+	CHECK_EQ(D3DTA_DIFFUSE, 0x0u);
+	CHECK_EQ(D3DTA_CURRENT, 0x1u);
+	CHECK_EQ(D3DTA_TEXTURE, 0x2u);
+	CHECK_EQ(D3DTA_TFACTOR, 0x3u);
+	CHECK_EQ(D3DTA_SPECULAR, 0x4u);
+	CHECK_EQ(D3DTA_SELECTMASK, 0xfu);
+	CHECK_EQ(D3DTA_COMPLEMENT, 0x10u);
+	CHECK_EQ(D3DTA_ALPHAREPLICATE, 0x20u);
+	CHECK_EQ(D3DTSS_TCI_CAMERASPACEPOSITION, 0x20000u);
+}
+
+// These values need not describe a supported shader: keys serialize DWORD state
+// even for programs the generator refuses. Four ten-digit words need 45 bytes
+// including delimiters and the terminator in each formatting buffer.
+TEST(ffshader_the_key_preserves_maximum_dwords_without_truncation)
+{
+	const DWORD maximum = (std::numeric_limits<DWORD>::max)();
+	CombinerDescription description = {};
+	description.StageCount = 1;
+	description.Stages[0] = one_stage(maximum, maximum, maximum,
+		maximum, maximum, maximum, maximum, true);
+	description.Stages[0].ColourArgument0 = maximum;
+	description.Stages[0].AlphaArgument0 = maximum;
+	description.PixelPipeline.AlphaTestEnabled = true;
+	description.PixelPipeline.AlphaFunction = maximum;
+	description.PixelPipeline.FogEnabled = true;
+
+	// std::string equality also rejects embedded NULs and trailing bytes.
+	const std::string key = CombinerShader_Key(description);
+	CHECK_EQ(key, "1:4294967295,4294967295,4294967295,4294967295,"
+		"4294967295,4294967295,4294967295,4294967295,65535,1:A1,4294967295,F1");
+	CHECK_EQ(CombinerShader_Pipeline_Key(description.PixelPipeline), ":A1,4294967295,F1");
+
+	// The final digit of each four-word group used to fall beyond a 32-byte buffer.
+	description.Stages[0].ColourArgument2 = maximum - 1;
+	CHECK_NE(CombinerShader_Key(description), key);
+	CHECK_EQ(CombinerShader_Key(description), "1:4294967295,4294967295,4294967295,4294967294,"
+		"4294967295,4294967295,4294967295,4294967295,65535,1:A1,4294967295,F1");
+	description.Stages[0].ColourArgument2 = maximum;
+	description.Stages[0].AlphaArgument2 = maximum - 1;
+	CHECK_NE(CombinerShader_Key(description), key);
+	CHECK_EQ(CombinerShader_Key(description), "1:4294967295,4294967295,4294967295,4294967295,"
+		"4294967295,4294967295,4294967295,4294967294,65535,1:A1,4294967295,F1");
+}
+
+// Use distinct fields and unequal stages so swaps, omissions and separators are
+// observable. Coordinate generation bits alone must disappear from the key.
+TEST(ffshader_the_key_has_exact_field_and_stage_order)
+{
+	CombinerDescription description = {};
+	description.StageCount = 2;
+	description.Stages[0] = one_stage(D3DTOP_MULTIPLYADD, D3DTA_TEXTURE | D3DTA_COMPLEMENT,
+		D3DTA_CURRENT, D3DTOP_LERP, D3DTA_DIFFUSE | D3DTA_ALPHAREPLICATE,
+		D3DTA_SPECULAR | D3DTA_COMPLEMENT, D3DTSS_TCI_CAMERASPACEPOSITION | 1, true);
+	description.Stages[0].ColourArgument0 = D3DTA_TFACTOR;
+	description.Stages[0].AlphaArgument0 = D3DTA_SPECULAR;
+	description.Stages[1] = one_stage(D3DTOP_ADD, D3DTA_CURRENT, D3DTA_DIFFUSE,
+		D3DTOP_SELECTARG2, D3DTA_TFACTOR, D3DTA_TEXTURE, 0, false);
+	description.Stages[1].ColourArgument0 = D3DTA_SPECULAR;
+	description.Stages[1].AlphaArgument0 = D3DTA_CURRENT;
+	description.PixelPipeline.AlphaTestEnabled = true;
+	description.PixelPipeline.AlphaFunction = D3DCMP_GREATEREQUAL;
+	description.PixelPipeline.FogEnabled = true;
+	CHECK_EQ(CombinerShader_Key(description), "2:25,3,18,1,26,4,32,20,1,1:7,4,1,0,3,1,3,2,0,0:A1,7,F1");
+
+	description.Stages[0].TextureCoordinateIndex = 1;
+	CHECK_EQ(CombinerShader_Key(description), "2:25,3,18,1,26,4,32,20,1,1:7,4,1,0,3,1,3,2,0,0:A1,7,F1");
+	description.Stages[0].TextureCoordinateIndex = 0;
+	CHECK_EQ(CombinerShader_Key(description), "2:25,3,18,1,26,4,32,20,0,1:7,4,1,0,3,1,3,2,0,0:A1,7,F1");
+}
+
+TEST(ffshader_the_key_serializes_every_supported_stage)
+{
+	CombinerDescription description = {};
+	description.StageCount = MAXIMUM_COMBINER_STAGES;
+	for (unsigned index = 0; index < MAXIMUM_COMBINER_STAGES; ++index) {
+		description.Stages[index] = one_stage(D3DTOP_MODULATE, D3DTA_TEXTURE, D3DTA_DIFFUSE,
+			D3DTOP_SELECTARG1, D3DTA_CURRENT, D3DTA_TEXTURE, index, index % 2 != 0);
+	}
+	CHECK_EQ(CombinerShader_Key(description), "4:4,0,2,0,2,0,1,2,0,0:4,0,2,0,2,0,1,2,1,1"
+		":4,0,2,0,2,0,1,2,2,0:4,0,2,0,2,0,1,2,3,1:A0,0,F0");
+}
+
+TEST(ffshader_disabled_alpha_test_normalizes_even_maximum_function)
+{
+	CombinerDescription description = {};
+	description.PixelPipeline.AlphaFunction = (std::numeric_limits<DWORD>::max)();
+	CHECK_EQ(CombinerShader_Pipeline_Key(description.PixelPipeline), ":A0,0,F0");
+	CHECK_EQ(CombinerShader_Key(description), "0:A0,0,F0");
+	description.PixelPipeline.FogEnabled = true;
+	CHECK_EQ(CombinerShader_Pipeline_Key(description.PixelPipeline), ":A0,0,F1");
+	CHECK_EQ(CombinerShader_Key(description), "0:A0,0,F1");
+}
+
 // 22.8% of every draw call measured: one stage, SELECTARG1 on the texture, and a coordinate index
 // of 0x20000 - D3DTSS_TCI_CAMERASPACEPOSITION.  The vertex pipeline computes the coordinate and
 // leaves it in the asking stage's register, which for stage 0 is TexCoord0.
 TEST(ffshader_the_most_used_combination_selects_the_texture)
 {
-	CombinerDescription description;
+	CombinerDescription description = {};
 	description.StageCount = 1;
 	description.Stages[0] = one_stage(D3DTOP_SELECTARG1, D3DTA_TEXTURE, D3DTA_CURRENT,
 		D3DTOP_SELECTARG1, D3DTA_TEXTURE, D3DTA_CURRENT, D3DTSS_TCI_CAMERASPACEPOSITION, true);
@@ -70,7 +222,7 @@ TEST(ffshader_the_most_used_combination_selects_the_texture)
 // refusal, not a sample out of a register the shader never declared.
 TEST(ffshader_refuses_a_coordinate_set_it_does_not_declare)
 {
-	CombinerDescription description;
+	CombinerDescription description = {};
 	description.StageCount = 1;
 	description.Stages[0] = one_stage(D3DTOP_SELECTARG1, D3DTA_TEXTURE, D3DTA_CURRENT,
 		D3DTOP_SELECTARG1, D3DTA_TEXTURE, D3DTA_CURRENT, 2, true);
@@ -82,7 +234,7 @@ TEST(ffshader_refuses_a_coordinate_set_it_does_not_declare)
 // The second most used: MODULATE of the texture against the diffuse colour.
 TEST(ffshader_modulate_multiplies_texture_by_diffuse)
 {
-	CombinerDescription description;
+	CombinerDescription description = {};
 	description.StageCount = 1;
 	description.Stages[0] = one_stage(D3DTOP_MODULATE, D3DTA_TEXTURE, D3DTA_DIFFUSE,
 		D3DTOP_MODULATE, D3DTA_TEXTURE, D3DTA_DIFFUSE, 0, true);
@@ -97,7 +249,7 @@ TEST(ffshader_modulate_multiplies_texture_by_diffuse)
 // there.  Opaque white is the answer being tried; this pins it so a change to it is deliberate.
 TEST(ffshader_an_unbound_stage_samples_opaque_white)
 {
-	CombinerDescription description;
+	CombinerDescription description = {};
 	description.StageCount = 1;
 	description.Stages[0] = one_stage(D3DTOP_SELECTARG1, D3DTA_TEXTURE, D3DTA_CURRENT,
 		D3DTOP_SELECTARG1, D3DTA_TEXTURE, D3DTA_CURRENT, 0, false);
@@ -115,7 +267,7 @@ TEST(ffshader_an_unbound_stage_samples_opaque_white)
 // 400 from 0.25% different against the fixed-function frame to 1.20%.
 TEST(ffshader_declares_the_full_input_signature)
 {
-	CombinerDescription description;
+	CombinerDescription description = {};
 	description.StageCount = 1;
 	description.Stages[0] = one_stage(D3DTOP_SELECTARG1, D3DTA_TFACTOR, D3DTA_DIFFUSE,
 		D3DTOP_MODULATE, D3DTA_TEXTURE, D3DTA_TFACTOR, 0, true);
@@ -132,7 +284,7 @@ TEST(ffshader_declares_the_full_input_signature)
 // DOTPRODUCT3.  This is the only measured combination that uses either operation.
 TEST(ffshader_two_stages_with_multiplyadd_and_dotproduct)
 {
-	CombinerDescription description;
+	CombinerDescription description = {};
 	description.StageCount = 2;
 	description.Stages[0] = one_stage(D3DTOP_MULTIPLYADD, D3DTA_TEXTURE, D3DTA_TFACTOR | D3DTA_ALPHAREPLICATE,
 		D3DTOP_MODULATE, D3DTA_TEXTURE, D3DTA_DIFFUSE, 0, true);
@@ -150,7 +302,7 @@ TEST(ffshader_two_stages_with_multiplyadd_and_dotproduct)
 // first, which is the order the device applies them in.
 TEST(ffshader_argument_modifiers_replicate_before_complementing)
 {
-	CombinerDescription description;
+	CombinerDescription description = {};
 	description.StageCount = 1;
 	description.Stages[0] = one_stage(D3DTOP_SELECTARG1,
 		D3DTA_TEXTURE | D3DTA_ALPHAREPLICATE | D3DTA_COMPLEMENT, D3DTA_CURRENT,
@@ -167,8 +319,7 @@ TEST(ffshader_argument_modifiers_replicate_before_complementing)
 // refused terrain draw is a hole where the ground is.
 TEST(ffshader_blends_by_diffuse_and_by_current_alpha)
 {
-	CombinerDescription description;
-	memset(&description, 0, sizeof(description));
+	CombinerDescription description = {};
 	description.StageCount = 2;
 	description.Stages[0] = one_stage(D3DTOP_BLENDDIFFUSEALPHA, D3DTA_TEXTURE, D3DTA_CURRENT,
 		D3DTOP_SELECTARG1, D3DTA_TEXTURE, D3DTA_CURRENT, 0, true);
@@ -185,8 +336,7 @@ TEST(ffshader_blends_by_diffuse_and_by_current_alpha)
 // cost the whole terrain: every one of its blending stages leaves the alpha alone.
 TEST(ffshader_a_disabled_alpha_operation_keeps_the_alpha_it_was_given)
 {
-	CombinerDescription description;
-	memset(&description, 0, sizeof(description));
+	CombinerDescription description = {};
 	description.StageCount = 1;
 	description.Stages[0] = one_stage(D3DTOP_MODULATE, D3DTA_TEXTURE, D3DTA_CURRENT,
 		D3DTOP_DISABLE, D3DTA_TEXTURE, D3DTA_CURRENT, 0, true);
@@ -206,8 +356,7 @@ TEST(ffshader_writes_every_blending_operation_the_device_had)
 		D3DTOP_MODULATEINVALPHA_ADDCOLOR, D3DTOP_MODULATEINVCOLOR_ADDALPHA };
 
 	for (unsigned index = 0; index < sizeof(operations) / sizeof(operations[0]); ++index) {
-		CombinerDescription description;
-		memset(&description, 0, sizeof(description));
+		CombinerDescription description = {};
 		description.StageCount = 1;
 		description.Stages[0] = one_stage(operations[index], D3DTA_TEXTURE, D3DTA_DIFFUSE,
 			D3DTOP_SELECTARG1, D3DTA_TEXTURE, D3DTA_CURRENT, 0, true);
@@ -221,7 +370,7 @@ TEST(ffshader_writes_every_blending_operation_the_device_had)
 // that draw on the fixed-function path, which is the only reason meeting one is safe.
 TEST(ffshader_refuses_an_operation_it_does_not_generate)
 {
-	CombinerDescription description;
+	CombinerDescription description = {};
 	description.StageCount = 1;
 	description.Stages[0] = one_stage(D3DTOP_BUMPENVMAP, D3DTA_TEXTURE, D3DTA_CURRENT,
 		D3DTOP_SELECTARG1, D3DTA_TEXTURE, D3DTA_CURRENT, 0, true);
@@ -232,7 +381,7 @@ TEST(ffshader_refuses_an_operation_it_does_not_generate)
 
 TEST(ffshader_refuses_more_stages_than_the_game_uses)
 {
-	CombinerDescription description;
+	CombinerDescription description = {};
 	description.StageCount = MAXIMUM_COMBINER_STAGES + 1;
 	description.Stages[0] = one_stage(D3DTOP_SELECTARG1, D3DTA_TEXTURE, D3DTA_CURRENT,
 		D3DTOP_SELECTARG1, D3DTA_TEXTURE, D3DTA_CURRENT, 0, true);
@@ -245,7 +394,7 @@ TEST(ffshader_refuses_more_stages_than_the_game_uses)
 // a copy of the same program for every scrap of stale state a call site happened to leave behind.
 TEST(ffshader_the_key_ignores_stages_nobody_reads)
 {
-	CombinerDescription first;
+	CombinerDescription first = {};
 	first.StageCount = 1;
 	first.Stages[0] = one_stage(D3DTOP_MODULATE, D3DTA_TEXTURE, D3DTA_DIFFUSE,
 		D3DTOP_MODULATE, D3DTA_TEXTURE, D3DTA_DIFFUSE, 0, true);
@@ -265,7 +414,7 @@ TEST(ffshader_the_key_ignores_stages_nobody_reads)
 // the fixed-function frame to 0.81%.
 TEST(ffshader_a_generated_coordinate_still_reads_the_set_it_names)
 {
-	CombinerDescription description;
+	CombinerDescription description = {};
 	description.StageCount = 2;
 	description.Stages[0] = one_stage(D3DTOP_SELECTARG1, D3DTA_TEXTURE, D3DTA_CURRENT,
 		D3DTOP_SELECTARG1, D3DTA_TEXTURE, D3DTA_CURRENT, 0, true);
@@ -282,7 +431,7 @@ TEST(ffshader_a_generated_coordinate_still_reads_the_set_it_names)
 // would compile it twice.
 TEST(ffshader_the_key_reads_the_coordinate_set_not_the_generation_mode)
 {
-	CombinerDescription plain;
+	CombinerDescription plain = {};
 	plain.StageCount = 1;
 	plain.Stages[0] = one_stage(D3DTOP_MODULATE, D3DTA_TEXTURE, D3DTA_DIFFUSE,
 		D3DTOP_MODULATE, D3DTA_TEXTURE, D3DTA_DIFFUSE, 0, true);
@@ -298,7 +447,7 @@ TEST(ffshader_the_key_reads_the_coordinate_set_not_the_generation_mode)
 // brighter than the fixed-function pipeline draws it.
 TEST(ffshader_each_stage_clamps_before_the_next_one_reads_it)
 {
-	CombinerDescription description;
+	CombinerDescription description = {};
 	description.StageCount = 1;
 	description.Stages[0] = one_stage(D3DTOP_MODULATE2X, D3DTA_TEXTURE, D3DTA_DIFFUSE,
 		D3DTOP_MODULATE2X, D3DTA_TEXTURE, D3DTA_DIFFUSE, 0, true);
@@ -314,8 +463,7 @@ TEST(ffshader_each_stage_clamps_before_the_next_one_reads_it)
 // test twice and cut a second set of pixels out of an already cut hole.
 TEST(ffshader_the_alpha_test_is_a_clip_on_d3d11_and_nothing_on_d3d9)
 {
-	CombinerDescription description;
-	memset(&description, 0, sizeof(description));
+	CombinerDescription description = {};
 	description.StageCount = 1;
 	description.Stages[0] = one_stage(D3DTOP_SELECTARG1, D3DTA_TEXTURE, D3DTA_CURRENT,
 		D3DTOP_SELECTARG1, D3DTA_TEXTURE, D3DTA_CURRENT, 0, true);
@@ -340,8 +488,7 @@ TEST(ffshader_the_alpha_test_is_a_clip_on_d3d11_and_nothing_on_d3d9)
 // runtimes directly.
 TEST(ffshader_each_alpha_comparison_becomes_its_own_clip)
 {
-	CombinerDescription description;
-	memset(&description, 0, sizeof(description));
+	CombinerDescription description = {};
 	description.StageCount = 1;
 	description.Stages[0] = one_stage(D3DTOP_SELECTARG1, D3DTA_TEXTURE, D3DTA_CURRENT,
 		D3DTOP_SELECTARG1, D3DTA_TEXTURE, D3DTA_CURRENT, 0, true);
@@ -377,8 +524,7 @@ TEST(ffshader_each_alpha_comparison_becomes_its_own_clip)
 // alpha: a fogged pixel is the same shape as an unfogged one.
 TEST(ffshader_the_fog_blends_the_colour_and_leaves_the_alpha)
 {
-	CombinerDescription description;
-	memset(&description, 0, sizeof(description));
+	CombinerDescription description = {};
 	description.StageCount = 1;
 	description.Stages[0] = one_stage(D3DTOP_SELECTARG1, D3DTA_TEXTURE, D3DTA_CURRENT,
 		D3DTOP_SELECTARG1, D3DTA_TEXTURE, D3DTA_CURRENT, 0, true);
@@ -398,8 +544,7 @@ TEST(ffshader_the_fog_blends_the_colour_and_leaves_the_alpha)
 // must not share one.
 TEST(ffshader_the_key_separates_a_tested_program_from_an_untested_one)
 {
-	CombinerDescription plain;
-	memset(&plain, 0, sizeof(plain));
+	CombinerDescription plain = {};
 	plain.StageCount = 1;
 	plain.Stages[0] = one_stage(D3DTOP_SELECTARG1, D3DTA_TEXTURE, D3DTA_CURRENT,
 		D3DTOP_SELECTARG1, D3DTA_TEXTURE, D3DTA_CURRENT, 0, true);
@@ -470,7 +615,7 @@ TEST(ffshader_generates_every_measured_combination)
 	const size_t measured_count = sizeof(MEASURED)/sizeof(MEASURED[0]);
 	for (size_t index = 0; index < measured_count; ++index) {
 		const MeasuredCombination & measured = MEASURED[index];
-		CombinerDescription description;
+		CombinerDescription description = {};
 		description.StageCount = measured.StageCount;
 		for (unsigned stage = 0; stage < measured.StageCount; ++stage) {
 			description.Stages[stage] = one_stage(measured.ColourOperation[stage],

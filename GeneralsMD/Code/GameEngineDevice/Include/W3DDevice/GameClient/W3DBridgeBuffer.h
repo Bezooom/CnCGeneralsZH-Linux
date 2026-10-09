@@ -57,8 +57,14 @@
 #include "dx8indexbuffer.h"
 #include "shader.h"
 #include "vertmaterial.h"
+
+enum BodyDamageType : int;
 #include "Lib/BaseType.h"
+#if defined(_WIN32)
 #include "common/GameType.h"
+#else
+#include "Common/GameType.h"
+#endif
 #include "Common/Dict.h"
 #include "Common/AsciiString.h"
 

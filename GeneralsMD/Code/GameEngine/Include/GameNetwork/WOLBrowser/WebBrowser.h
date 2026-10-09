@@ -46,8 +46,15 @@
 #define __WEBBROWSER_H__
 
 #include "Common/SubsystemInterface.h"
+#if defined(_MSC_VER)
 #include <atlbase.h>
 #include <windows.h>
+#else
+// Linux: parse-level ATL/COM twins (WWVegas/LinuxDX); the browser itself
+// is out of scope until multiplayer (Phase 6+).
+#include <atlbase.h>
+#include "win.h"
+#endif
 #include <Common/GameMemory.h>
 #include "EABrowserDispatch/BrowserDispatch.h"
 #include "FEBDispatch.h"

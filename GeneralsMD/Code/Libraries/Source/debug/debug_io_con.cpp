@@ -22,7 +22,7 @@
 // $Revision: #1 $
 // $DateTime: 2003/07/03 11:55:26 $
 //
-// ©2003 Electronic Arts
+// ï¿½2003 Electronic Arts
 //
 // Debug I/O class con (console window)
 //////////////////////////////////////////////////////////////////////////////
@@ -30,9 +30,20 @@
 #include <stdlib.h>
 #include <new>      // needed for placement new prototype
 
+#if !defined(_MSC_VER)
+#include <unistd.h>
+#include <string.h>
+#endif
+
 DebugIOCon::DebugIOCon(void):
   m_inputUsed(0), m_inputRead(0)
 {
+#if !defined(_MSC_VER)
+  // Linux: never allocate/steal the console. The game runs in the user's
+  // terminal (SDL owns input), so this backend is write-only here, matching
+  // the documented policy below for non-owned consoles.
+  m_allocatedConsole = false;
+#else
   // check: is there already a console window open?
   m_allocatedConsole=AllocConsole()!=0;
   if (m_allocatedConsole)
@@ -59,13 +70,18 @@ DebugIOCon::DebugIOCon(void):
 
     Write(StringType::Other,NULL,"\n\nEA/Debug console open\n\n");
   }
+#endif
 }
 
 DebugIOCon::~DebugIOCon()
 {
+#if !defined(_MSC_VER)
+  // nothing allocated, nothing to free
+#else
   // close console if we allocated it
   if (m_allocatedConsole)
     FreeConsole();
+#endif
 }
 
 int DebugIOCon::Read(char *buf, int maxchar)
@@ -79,6 +95,12 @@ int DebugIOCon::Read(char *buf, int maxchar)
   // for the process that is using that console.
   if (!m_allocatedConsole)
     return 0;
+
+#if !defined(_MSC_VER)
+  // Write-only on Linux (see ctor): the input buffer never fills.
+  (void)buf; (void)maxchar;
+  return 0;
+#else
 
   // are we doing a continuous read?
   if (m_inputRead)
@@ -178,6 +200,7 @@ int DebugIOCon::Read(char *buf, int maxchar)
   }
 
   return 0;
+#endif
 }
 
 void DebugIOCon::Write(StringType type, const char *src, const char *str)
@@ -185,8 +208,12 @@ void DebugIOCon::Write(StringType type, const char *src, const char *str)
   if (type==StringType::StructuredCmdReply||!str)
     return;
 
+#if !defined(_MSC_VER)
+  write(STDOUT_FILENO, str, strlen(str));
+#else
   DWORD dwDummy;
   WriteFile(GetStdHandle(STD_OUTPUT_HANDLE),str,strlen(str),&dwDummy,NULL);
+#endif
 }
 
 void DebugIOCon::Execute(class Debug& dbg, const char *cmd, bool structuredCmd,
@@ -200,6 +227,10 @@ void DebugIOCon::Execute(class Debug& dbg, const char *cmd, bool structuredCmd,
   }
   else if (!strcmp(cmd,"add"))
   {
+#if !defined(_MSC_VER)
+    // No console allocation/resizing on Linux (see ctor).
+    (void)argn; (void)argv;
+#else
     if (argn>0&&m_allocatedConsole)
     {
       // resize our console area
@@ -215,6 +246,7 @@ void DebugIOCon::Execute(class Debug& dbg, const char *cmd, bool structuredCmd,
       SetConsoleScreenBufferSize(h,newSize);
       SetConsoleWindowInfo(h,TRUE,&sr);
     }
+#endif
   }
 }
 

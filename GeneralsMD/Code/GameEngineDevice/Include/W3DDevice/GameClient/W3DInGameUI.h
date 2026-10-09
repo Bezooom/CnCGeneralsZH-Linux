@@ -42,9 +42,21 @@
 #include "GameClient/InGameUI.h"
 #include "GameClient/View.h"
 #include "W3DDevice/GameClient/W3DView.h"
+#if defined(_WIN32)
 #include "WW3D2/Render2D.h"
+#else
+#include "WW3D2/render2d.h"
+#endif
+#if defined(_WIN32)
 #include "WW3D2/RendObj.h"
+#else
+#include "WW3D2/rendobj.h"
+#endif
+#if defined(_WIN32)
 #include "WW3D2/Line3D.h"
+#else
+#include "WW3D2/line3d.h"
+#endif
 
 class HAnimClass;
 

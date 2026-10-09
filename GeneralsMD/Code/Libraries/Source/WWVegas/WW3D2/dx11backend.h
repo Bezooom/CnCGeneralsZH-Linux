@@ -47,7 +47,9 @@
 #include "ffshader.h"
 #include "ffvertex.h"
 
+#ifdef _WIN32
 #include <d3d9.h>
+#endif
 #include <map>
 #include <string>
 #include <vector>

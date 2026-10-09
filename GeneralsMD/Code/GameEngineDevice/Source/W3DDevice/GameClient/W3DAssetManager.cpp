@@ -224,7 +224,7 @@ TextureClass *W3DAssetManager::Get_Texture(
 	}
 
 	StringClass lower_case_name(filename,true);
-	_strlwr(lower_case_name.Peek_Buffer());
+	strlwr(lower_case_name.Peek_Buffer());
 
 	/*
 	** See if the texture has already been loaded.
@@ -289,7 +289,7 @@ static inline void Munge_Render_Obj_Name(char *newname, const char *oldname, flo
 {
 	char lower_case_name[255];
 	strlcpy(lower_case_name, oldname, ARRAY_SIZE(lower_case_name));
-	_strlwr(lower_case_name);
+	strlwr(lower_case_name);
 
 	if (!textureName)
 		textureName = "";
@@ -302,7 +302,7 @@ static inline void Munge_Texture_Name(char *newname, const char *oldname, const 
 {
 	char lower_case_name[255];
 	strlcpy(lower_case_name, oldname, ARRAY_SIZE(lower_case_name));
-	_strlwr(lower_case_name);
+	strlwr(lower_case_name);
 	snprintf(newname, MUNGED_NAME_SIZE, "#%d#%s", color, lower_case_name);
 }
 
@@ -810,7 +810,7 @@ RenderObjClass * W3DAssetManager::Create_Render_Obj(
 		const char *mesh_name = ::strchr (name, '.');
 		if (mesh_name != NULL) 
 		{
-			::lstrcpyn(filename, name, ((int)mesh_name) - ((int)name) + 1);
+			::lstrcpyn(filename, name, (mesh_name - name) + 1);
 #ifdef	INCLUDE_GRANNY_IN_BUILD
 			if (isGranny)
 				::lstrcat(filename, ".gr2");
@@ -1065,7 +1065,7 @@ bool W3DAssetManager::Load_3D_Assets( const char * filename )
 		if (logfile)
 		{	
 			StringClass lower_case_name(filename,true);
-			_strlwr(lower_case_name.Peek_Buffer());
+			strlwr(lower_case_name.Peek_Buffer());
 			fprintf(logfile,"3D: %s\n",lower_case_name.Peek_Buffer());
 			fclose(logfile);
 		}
@@ -1442,7 +1442,7 @@ static inline void Munge_Render_Obj_Name(char *newname, const char *oldname, flo
 {
 	char lower_case_name[255];
 	strlcpy(lower_case_name, oldname, ARRAY_SIZE(lower_case_name));
-	_strlwr(lower_case_name);
+	strlwr(lower_case_name);
 	snprintf(newname, MUNGED_NAME_SIZE, "#%s!%gH%gS%gV%g", lower_case_name, scale, hsv_shift.X, hsv_shift.Y, hsv_shift.Z);
 }
 
@@ -1450,7 +1450,7 @@ static inline void Munge_Texture_Name(char *newname, const char *oldname, const 
 {
 	char lower_case_name[255];
 	strlcpy(lower_case_name, oldname, ARRAY_SIZE(lower_case_name));
-	_strlwr(lower_case_name);
+	strlwr(lower_case_name);
 	snprintf(newname, MUNGED_NAME_SIZE, "#%s!H%gS%gV%g", lower_case_name, hsv_shift.X, hsv_shift.Y, hsv_shift.Z);
 }
 
@@ -1584,7 +1584,7 @@ TextureClass * W3DAssetManager::Get_Texture_With_HSV_Shift(const char * filename
 			// No cached texture - need to create
 			char lower_case_name[255];
 			strcpy(lower_case_name, filename);
-			_strlwr(lower_case_name);
+			strlwr(lower_case_name);
 			TextureClass *oldtex = TextureHash.Get(lower_case_name);
 			if (!oldtex) {
 				oldtex = NEW_REF(TextureClass,(lower_case_name, NULL, mip_level_count));

@@ -39,9 +39,21 @@
 // SYSTEM INCLUDES ////////////////////////////////////////////////////////////
 
 // USER INCLUDES //////////////////////////////////////////////////////////////
+#if defined(_WIN32)
 #include "WW3D2/Scene.h"
+#else
+#include "WW3D2/scene.h"
+#endif
+#if defined(_WIN32)
 #include "WW3D2/RInfo.h"
+#else
+#include "WW3D2/rinfo.h"
+#endif
+#if defined(_WIN32)
 #include "WW3D2/Coltest.h"
+#else
+#include "WW3D2/coltest.h"
+#endif
 #include "WW3D2/lightenvironment.h"
 ///////////////////////////////////////////////////////////////////////////////
 // PROTOTYPES /////////////////////////////////////////////////////////////////
@@ -49,7 +61,11 @@
 class W3DDynamicLight;
 class LightClass;
 class Drawable;
+#if defined(_WIN32)
 enum CustomScenePassModes;
+#else
+#include "W3DDevice/GameClient/W3DCustomScene.h"
+#endif
 class MaterialPassClass;
 class W3DShroudMaterialPassClass;
 class W3DMaskMaterialPassClass;

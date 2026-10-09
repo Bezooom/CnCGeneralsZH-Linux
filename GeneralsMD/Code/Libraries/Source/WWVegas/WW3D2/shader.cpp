@@ -43,7 +43,11 @@
 #include "shader.h"
 #include "w3d_file.h"
 #include "wwdebug.h"
+#if defined(_WIN32)
 #include "Dx8Wrapper.h"
+#else
+#include "dx8wrapper.h"
+#endif
 #include "dx8caps.h"
 
 

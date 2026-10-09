@@ -59,10 +59,18 @@
 #include "WW3D2/dx8renderer.h"
 #include "WW3D2/sortingrenderer.h"
 #include "WW3D2/dx8wrapper.h"
+#if defined(_WIN32)
 #include "WW3D2/Light.h"
+#else
+#include "WW3D2/light.h"
+#endif
 #include "WW3D2/matpass.h"
 #include "WW3D2/shader.h"
+#if defined(_WIN32)
 #include "WW3D2/DX8Caps.h"
+#else
+#include "WW3D2/dx8caps.h"
+#endif
 #include "WW3D2/colorspace.h"
 
 #include "WW3D2/shdlib.h"

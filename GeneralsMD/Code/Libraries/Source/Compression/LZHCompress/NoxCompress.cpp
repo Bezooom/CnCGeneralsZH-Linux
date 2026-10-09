@@ -22,9 +22,27 @@
 
 #include <stdio.h>
 #include <stdlib.h>
-#include "Lib/basetype.h"
-#include "Noxcompress.h"
+#include "Lib/BaseType.h"
+#include "NoxCompress.h"
+#if defined(PLATFORM_LINUX) || defined(__linux__)
+// Linux: LZH-Light SDK headers live here; system zlib provides the codec.
+#if defined(ZLIB_LINUX_SYSTEM)
+// System zconf.h typedefs Byte; the game has its own Byte (BaseType.h).
+#define Byte sys_Byte
+#endif
+#include <zlib.h>
+#if defined(ZLIB_LINUX_SYSTEM)
+#undef Byte
+#endif
+#if defined(ZLIB_LINUX_SYSTEM)
+// System libz exports unprefixed symbols only; map the z_* calls below.
+#define z_compress2 compress2
+#define z_uncompress uncompress
+#define z_compressBound compressBound
+#endif
+#else
 #include "CompLibHeader/lzhl.h"
+#endif
 
 #ifdef _INTERNAL
 // for occasional debugging...
@@ -37,6 +55,180 @@
 #define DbgMalloc malloc
 #define DbgFree free
 #define DEBUG_LOG(x) {}
+
+#if defined(PLATFORM_LINUX) || defined(__linux__)
+// ---------------------------------------------------------------------------
+// Linux stand-in for the stripped LZH-Light SDK (see README: CompLibHeader /
+// CompLibSource ship empty). NoxLZH payloads are zlib streams behind the same
+// "NOX\0"+size framing CompressionManager applies, so round-trips are exact.
+// NOT format-compatible with LZH-Light SDK data: retail payloads framed as
+// NOX that were written by the SDK will not decode here. Revisit with a real
+// LZH decoder (or vendored SDK) before trusting game-data loads.
+// ---------------------------------------------------------------------------
+
+UnsignedInt CalcNewSize(UnsignedInt rawSize)
+{
+	return (UnsignedInt)z_compressBound((uLong)rawSize);
+}
+
+Bool CompressMemory(void *inBufferVoid, Int inSize, void *outBufferVoid, Int& outSize)
+{
+	if ((inBufferVoid == NULL) || (outBufferVoid == NULL) || (inSize < 4) || (outSize == 0))
+		return FALSE;
+
+	uLongf destLen = (uLongf)outSize;
+	int err = z_compress2((Bytef *)outBufferVoid, &destLen,
+		(const Bytef *)inBufferVoid, (uLong)inSize, Z_DEFAULT_COMPRESSION);
+	if (err != Z_OK)
+		return FALSE;
+
+	outSize = (Int)destLen;
+	return TRUE;
+}
+
+Bool DecompressMemory(void *inBufferVoid, Int inSize, void *outBufferVoid, Int& outSize)
+{
+	if ((inBufferVoid == NULL) || (outBufferVoid == NULL) || (inSize < 4) || (outSize == 0))
+		return FALSE;
+
+	uLongf destLen = (uLongf)outSize;
+	int err = z_uncompress((Bytef *)outBufferVoid, &destLen,
+		(const Bytef *)inBufferVoid, (uLong)inSize);
+	if (err != Z_OK)
+		return FALSE;
+
+	outSize = (Int)destLen;
+	return TRUE;
+}
+
+Bool CompressFile(char *infile, char *outfile)
+{
+	if ((infile == NULL) || (outfile == NULL))
+		return FALSE;
+
+	FILE *inFilePtr = fopen(infile, "rb");
+	if (inFilePtr == NULL)
+		return FALSE;
+	fseek(inFilePtr, 0, SEEK_END);
+	long rawSize = ftell(inFilePtr);
+	fseek(inFilePtr, 0, SEEK_SET);
+	if (rawSize <= 0) {
+		fclose(inFilePtr);
+		return FALSE;
+	}
+
+	char *inBlock = (char *)DbgMalloc((size_t)rawSize);
+	if (inBlock == NULL) {
+		fclose(inFilePtr);
+		return FALSE;
+	}
+	if (NoxRead(inBlock, 1, (size_t)rawSize, inFilePtr) != (size_t)rawSize) {
+		fclose(inFilePtr);
+		DbgFree(inBlock);
+		return FALSE;
+	}
+	fclose(inFilePtr);
+
+	UnsignedInt maxOut = CalcNewSize((UnsignedInt)rawSize);
+	char *outBlock = (char *)DbgMalloc(maxOut);
+	if (outBlock == NULL) {
+		DbgFree(inBlock);
+		return FALSE;
+	}
+	Int outSize = (Int)maxOut;
+	Bool ok = CompressMemory(inBlock, (Int)rawSize, outBlock, outSize);
+
+	FILE *outFilePtr = NULL;
+	if (ok)
+		outFilePtr = fopen(outfile, "wb");
+	if (ok && outFilePtr != NULL) {
+		UnsignedInt raw = (UnsignedInt)rawSize;
+		fwrite(&raw, sizeof(UnsignedInt), 1, outFilePtr);
+		fwrite(outBlock, (size_t)outSize, 1, outFilePtr);
+		fclose(outFilePtr);
+	} else {
+		ok = FALSE;
+		if (outFilePtr != NULL)
+			fclose(outFilePtr);
+	}
+
+	DbgFree(inBlock);
+	DbgFree(outBlock);
+	return ok;
+}
+
+Bool DecompressFile(char *infile, char *outfile)
+{
+	if ((infile == NULL) || (outfile == NULL))
+		return FALSE;
+
+	FILE *inFilePtr = fopen(infile, "rb");
+	if (inFilePtr == NULL)
+		return FALSE;
+	fseek(inFilePtr, 0, SEEK_END);
+	long fileSize = ftell(inFilePtr);
+	fseek(inFilePtr, 0, SEEK_SET);
+	if (fileSize <= (long)sizeof(UnsignedInt)) {
+		fclose(inFilePtr);
+		return FALSE;
+	}
+
+	UnsignedInt rawSize = 0;
+	NoxRead(&rawSize, 1, sizeof(UnsignedInt), inFilePtr);
+	long compressedSize = fileSize - (long)sizeof(UnsignedInt);
+
+	char *inBlock = (char *)DbgMalloc((size_t)compressedSize);
+	char *outBlock = (char *)DbgMalloc(rawSize != 0 ? rawSize : 1);
+	if ((inBlock == NULL) || (outBlock == NULL)) {
+		fclose(inFilePtr);
+		DbgFree(inBlock);
+		DbgFree(outBlock);
+		return FALSE;
+	}
+	if (NoxRead(inBlock, 1, (size_t)compressedSize, inFilePtr) != (size_t)compressedSize) {
+		fclose(inFilePtr);
+		DbgFree(inBlock);
+		DbgFree(outBlock);
+		return FALSE;
+	}
+	fclose(inFilePtr);
+
+	Int outSize = (Int)rawSize;
+	Bool ok = DecompressMemory(inBlock, (Int)compressedSize, outBlock, outSize);
+
+	FILE *outFilePtr = NULL;
+	if (ok)
+		outFilePtr = fopen(outfile, "wb");
+	if (ok && outFilePtr != NULL) {
+		fwrite(outBlock, (size_t)outSize, 1, outFilePtr);
+		fclose(outFilePtr);
+	} else {
+		ok = FALSE;
+		if (outFilePtr != NULL)
+			fclose(outFilePtr);
+	}
+
+	DbgFree(inBlock);
+	DbgFree(outBlock);
+	return ok;
+}
+
+Bool CompressPacket(char *inPacket, char *outPacket)
+{
+	if ((inPacket == NULL) || (outPacket == NULL))
+		return FALSE;
+
+	return TRUE;
+}
+
+Bool DecompressPacket(char *inPacket, char *outPacket)
+{
+	if ((inPacket == NULL) || (outPacket == NULL))
+		return FALSE;
+	return TRUE;
+}
+
+#else // Windows / SDK path below
 
 Bool DecompressFile		(char *infile, char *outfile)
 {
@@ -295,3 +487,5 @@ Bool CompressMemory			(void *inBufferVoid, Int inSize, void *outBufferVoid, Int&
 
 	return TRUE;
 }
+
+#endif // defined(PLATFORM_LINUX) || defined(__linux__)
