@@ -8,6 +8,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <vector>
+#include <unistd.h>
 
 static PlatformVulkanContext s_ctx = {
     nullptr, nullptr, nullptr, nullptr, nullptr, 0, 0, 0, 0, false

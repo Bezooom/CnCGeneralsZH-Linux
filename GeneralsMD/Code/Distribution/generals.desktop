@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Command & Conquer: Generals Zero Hour
+Comment=Command & Conquer: Generals Zero Hour (Native Linux Port)
+Exec=generals -win
+Icon=generals
+Terminal=false
+Categories=Game;StrategyGame;
+Keywords=cnc;generals;zerohour;rts;strategy;
+StartupNotify=true

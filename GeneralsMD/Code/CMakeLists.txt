@@ -884,7 +884,10 @@ add_library(milesstub SHARED ${WW}/Miles6/stub/miles.c)
 if(NOT CMAKE_SYSTEM_NAME STREQUAL "Linux")
   target_sources(milesstub PRIVATE ${WW}/Miles6/stub/miles.def)
 endif()
-set_target_properties(milesstub PROPERTIES OUTPUT_NAME mss32)
+set_target_properties(milesstub PROPERTIES OUTPUT_NAME mss32 BUILD_WITH_INSTALL_RPATH TRUE INSTALL_RPATH "$ORIGIN")
+if(TARGET binkstub)
+  set_target_properties(binkstub PROPERTIES BUILD_WITH_INSTALL_RPATH TRUE INSTALL_RPATH "$ORIGIN")
+endif()
 target_include_directories(milesstub PRIVATE ${WW}/Miles6/stub ${WW}/Miles6/include)
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
@@ -929,7 +932,7 @@ target_include_directories(generals PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}/Main ${GENERATED}
   ${WW}/WWSaveLoad ${WW}/Wwutil ${WW}/wwshade ${WW}/WWAudio)
 target_compile_options(generals PRIVATE -include "${WW}/WWLib/win.h")
-set_target_properties(generals PROPERTIES CXX_STANDARD 17)
+set_target_properties(generals PROPERTIES CXX_STANDARD 17 BUILD_WITH_INSTALL_RPATH TRUE INSTALL_RPATH "$ORIGIN;$ORIGIN/../lib")
 # gameengine calls the device's factory hooks (CreateCDManager, OSDisplayWarningBox,
 # ReloadAllTextures, MOTDSystem) and the device calls gameengine's subsystems, so the
 # two archives are mutually dependent. A plain left-to-right scan resolves whichever
@@ -944,6 +947,13 @@ target_link_libraries(generals PRIVATE
   "-Wl,--end-group"
   Vulkan::Vulkan
   -lX11)
+include(GNUInstallDirs)
+install(TARGETS generals RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+install(TARGETS milesstub binkstub LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR})
+install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/Distribution/generals.desktop"
+        DESTINATION "${CMAKE_INSTALL_DATADIR}/applications")
+install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/Distribution/generals.png"
+        DESTINATION "${CMAKE_INSTALL_DATADIR}/icons/hicolor/48x48/apps")
 else()
 add_executable(generals WIN32 ${CMAKE_CURRENT_SOURCE_DIR}/Main/WinMain.cpp
                              ${CMAKE_CURRENT_SOURCE_DIR}/Main/RTS.RC)
@@ -1107,7 +1117,7 @@ endif()
 add_lib_test(test_ww3d2 ww3d2 wwsaveload wwdebug wwlib wwmath)
 target_sources(test_ww3d2 PRIVATE ${TESTS}/wwdownload_debug_stubs.cpp)
 target_include_directories(test_ww3d2 PRIVATE
-  ${WW}/WW3D2 ${WW}/WWLib ${WW}/WWMath ${WW}/WWDebug ${WW}/WWSaveLoad ${WW}/Wwutil ${WW}/LinuxDX)
+  ${WW}/WW3D2 ${WW}/WWLib ${WW}/WWMath ${WW}/WWDebug ${WW}/WWSaveLoad ${WW}/Wwutil ${WW}/LinuxDX ${CMAKE_CURRENT_SOURCE_DIR}/Platform)
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
   target_compile_options(test_ww3d2 PRIVATE -ffunction-sections -fdata-sections)
   target_link_options(test_ww3d2 PRIVATE -Wl,--gc-sections)

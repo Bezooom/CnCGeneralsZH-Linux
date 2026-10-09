@@ -1775,3 +1775,24 @@ TEST(surface_draw_h_line_fills_the_run_inclusive_at_both_ends)
 	CHECK_EQ( *(unsigned int *)buf, 0 );
 	CHECK_EQ( *(unsigned int *)( buf + 2 * pitch ), 0 );
 }
+
+#if defined(PLATFORM_LINUX) || defined(__linux__) || defined(_UNIX)
+#include "PAL_Window.h"
+#include "PAL_Vulkan.h"
+extern "C" {
+bool Platform_InitVulkan(PlatformWindowInfo*) { return true; }
+bool Platform_BeginVulkanFrame(uint32_t*) { return true; }
+bool Platform_EndVulkanFrame(uint32_t) { return true; }
+void Platform_ShutdownVulkan(void) {}
+void Platform_SetVulkanClearColor(float, float, float, float) {}
+PlatformVulkanContext *Platform_GetVulkanContext(void) { static PlatformVulkanContext ctx; return &ctx; }
+bool Platform_CreateVulkanPipeline(void) { return true; }
+bool Platform_DrawVulkanIndexed(const void*, uint32_t, uint32_t, const uint16_t*, uint32_t) { return true; }
+bool Platform_DrawVulkanVertices(const void*, uint32_t, uint32_t) { return true; }
+void *Platform_CreateVulkanTexture(uint32_t, uint32_t, const void*, uint32_t) { return (void*)1; }
+void Platform_BindVulkanTexture(void*) {}
+void Platform_DestroyVulkanTexture(void*) {}
+PlatformWindowInfo *Platform_GetWindowInfo(void) { static PlatformWindowInfo win; return &win; }
+void Platform_PumpEvents(void) {}
+}
+#endif
