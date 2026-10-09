@@ -43,8 +43,12 @@
   no-op `DX8WebBrowser` fallback on non-Windows (`ENABLE_EMBEDDED_BROWSER=0`).
 - [x] **Win32 Directory Enumeration Fixed**: Fixed `win.h` `FindClose` crash on `INVALID_HANDLE_VALUE`
   and added POSIX `fnmatch(..., FNM_CASEFOLD)` wildcard pattern filtering to `FindFirstFileA`/`FindNextFileA`.
+- [x] **Distribution & Installation Complete (Phase 5.3 & 7)**:
+  - Configured CMake `install()` rules for `generals` runtime binary, `mss32`/`binkw32` libraries, desktop entry, and icon.
+  - Created `generals.desktop` with categories `Game;StrategyGame;`.
+  - Extracted authentic 48x48 icon from `Generals.ico` into `Distribution/generals.png`.
+  - Verified staging installation via `ninja install` (`/usr/local/bin`, `/usr/local/lib`, `/usr/local/share`).
 - [x] **Full CTest Suite**: **30/30 passed, 0 failed (100% green)**.
-- [ ] Next milestone: Phase 2.2 / Phase 5: connect `WW3D2` draw calls directly to `VulkanDevice` swapchain rendering.
 Verification: `GeneralsMD/build-linux` (GCC 13.3, Release, C++17, Ninja).
 ### Latest device continuation — 2026-09-17
 
