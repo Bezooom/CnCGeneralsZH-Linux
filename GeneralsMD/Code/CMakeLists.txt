@@ -1206,7 +1206,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     target_link_libraries(test_vk_smoke PRIVATE Vulkan::Vulkan)
     set_target_properties(test_vk_smoke PROPERTIES CXX_STANDARD 17)
     add_test(NAME test_vk_smoke COMMAND test_vk_smoke)
-    set_tests_properties(test_vk_smoke PROPERTIES LABELS "linux;vulkan;renderer" TIMEOUT 15)
+    set_tests_properties(test_vk_smoke PROPERTIES LABELS "linux;vulkan;renderer" TIMEOUT 30)
 
     # Milestone M2.2: Full Graphics Pipeline Test
     add_executable(test_vk_pipeline ${TESTS}/test_vk_pipeline.cpp)

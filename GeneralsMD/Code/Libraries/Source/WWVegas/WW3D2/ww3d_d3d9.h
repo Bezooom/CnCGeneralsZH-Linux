@@ -8,6 +8,7 @@
 #else
 #include "win.h"
 #include "ffshader_d3d.h"
+#include <vector>
 #if defined(PLATFORM_LINUX) || defined(__linux__) || defined(_UNIX)
 #include "PAL_Window.h"
 #include "PAL_Vulkan.h"
@@ -395,17 +396,27 @@ struct IDirect3DSwapChain9 {
 };
 
 struct IDirect3DDevice9 {
+  IDirect3DVertexBuffer9* m_currentVB = nullptr;
+  uint32_t m_vbOffset = 0;
+  uint32_t m_vbStride = 32;
+  IDirect3DIndexBuffer9* m_currentIB = nullptr;
+
   HRESULT CreateIndexBuffer(UINT, DWORD, D3DFORMAT, D3DPOOL, IDirect3DIndexBuffer9**, HANDLE);
   HRESULT CreateVertexBuffer(UINT, DWORD, DWORD, D3DPOOL, IDirect3DVertexBuffer9**, HANDLE);
   HRESULT CreateTexture(UINT, UINT, UINT, DWORD, D3DFORMAT, D3DPOOL, IDirect3DTexture9**, HANDLE*);
   HRESULT CreatePixelShader(const DWORD*, IDirect3DPixelShader9**);
   HRESULT CreateVertexShader(const DWORD*, IDirect3DVertexShader9**);
   HRESULT CreateVertexDeclaration(const D3DVERTEXELEMENT9*, IDirect3DVertexDeclaration9**);
-  HRESULT SetIndices(IDirect3DIndexBuffer9*) { return 0; }
+  HRESULT SetIndices(IDirect3DIndexBuffer9* ib) { m_currentIB = ib; return 0; }
   HRESULT SetTransform(D3DTRANSFORMSTATETYPE, const D3DMATRIX*) { return 0; }
   HRESULT GetTransform(D3DTRANSFORMSTATETYPE, D3DMATRIX*) { return 0; }
-  HRESULT SetStreamSource(UINT, IDirect3DVertexBuffer9*, UINT, DWORD) { return 0; }
-  HRESULT DrawIndexedPrimitive(D3DPRIMITIVETYPE, int, int, UINT, UINT, UINT) { return 0; }
+  HRESULT SetStreamSource(UINT stream, IDirect3DVertexBuffer9* vb, UINT offset, UINT stride) {
+    m_currentVB = vb;
+    m_vbOffset = offset;
+    m_vbStride = stride ? stride : 32;
+    return 0;
+  }
+  HRESULT DrawIndexedPrimitive(D3DPRIMITIVETYPE, int, int, UINT, UINT, UINT);
   HRESULT SetMaterial(const D3DMATERIAL9*) { return 0; }
   HRESULT SetLight(DWORD, const D3DLIGHT9*) { return 0; }
   HRESULT LightEnable(DWORD, BOOL) { return 0; }
@@ -437,7 +448,7 @@ struct IDirect3DDevice9 {
   HRESULT SetCursorPosition(int, int, POINT*) { return 0; }
   HRESULT CreateOffscreenPlainSurface(UINT, UINT, D3DFORMAT, D3DPOOL, IDirect3DSurface9**, HANDLE*);
   HRESULT GetRenderTargetData(IDirect3DSurface9*, IDirect3DSurface9*);
-  HRESULT DrawPrimitive(D3DPRIMITIVETYPE, UINT, UINT) { return 0; }
+  HRESULT DrawPrimitive(D3DPRIMITIVETYPE, UINT, UINT);
   HRESULT SetVertexDeclaration(IDirect3DVertexDeclaration9*) { return 0; }
   HRESULT SetVertexShader(IDirect3DVertexShader9*) { return 0; }
   HRESULT SetPixelShader(IDirect3DPixelShader9*) { return 0; }
@@ -463,7 +474,7 @@ struct IDirect3DDevice9 {
   HRESULT ValidateDevice(unsigned long*) { return 0; }
   HRESULT SetRenderTarget(DWORD, IDirect3DSurface9*);
   HRESULT SetDepthStencilSurface(IDirect3DSurface9*);
-  HRESULT DrawPrimitiveUP(D3DPRIMITIVETYPE, UINT, const void*, UINT) { return 0; }
+  HRESULT DrawPrimitiveUP(D3DPRIMITIVETYPE, UINT, const void*, UINT);
   HRESULT UpdateSurface(IDirect3DSurface9*, const RECT*, IDirect3DSurface9*, const POINT*) { return 0; }
   HRESULT StretchRect(IDirect3DSurface9*, const RECT*, IDirect3DSurface9*, const RECT*, D3DTEXTUREFILTERTYPE) { return 0; }
   HRESULT UpdateTexture(IDirect3DBaseTexture9*, IDirect3DBaseTexture9*) { return 0; }
@@ -476,7 +487,7 @@ struct IDirect3DDevice9 {
   void SetGammaRamp(UINT, DWORD, const D3DGAMMARAMP*) {}
   HRESULT GetTextureStageState(DWORD, D3DTEXTURESTAGESTATETYPE, DWORD*) { return 0; }
   HRESULT GetTexture(DWORD, IDirect3DBaseTexture9**) { return 0; }
-  HRESULT SetTexture(DWORD, IDirect3DBaseTexture9*) { return 0; }
+  HRESULT SetTexture(DWORD, IDirect3DBaseTexture9*);
   HRESULT Reset(D3DPRESENT_PARAMETERS*) { return 0; }
   ULONG Release() { return 0; }
 };
@@ -523,23 +534,50 @@ struct IDirect3DBaseTexture9 {
   ULONG Release() { return 0; }
 };
 struct IDirect3DTexture9 : IDirect3DBaseTexture9 {
+  void *m_vulkanTex = nullptr;
+  uint32_t m_width = 256;
+  uint32_t m_height = 256;
+  std::vector<uint8_t> m_buffer;
+
+  IDirect3DTexture9() : m_vulkanTex(nullptr), m_width(256), m_height(256) {}
+  ~IDirect3DTexture9() {
+#if defined(PLATFORM_LINUX) || defined(__linux__) || defined(_UNIX)
+    if (m_vulkanTex) {
+      Platform_DestroyVulkanTexture(m_vulkanTex);
+      m_vulkanTex = nullptr;
+    }
+#endif
+  }
+
   HRESULT GetSurfaceLevel(UINT, IDirect3DSurface9**);
   HRESULT GetLevelDesc(UINT, D3DSURFACE_DESC* desc) {
     if (desc) {
-      desc->Width = 256;
-      desc->Height = 256;
+      desc->Width = m_width;
+      desc->Height = m_height;
       desc->Format = D3DFMT_A8R8G8B8;
     }
     return 0;
   }
   HRESULT LockRect(UINT, D3DLOCKED_RECT* rect, const RECT*, DWORD) {
+    size_t sz = m_width * m_height * 4;
+    if (m_buffer.size() < sz) m_buffer.resize(sz);
     if (rect) {
-      rect->Pitch = 1024;
-      rect->pBits = Get_Dummy_D3D_Scratch();
+      rect->Pitch = m_width * 4;
+      rect->pBits = m_buffer.data();
     }
     return 0;
   }
-  HRESULT UnlockRect(UINT) { return 0; }
+  HRESULT UnlockRect(UINT) {
+#if defined(PLATFORM_LINUX) || defined(__linux__) || defined(_UNIX)
+    if (m_buffer.size() > 0) {
+      if (m_vulkanTex) {
+        Platform_DestroyVulkanTexture(m_vulkanTex);
+      }
+      m_vulkanTex = Platform_CreateVulkanTexture(m_width, m_height, m_buffer.data(), D3DFMT_A8R8G8B8);
+    }
+#endif
+    return 0;
+  }
   HRESULT AddDirtyRect(const RECT*) { return 0; }
   ULONG AddRef() { return 1; }
   ULONG Release() { return 0; }
@@ -581,16 +619,22 @@ struct IDirect3DSurface9 {
   ULONG Release() { return 0; }
 };
 struct IDirect3DVertexBuffer9 {
-  HRESULT Lock(UINT, UINT, void** ppbData, DWORD) {
-    if (ppbData) *ppbData = Get_Dummy_D3D_Scratch();
+  std::vector<uint8_t> m_buffer;
+  HRESULT Lock(UINT offset, UINT size, void** ppbData, DWORD) {
+    size_t needed = offset + (size ? size : 65536);
+    if (m_buffer.size() < needed) m_buffer.resize(needed);
+    if (ppbData) *ppbData = m_buffer.data() + offset;
     return 0;
   }
   HRESULT Unlock() { return 0; }
   ULONG Release() { return 0; }
 };
 struct IDirect3DIndexBuffer9 {
-  HRESULT Lock(UINT, UINT, void** ppbData, DWORD) {
-    if (ppbData) *ppbData = Get_Dummy_D3D_Scratch();
+  std::vector<uint8_t> m_buffer;
+  HRESULT Lock(UINT offset, UINT size, void** ppbData, DWORD) {
+    size_t needed = offset + (size ? size : 65536);
+    if (m_buffer.size() < needed) m_buffer.resize(needed);
+    if (ppbData) *ppbData = m_buffer.data() + offset;
     return 0;
   }
   HRESULT Unlock() { return 0; }
@@ -668,6 +712,49 @@ inline HRESULT IDirect3DDevice9::GetBackBuffer(UINT, UINT, D3DBACKBUFFER_TYPE, I
 inline HRESULT IDirect3DDevice9::GetRenderTargetData(IDirect3DSurface9*, IDirect3DSurface9*) { return 0; }
 inline HRESULT IDirect3DDevice9::SetRenderTarget(DWORD, IDirect3DSurface9*) { return 0; }
 inline HRESULT IDirect3DDevice9::SetDepthStencilSurface(IDirect3DSurface9*) { return 0; }
+inline HRESULT IDirect3DDevice9::SetTexture(DWORD, IDirect3DBaseTexture9* tex) {
+#if defined(PLATFORM_LINUX) || defined(__linux__) || defined(_UNIX)
+  if (tex) {
+    IDirect3DTexture9 *t = (IDirect3DTexture9*)tex;
+    if (t->m_vulkanTex) {
+      Platform_BindVulkanTexture(t->m_vulkanTex);
+    }
+  }
+#endif
+  return 0;
+}
+inline HRESULT IDirect3DDevice9::DrawIndexedPrimitive(D3DPRIMITIVETYPE type, int, int, UINT num_vertices, UINT start_index, UINT prim_count) {
+#if defined(PLATFORM_LINUX) || defined(__linux__) || defined(_UNIX)
+  if (m_currentVB && m_currentIB && prim_count > 0 && m_currentVB->m_buffer.size() > 0 && m_currentIB->m_buffer.size() > 0) {
+    uint32_t indexCount = (type == D3DPT_TRIANGLESTRIP) ? (prim_count + 2) : (prim_count * 3);
+    uint32_t stride = m_vbStride ? m_vbStride : 32;
+    const void *vData = m_currentVB->m_buffer.data() + m_vbOffset;
+    const uint16_t *iData = (const uint16_t*)(m_currentIB->m_buffer.data() + start_index * sizeof(uint16_t));
+    Platform_DrawVulkanIndexed(vData, num_vertices, stride, iData, indexCount);
+  }
+#endif
+  return 0;
+}
+inline HRESULT IDirect3DDevice9::DrawPrimitive(D3DPRIMITIVETYPE type, UINT start_vertex, UINT prim_count) {
+#if defined(PLATFORM_LINUX) || defined(__linux__) || defined(_UNIX)
+  if (m_currentVB && prim_count > 0 && m_currentVB->m_buffer.size() > 0) {
+    uint32_t vertexCount = (type == D3DPT_TRIANGLESTRIP) ? (prim_count + 2) : (prim_count * 3);
+    uint32_t stride = m_vbStride ? m_vbStride : 32;
+    const void *vData = m_currentVB->m_buffer.data() + m_vbOffset + start_vertex * stride;
+    Platform_DrawVulkanVertices(vData, vertexCount, stride);
+  }
+#endif
+  return 0;
+}
+inline HRESULT IDirect3DDevice9::DrawPrimitiveUP(D3DPRIMITIVETYPE type, UINT prim_count, const void* pVertexStreamZeroData, UINT stride) {
+#if defined(PLATFORM_LINUX) || defined(__linux__) || defined(_UNIX)
+  if (pVertexStreamZeroData && prim_count > 0) {
+    uint32_t vertexCount = (type == D3DPT_TRIANGLESTRIP) ? (prim_count + 2) : (prim_count * 3);
+    Platform_DrawVulkanVertices(pVertexStreamZeroData, vertexCount, stride ? stride : 32);
+  }
+#endif
+  return 0;
+}
 
 #ifndef _D3DMATRIX
 #define _D3DMATRIX D3DMATRIX
