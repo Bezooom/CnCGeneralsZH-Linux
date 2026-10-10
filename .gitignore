@@ -21,3 +21,7 @@ AGENTS.md
 # Layouts pulled out of WindowZH.big to feed Tools/optionsmenu_layout.py. That is game data and
 # does not belong in the repo; re-extract it with Tools/bigfile.py when a layout has to be redone.
 **/Tools/wnd/
+
+# Game disc images and installation sources
+*.iso
+C&C Generals*/

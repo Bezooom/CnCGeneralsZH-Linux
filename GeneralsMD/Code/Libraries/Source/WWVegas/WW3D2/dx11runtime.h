@@ -272,6 +272,7 @@ inline void Direct3D11_Enable(bool) {}
 inline bool Direct3D11_Is_Enabled() { return false; }
 inline bool Direct3D11_Create(HWND, unsigned, unsigned) { return false; }
 inline void Direct3D11_Release() {}
+inline void Direct3D11_Resize(unsigned, unsigned) {}
 inline bool Direct3D11_Is_Active() { return false; }
 inline DX11DeviceClass * Direct3D11_Device() { return nullptr; }
 inline DX11BackendClass * Direct3D11_Backend() { return nullptr; }

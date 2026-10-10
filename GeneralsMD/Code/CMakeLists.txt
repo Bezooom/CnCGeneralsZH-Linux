@@ -985,6 +985,10 @@ endif()
 add_custom_command(TARGET generals POST_BUILD
   COMMAND "${CMAKE_COMMAND}" -E copy_if_different
           "$<TARGET_FILE:generals>" "${CMAKE_CURRENT_SOURCE_DIR}/../Run/"
+  COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+          "$<TARGET_FILE:milesstub>" "${CMAKE_CURRENT_SOURCE_DIR}/../Run/"
+  COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+          "$<TARGET_FILE:binkstub>" "${CMAKE_CURRENT_SOURCE_DIR}/../Run/"
   # The fork's INI files: the key bindings and their labels, and the detonation
   # light loaded after EA's FXList.ini.  Run/ is gitignored, so these used to be
   # hand-made files that silently went stale - the tracked copies under Code/Data

@@ -904,10 +904,12 @@ static void restore_desktop_display()
 	if (DesktopGammaSaved) {
 		set_desktop_gamma(&DesktopGammaRamp);
 	}
+#ifdef _WIN32
 	if (DisplayModeChanged) {
 		ChangeDisplaySettingsEx(NULL, NULL, NULL, 0, NULL);
 		DisplayModeChanged = false;
 	}
+#endif
 }
 
 void DX8Wrapper::Apply_Fullscreen_Display(bool shown)
@@ -921,6 +923,7 @@ void DX8Wrapper::Apply_Fullscreen_Display(bool shown)
 		return;
 	}
 
+#ifdef _WIN32
 	DEVMODE mode;
 	ZeroMemory(&mode, sizeof(mode));
 	mode.dmSize = sizeof(mode);
@@ -936,7 +939,7 @@ void DX8Wrapper::Apply_Fullscreen_Display(bool shown)
 		::ShowWindow(_Hwnd, SW_RESTORE);
 	}
 	::SetWindowPos(_Hwnd, HWND_TOPMOST, 0, 0, ResolutionWidth, ResolutionHeight, SWP_SHOWWINDOW);
-
+#endif
 	if (GameGammaSet) {
 		set_desktop_gamma(&GameGammaRamp);
 	}

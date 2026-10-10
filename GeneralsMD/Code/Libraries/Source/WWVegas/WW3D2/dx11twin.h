@@ -111,7 +111,7 @@ class DX11BufferLockClass
 {
 public:
 	DX11BufferLockClass() : Twin(nullptr), D3D9Memory(nullptr), ByteOffset(0), ByteCount(0), Discard(false) {}
-	void * Begin(DX11BufferTwinClass * twin, void * d3d9_memory, unsigned, unsigned, unsigned) { return d3d9_memory; }
+	void * Begin(DX11BufferTwinClass * twin, void * d3d9_memory, unsigned, unsigned, unsigned, bool = true) { return d3d9_memory; }
 	void End() {}
 
 private:

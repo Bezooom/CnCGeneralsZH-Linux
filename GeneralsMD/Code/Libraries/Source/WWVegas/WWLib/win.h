@@ -827,6 +827,23 @@ static inline HDC GetDC(HWND) { return nullptr; }
 static inline int ReleaseDC(HWND, HDC) { return 1; }
 static inline HWND GetDesktopWindow() { return nullptr; }
 static inline BOOL SetDeviceGammaRamp(HDC, void*) { return TRUE; }
+static inline BOOL GetDeviceGammaRamp(HDC, void*) { return FALSE; }
+#ifndef WWLIB_MMSYS_LINUX_SHIM
+#define WWLIB_MMSYS_LINUX_SHIM 1
+typedef struct { long long QuadPart; } LARGE_INTEGER;
+static inline int QueryPerformanceCounter(LARGE_INTEGER *out)
+{
+	struct timespec ts;
+	clock_gettime(CLOCK_MONOTONIC, &ts);
+	out->QuadPart = (long long)ts.tv_sec * 1000000000LL + (long long)ts.tv_nsec;
+	return 1;
+}
+static inline int QueryPerformanceFrequency(LARGE_INTEGER *out)
+{
+	out->QuadPart = 1000000000LL;
+	return 1;
+}
+#endif
 #ifndef MulDiv
 #define MulDiv MulDiv
 static inline int MulDiv(int nNumber, int nNumerator, int nDenominator) {
@@ -919,6 +936,13 @@ typedef struct HBRUSH__ *HBRUSH;
 extern HWND ApplicationHWnd;
 static inline BOOL ScreenToClient(HWND, LPPOINT) { return TRUE; }
 static inline HWND WindowFromPoint(POINT) { return ApplicationHWnd; }
+static inline HWND GetForegroundWindow() { return ApplicationHWnd; }
+static inline BOOL GetClipCursor(RECT *lpRect) { if (lpRect) memset(lpRect, 0, sizeof(*lpRect)); return TRUE; }
+static inline BOOL EqualRect(const RECT *lprc1, const RECT *lprc2) {
+    if (!lprc1 || !lprc2) return FALSE;
+    return lprc1->left == lprc2->left && lprc1->top == lprc2->top &&
+           lprc1->right == lprc2->right && lprc1->bottom == lprc2->bottom;
+}
 static inline HCURSOR LoadCursorFromFileA(LPCSTR) { return (HCURSOR)(intptr_t)1; }
 #ifndef LoadCursorFromFile
 #define LoadCursorFromFile LoadCursorFromFileA
