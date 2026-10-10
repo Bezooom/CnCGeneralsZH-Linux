@@ -400,6 +400,8 @@ struct IDirect3DDevice9 {
   uint32_t m_vbOffset = 0;
   uint32_t m_vbStride = 32;
   IDirect3DIndexBuffer9* m_currentIB = nullptr;
+  bool m_inScene = false;
+  uint32_t m_currentImageIndex = 0;
 
   HRESULT CreateIndexBuffer(UINT, DWORD, D3DFORMAT, D3DPOOL, IDirect3DIndexBuffer9**, HANDLE);
   HRESULT CreateVertexBuffer(UINT, DWORD, DWORD, D3DPOOL, IDirect3DVertexBuffer9**, HANDLE);
@@ -455,13 +457,27 @@ struct IDirect3DDevice9 {
   HRESULT SetSoftwareVertexProcessing(BOOL) { return 0; }
   HRESULT GetDeviceCaps(D3DCAPS9* caps);
   HRESULT EvictManagedResources() { return 0; }
-  HRESULT BeginScene() { return 0; }
+  HRESULT BeginScene() {
+#if defined(PLATFORM_LINUX) || defined(__linux__) || defined(_UNIX)
+    if (!m_inScene) {
+      if (Platform_BeginVulkanFrame(&m_currentImageIndex)) {
+        m_inScene = true;
+      }
+    }
+#endif
+    return 0;
+  }
   HRESULT EndScene() { return 0; }
   HRESULT Present(const RECT*, const RECT*, HWND, const void*) {
 #if defined(PLATFORM_LINUX) || defined(__linux__) || defined(_UNIX)
-    uint32_t img = 0;
-    if (Platform_BeginVulkanFrame(&img)) {
-      Platform_EndVulkanFrame(img);
+    if (m_inScene) {
+      Platform_EndVulkanFrame(m_currentImageIndex);
+      m_inScene = false;
+    } else {
+      uint32_t img = 0;
+      if (Platform_BeginVulkanFrame(&img)) {
+        Platform_EndVulkanFrame(img);
+      }
     }
     Platform_PumpEvents();
 #endif
