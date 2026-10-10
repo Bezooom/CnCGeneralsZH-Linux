@@ -6,9 +6,9 @@
 
 ---
 
-## Current Status — 2026-10-09
+## Current Status — 2026-10-10
 
-### Full CTest 30/30 Green, Engine Initialization Complete, Frame 0 & Shell Game Loop Reached
+### Full CTest 31/31 Green, Native Linux Port Installed, Wine Version Removed
 
 - [x] **GameEngine Initialization Reaches Main Loop (Frame 0)**:
   - Fixed `win.h` `CRITICAL_SECTION` to use `PTHREAD_MUTEX_RECURSIVE`, resolving recursive self-deadlock in `TheUnicodeStringCriticalSection` during Object INI loading.
@@ -48,7 +48,9 @@
   - Created `generals.desktop` with categories `Game;StrategyGame;`.
   - Extracted authentic 48x48 icon from `Generals.ico` into `Distribution/generals.png`.
   - Verified staging installation via `ninja install` (`/usr/local/bin`, `/usr/local/lib`, `/usr/local/share`).
-- [x] **Full CTest Suite**: **30/30 passed, 0 failed (100% green)**.
+  - Installed standalone user launcher `~/.local/bin/generals`, XDG desktop entry `~/.local/share/applications/generals.desktop`, icons, and desktop shortcuts.
+  - Removed legacy Wine installation (2.8 GB) and Wine desktop entries; game runs 100% standalone with native Linux binaries and bundled `.big` assets.
+- [x] **Full CTest Suite**: **31/31 passed, 0 failed (100% green)** including `test_registry_class_linux` and `test_gameengine`.
 Verification: `GeneralsMD/build-linux` (GCC 13.3, Release, C++17, Ninja).
 ### Latest device continuation — 2026-09-17
 
