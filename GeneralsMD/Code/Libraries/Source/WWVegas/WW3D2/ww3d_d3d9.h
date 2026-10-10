@@ -413,9 +413,11 @@ struct IDirect3DDevice9 {
   HRESULT SetTransform(D3DTRANSFORMSTATETYPE, const D3DMATRIX*) { return 0; }
   HRESULT GetTransform(D3DTRANSFORMSTATETYPE, D3DMATRIX*) { return 0; }
   HRESULT SetStreamSource(UINT stream, IDirect3DVertexBuffer9* vb, UINT offset, UINT stride) {
-    m_currentVB = vb;
-    m_vbOffset = offset;
-    m_vbStride = stride ? stride : 32;
+    if (stream == 0) {
+      m_currentVB = vb;
+      m_vbOffset = offset;
+      m_vbStride = stride ? stride : 32;
+    }
     return 0;
   }
   HRESULT DrawIndexedPrimitive(D3DPRIMITIVETYPE, int, int, UINT, UINT, UINT);
@@ -596,7 +598,7 @@ struct IDirect3DTexture9 : IDirect3DBaseTexture9 {
   }
   HRESULT AddDirtyRect(const RECT*) { return 0; }
   ULONG AddRef() { return 1; }
-  ULONG Release() { return 0; }
+  ULONG Release() { delete this; return 0; }
 };
 struct IDirect3DCubeTexture9 : IDirect3DBaseTexture9 {
   HRESULT GetCubeMapSurface(D3DCUBEMAP_FACES, UINT, IDirect3DSurface9**) { return 0; }
@@ -643,7 +645,7 @@ struct IDirect3DVertexBuffer9 {
     return 0;
   }
   HRESULT Unlock() { return 0; }
-  ULONG Release() { return 0; }
+  ULONG Release() { delete this; return 0; }
 };
 struct IDirect3DIndexBuffer9 {
   std::vector<uint8_t> m_buffer;
@@ -654,7 +656,7 @@ struct IDirect3DIndexBuffer9 {
     return 0;
   }
   HRESULT Unlock() { return 0; }
-  ULONG Release() { return 0; }
+  ULONG Release() { delete this; return 0; }
 };
 struct IDirect3DVertexShader9 {
   ULONG Release() { return 0; }
@@ -670,19 +672,29 @@ inline HRESULT IDirect3DTexture9::GetSurfaceLevel(UINT, IDirect3DSurface9** ppSu
   if (ppSurface) *ppSurface = &s_surface;
   return 0;
 }
-inline HRESULT IDirect3DDevice9::CreateIndexBuffer(UINT, DWORD, D3DFORMAT, D3DPOOL, IDirect3DIndexBuffer9** pp, HANDLE) {
-  static IDirect3DIndexBuffer9 s_ib;
-  if (pp) *pp = &s_ib;
+inline HRESULT IDirect3DDevice9::CreateIndexBuffer(UINT size, DWORD, D3DFORMAT, D3DPOOL, IDirect3DIndexBuffer9** pp, HANDLE) {
+  if (pp) {
+    auto ib = new IDirect3DIndexBuffer9();
+    if (size) ib->m_buffer.resize(size);
+    *pp = ib;
+  }
   return 0;
 }
-inline HRESULT IDirect3DDevice9::CreateVertexBuffer(UINT, DWORD, DWORD, D3DPOOL, IDirect3DVertexBuffer9** pp, HANDLE) {
-  static IDirect3DVertexBuffer9 s_vb;
-  if (pp) *pp = &s_vb;
+inline HRESULT IDirect3DDevice9::CreateVertexBuffer(UINT size, DWORD, DWORD, D3DPOOL, IDirect3DVertexBuffer9** pp, HANDLE) {
+  if (pp) {
+    auto vb = new IDirect3DVertexBuffer9();
+    if (size) vb->m_buffer.resize(size);
+    *pp = vb;
+  }
   return 0;
 }
-inline HRESULT IDirect3DDevice9::CreateTexture(UINT, UINT, UINT, DWORD, D3DFORMAT, D3DPOOL, IDirect3DTexture9** pp, HANDLE*) {
-  static IDirect3DTexture9 s_tex;
-  if (pp) *pp = &s_tex;
+inline HRESULT IDirect3DDevice9::CreateTexture(UINT width, UINT height, UINT, DWORD, D3DFORMAT, D3DPOOL, IDirect3DTexture9** pp, HANDLE*) {
+  if (pp) {
+    auto tex = new IDirect3DTexture9();
+    tex->m_width = width ? width : 256;
+    tex->m_height = height ? height : 256;
+    *pp = tex;
+  }
   return 0;
 }
 inline HRESULT IDirect3DDevice9::CreatePixelShader(const DWORD*, IDirect3DPixelShader9** pp) {

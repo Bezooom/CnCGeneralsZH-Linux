@@ -840,8 +840,9 @@ void DynamicVBAccessClass::Allocate_DX8_Dynamic_Buffer()
 		if (_DynamicDX8VertexBufferSize<DEFAULT_VB_SIZE) _DynamicDX8VertexBufferSize=DEFAULT_VB_SIZE;
 	}
 
-	// Create a new vb if one doesn't exist currently
-	if (!_DynamicDX8VertexBuffer) {
+	// Create a new vb if one doesn't exist currently or if device became available
+	if (!_DynamicDX8VertexBuffer || (DX8Wrapper::_Get_D3D_Device() != NULL && static_cast<DX8VertexBufferClass*>(_DynamicDX8VertexBuffer)->Get_DX8_Vertex_Buffer() == NULL)) {
+		REF_PTR_RELEASE(_DynamicDX8VertexBuffer);
 		unsigned usage=DX8VertexBufferClass::USAGE_DYNAMIC;
 		if (DX8Wrapper::Get_Current_Caps()->Support_NPatches()) {
 			usage|=DX8VertexBufferClass::USAGE_NPATCHES;

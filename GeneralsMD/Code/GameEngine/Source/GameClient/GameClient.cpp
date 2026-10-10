@@ -642,6 +642,7 @@ void GameClient::update( void )
 			TheShell->showShellMap(TRUE);
 			TheShell->showShell();
 			TheWritableGlobalData->m_afterIntro = FALSE;
+			TheWritableGlobalData->m_breakTheMovie = FALSE;
 		}
 	}
 

@@ -550,8 +550,9 @@ void DynamicIBAccessClass::Allocate_DX8_Dynamic_Buffer()
 		if (_DynamicDX8IndexBufferSize<DEFAULT_IB_SIZE) _DynamicDX8IndexBufferSize=DEFAULT_IB_SIZE;
 	}
 
-	// Create a new vb if one doesn't exist currently
-	if (!_DynamicDX8IndexBuffer) {
+	// Create a new ib if one doesn't exist currently or if device became available
+	if (!_DynamicDX8IndexBuffer || (DX8Wrapper::_Get_D3D_Device() != NULL && static_cast<DX8IndexBufferClass*>(_DynamicDX8IndexBuffer)->Get_DX8_Index_Buffer() == NULL)) {
+		REF_PTR_RELEASE(_DynamicDX8IndexBuffer);
 		unsigned usage=DX8IndexBufferClass::USAGE_DYNAMIC;
 		if (DX8Wrapper::Get_Current_Caps()->Support_NPatches()) {
 			usage|=DX8IndexBufferClass::USAGE_NPATCHES;

@@ -2470,7 +2470,7 @@ AGAIN:
 		{
 			USE_PERF_TIMER(BigAssRenderLoop)
 			static Bool couldRender = true;
-			if ((TheGlobalData->m_breakTheMovie == FALSE) && (TheGlobalData->m_disableRender == false) && WW3D::Begin_Render( true, true, Vector3( 0.0f, 0.0f, 0.0f ), TheWaterTransparency->m_minWaterOpacity ) == WW3D_ERROR_OK)		
+			if ((TheGlobalData->m_breakTheMovie == FALSE || !TheDisplay->isMoviePlaying()) && (TheGlobalData->m_disableRender == false) && WW3D::Begin_Render( true, true, Vector3( 0.0f, 0.0f, 0.0f ), TheWaterTransparency->m_minWaterOpacity ) == WW3D_ERROR_OK)
 			{
 				
 				if(TheGlobalData->m_loadScreenRender == TRUE)
