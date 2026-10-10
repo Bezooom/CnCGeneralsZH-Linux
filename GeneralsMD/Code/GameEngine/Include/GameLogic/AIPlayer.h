@@ -217,6 +217,12 @@ public: // AIPlayer interface, may be overridden by AISkirmishPlayer.  jba.
 	virtual Bool isSkirmishAI(void) {return false;}
 	virtual Player *getAiEnemy(void) {return NULL;}	///< Solo AI attacks based on scripting.  Only skirmish auto-acquires an enemy at this point.  jba.
 	virtual Bool checkBridges(Object *unit, Waypoint *way) {return false;}
+	/** Center, Flank or Backdoor: the approach with the least enemy firepower this AI knows about.
+		* The script's own label when the rung does not read the map, or the label is not one of the three. */
+	AsciiString chooseApproachLabel(const Coord3D *from, const AsciiString &requested, Int pathSuffix);
+	/** C2: park an attack team that is not a wave on its own until the rest of the wave is in hand.
+		* TRUE when it is parked, and the caller's own order must not go out. */
+	Bool holdTeamForWave(Team *team, const AsciiString &approach, Int pathSuffix);
 	virtual void repairStructure(ObjectID structure);
 
 	virtual void selectSkillset(Int skillset);
@@ -301,6 +307,21 @@ protected:
 	void queueCapturer(void);						///< ... or build the cheapest thing that can take one
 	void queueSupportUnit(const ThingTemplate *tmpl, const char *what);	///< one cheap unit, outside the team system
 
+	/** Past the hoard, buy what the build list never had: another production building beside the last
+		* expansion when every one of a kind is busy, another income building when production keeps up,
+		* and money units (China's hackers) from any factory standing idle. */
+	virtual void doEconomy(void);
+
+	/** Buy a power plant before the margin runs out rather than after, and put it on the far side of
+		* the base from whoever this player is fighting. */
+	virtual void doPower(void);
+
+	Bool enemyDirection(Coord3D *dir);	///< unit vector from this base towards the nearest enemy's best known address
+
+	void buyMoneyUnit(void);
+	Bool placeNear(const ThingTemplate *tmpl, const Coord3D *center, Real innerRadius);	///< a legal, safe spot on a ring round center, queued for a dozer
+	Real knownFirepowerAlongPath(Waypoint *way);	///< what this AI has seen that can shoot, along an approach
+
 	virtual void doBaseBuilding(void);
 	virtual void checkReadyTeams(void);
 	virtual void checkQueuedTeams(void);
@@ -308,7 +329,7 @@ protected:
 	virtual void doUpgradesAndSkills(void);
 	virtual Object *findDozer(const Coord3D *pos);
 	virtual void queueDozer(void);
-	void computeEnemyComposition( AIEnemyComposition *out );	///< what this AI can see the enemy fielding
+	void computeEnemyComposition( AIEnemyComposition *out, std::vector<AIVisibleEnemy> *army = NULL );	///< what this AI can see the enemy fielding, and optionally which units
 	Real visibleEstateValue( Int playerNdx );					///< what this AI can see that player is worth, in build cost
 	virtual Bool selectTeamToBuild( void );			///< determine the next team to build
 	virtual Bool selectTeamToReinforce( Int minPriority );			///< determine the next team to reinforce
@@ -404,6 +425,7 @@ protected:
 		 both machines in a network game compute them the same way from the same frames, and a
 		 savegame that restarts a half-finished scan loses nothing but a few frames of searching. */
 	Real		m_buildProbeOffset;
+	Int			m_buildProbeSkip;		///< position pairs of the ring at m_buildProbeOffset already tried
 	Coord3D m_buildProbePos;
 
 	GameDifficulty m_difficulty;
@@ -418,6 +440,7 @@ protected:
 	enum {MAX_STRUCTURES_TO_REPAIR = 2};
 	ObjectID m_structuresToRepair[MAX_STRUCTURES_TO_REPAIR];
 	ObjectID m_repairDozer;
+	UnsignedInt m_frameAfterFailedDozerQueue;	///< frame+1 of the last queueDozer that found no factory, 0 for never
 	Coord3D  m_repairDozerOrigin;
 	Int			 m_structuresInQueue;
 	Bool		 m_dozerQueuedForRepair;
@@ -428,6 +451,15 @@ protected:
 	ObjectID m_attackedSupplyCenter;
 
 	ObjectID m_curWarehouseID;
+
+	/** C2: attack teams parked at the staging point, waiting to go out together. */
+	virtual void doWaves(void);
+	enum { MAX_HELD_TEAMS = 16 };
+	Bool				m_heldUsed[ MAX_HELD_TEAMS ];
+	UnsignedInt	m_heldTeam[ MAX_HELD_TEAMS ];			///< TeamID; Team.h is not included here
+	AsciiString	m_heldLabel[ MAX_HELD_TEAMS ];		///< the approach the script asked for
+	Int					m_heldSuffix[ MAX_HELD_TEAMS ];		///< the enemy start index its path name ends in
+	UnsignedInt	m_heldSince;											///< frame the first of the parked teams arrived
 };
 
 #endif // _AI_PLAYER_H_

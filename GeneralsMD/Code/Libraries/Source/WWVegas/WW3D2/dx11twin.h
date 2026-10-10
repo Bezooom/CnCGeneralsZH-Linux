@@ -52,6 +52,12 @@ public:
 	ID3D11Buffer * Buffer() const { return D3D11Buffer; }
 	ID3D11DeviceContext * Context() const { return D3D11Context; }
 	bool Dynamic() const { return IsDynamic; }
+	bool Is_Dynamic() const { return IsDynamic; }
+
+	// A dynamic buffer mapped for writing with D3D9's own DISCARD or NOOVERWRITE, the way Upload
+	// maps it; null when the device refuses.  The caller writes straight into it, then calls Unmap.
+	unsigned char * Map_Write(bool discard);
+	void Unmap();
 
 	void Write_Range(unsigned byte_offset, unsigned byte_count, bool discard);
 
@@ -72,8 +78,17 @@ class DX11BufferLockClass
 {
 public:
 	DX11BufferLockClass();
+
+	// lock_flags is the D3DLOCK_* set the caller handed Direct3D 9, so the upload can be written
+	// the same way the D3D9 lock was.
+	//
+	// copy_to_d3d9 false leaves the D3D9 memory as it was.  A dynamic buffer passes it while
+	// Direct3D 11 presents: Direct3D 9 skips its indexed draws then and nothing reads a D3D9 buffer
+	// back, and a dynamic buffer is written again every frame, so the copy was a second memcpy of
+	// every particle vertex for a device that never looks at it.  A dynamic twin locked that way is
+	// also written straight into the mapped D3D11 buffer, with no mirror to fill and copy out of.
 	void * Begin(DX11BufferTwinClass * twin, void * d3d9_memory, unsigned byte_offset,
-		unsigned byte_count, unsigned lock_flags);
+		unsigned byte_count, unsigned lock_flags, bool copy_to_d3d9 = true);
 	void End();
 
 private:
@@ -82,6 +97,8 @@ private:
 	unsigned ByteOffset;
 	unsigned ByteCount;
 	bool Discard;
+	bool CopyToD3D9;
+	bool Mapped;			// Begin handed out the mapped D3D11 buffer itself, so End only unmaps
 };
 #else
 class DX11BufferTwinClass

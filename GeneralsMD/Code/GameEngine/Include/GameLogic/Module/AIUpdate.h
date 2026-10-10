@@ -445,6 +445,7 @@ public:
 	void setTurretTargetPosition(WhichTurretType tur, const Coord3D* pos);
 	void setTurretEnabled(WhichTurretType tur, Bool enabled);
 	void recenterTurret(WhichTurretType tur);
+	void stopTurretsTurning();	///< every turret stops its move loop and rotate look
 	Bool isTurretEnabled( WhichTurretType tur ) const;
 	Bool isTurretInNaturalPosition(WhichTurretType tur) const;
 
@@ -694,6 +695,14 @@ protected:
 public:
 
 	inline StateID getCurrentStateID() const { return getStateMachine()->getCurrentStateID(); }	///< return the id of the current state of the machine
+	/// A move an AI hands a busy unit lands in the temporary state and leaves the current one alone, so ask that first.
+	inline Bool isTurningToFace() const
+	{
+		StateID state = getStateMachine()->getTemporaryState();
+		if( state == INVALID_STATE_ID )
+			state = getCurrentStateID();
+		return state == AI_FACE_OBJECT || state == AI_FACE_POSITION;
+	}
 /// @ todo -- srj sez: JBA NUKE THIS CODE, IT IS EVIL
 	inline void friend_addToWaypointGoalPath( const Coord3D *pathPoint ) { getStateMachine()->addToGoalPath(pathPoint); }
 

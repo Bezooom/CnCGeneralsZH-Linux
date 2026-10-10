@@ -67,6 +67,20 @@ enum
 
 static Bool scrollDir[4] = { false, false, false, false };
 
+// The directions a W A S D key is holding.  A release only ends a scroll its own press started: with
+// the box off W is a grid key, and letting go of it must not stop the up arrow; with the box
+// unticked while W is held, letting go must still stop the camera.
+static Bool letterScrollDir[4] = { false, false, false, false };
+
+static void scrollByLetter( Int dir, Bool isPressed, Bool pressScrolls )
+{
+	if( isPressed ? !pressScrolls : !letterScrollDir[ dir ] )
+		return;
+
+	letterScrollDir[ dir ] = isPressed;
+	scrollDir[ dir ] = isPressed;
+}
+
 Int SCROLL_AMT = 100;
 
 static const Int edgeScrollSize = 3;
@@ -79,11 +93,19 @@ void LookAtTranslator::setScrolling(Int x)
 	if (!TheInGameUI->getInputEnabled())
 		return;
 
-	prevCursor = TheMouse->getMouseCursor();
+	// With the W A S D box ticked a keyboard scroll leaves the cursor alone - arrow keys too, it is the
+	// same scroll - because the mouse is not the thing moving the camera.  A mouse scroll, and every
+	// keyboard scroll with the box off, still turns the cursor into the scroll arrows.
+	m_scrollMovesCursor = !( x == SCROLL_KEY && TheGlobalData->isWasdCamera() );
+	if( m_scrollMovesCursor )
+		prevCursor = TheMouse->getMouseCursor();
 	m_isScrolling = true;
-	TheInGameUI->setScrolling( TRUE );
+	TheInGameUI->setScrolling( TRUE, m_scrollMovesCursor );
 	TheTacticalView->setMouseLock( TRUE );
 	m_scrollType = x;
+	// A manual pan restores map constraints widened by scripted camera paths.
+	if (TheGlobalData->m_useCameraConstraints && TheGlobalData->m_cameraBoundaryMargin > 0)
+		TheTacticalView->forceCameraConstraintRecalc();
 	if(TheStatsCollector)
 		TheStatsCollector->startScrollTime();
 }
@@ -92,9 +114,10 @@ void LookAtTranslator::setScrolling(Int x)
 void LookAtTranslator::stopScrolling( void )
 {
 	m_isScrolling = false;
-	TheInGameUI->setScrolling( FALSE );
+	TheInGameUI->setScrolling( FALSE, m_scrollMovesCursor );
 	TheTacticalView->setMouseLock( FALSE );
-	TheMouse->setCursor(prevCursor);
+	if( m_scrollMovesCursor )
+		TheMouse->setCursor(prevCursor);
 	m_scrollType = SCROLL_NONE;
 		
 	// if we have a stats collectore increment the stats
@@ -114,13 +137,8 @@ LookAtTranslator::LookAtTranslator() :
 	m_lastPlaneID(INVALID_DRAWABLE_ID),
 	m_lastMouseMoveFrame(0),
 	m_scrollType(SCROLL_NONE),
-	m_zoomAnchorValid(FALSE),
-	m_zoomAnchorZoom(0.0f),
-	m_zoomAnchorTicks(0)
+	m_scrollMovesCursor(true)
 {
-	m_zoomAnchorPixel.x = m_zoomAnchorPixel.y = 0;
-	m_zoomAnchorWorld.zero();
-
 	//Added By Sadullah Nader
 	//Initializations misssing and needed
 	m_anchor.x = m_anchor.y = 0;
@@ -141,7 +159,7 @@ LookAtTranslator::~LookAtTranslator()
 
 const ICoord2D* LookAtTranslator::getScrollAnchor(void)
 {
-	if (m_isScrolling && m_scrollType == SCROLL_MMB)
+	if (m_isScrolling && (m_scrollType == SCROLL_MMB || m_scrollType == SCROLL_RMB))
 	{
 		return &m_anchor;
 	}
@@ -163,65 +181,6 @@ void LookAtTranslator::setCurrentPos( const ICoord2D& pos )
 {
 	m_currentPos = pos;
 }
-
-//-----------------------------------------------------------------------------
-/**
- * Keep the terrain point the wheel was spun over sitting under that same pixel while the camera
- * eases towards the zoom it was asked for. Re-measuring rather than projecting means the pin is
- * right at any pitch or field of view, and it converges: each frame's leftover error is the next
- * frame's correction. The pin ends when the zoom stops moving, when something else takes the
- * camera, or when its tick budget runs out.
- */
-void LookAtTranslator::updateZoomToCursor( void )
-{
-	if (!m_zoomAnchorValid)
-		return;
-
-	// anything that moves the camera on purpose wins over the pin
-	if (m_isScrolling || !TheInGameUI->getInputEnabled())
-	{
-		m_zoomAnchorValid = FALSE;
-		return;
-	}
-
-	const Real zoom = TheTacticalView->getZoom();
-	const Bool stillEasing = fabs( zoom - m_zoomAnchorZoom ) > 0.00001f;
-	m_zoomAnchorZoom = zoom;
-
-	Coord3D world;
-	world.zero();
-	TheTacticalView->screenToTerrain( &m_zoomAnchorPixel, &world );
-
-	//
-	// Move the camera by the world-space residual itself.  scrollBy() is not the way to do it:
-	// its delta is a *screen* delta that it pushes through Device_To_World_Space with a fixed
-	// 250 unit resolution and then scales by frame time, so a world offset handed to it comes
-	// out as some other distance entirely and the anchor never lands.  lookAt is the exact move:
-	// given a z on the ground it is a plain setPosition plus setCameraTransform, so the camera is
-	// still clamped to the map the same way scrolling is.
-	//
-	const Real shiftX = m_zoomAnchorWorld.x - world.x;
-	const Real shiftY = m_zoomAnchorWorld.y - world.y;
-	if (shiftX != 0.0f || shiftY != 0.0f)
-	{
-		Coord3D pos;
-		TheTacticalView->getPosition( &pos );
-		pos.x += shiftX;
-		pos.y += shiftY;
-		pos.z = 0.0f;
-		TheTacticalView->lookAt( &pos );
-	}
-
-	//
-	// The first few ticks are a grace period: the wheel is handled in the message stream, which
-	// runs before the view updates, so a zoom that has not started moving yet is not a zoom that
-	// has finished.
-	//
-	const Bool grace = (m_zoomAnchorTicks > ZOOM_ANCHOR_MAX_TICKS - ZOOM_ANCHOR_GRACE_TICKS);
-	if (--m_zoomAnchorTicks <= 0 || (!stillEasing && !grace))
-		m_zoomAnchorValid = FALSE;
-
-}  // end updateZoomToCursor
 
 //-----------------------------------------------------------------------------
 /**
@@ -248,6 +207,19 @@ GameMessageDisposition LookAtTranslator::translateGameMessage(const GameMessage 
 			if (TheShell && TheShell->isShellActive())
 				break;
 
+			//
+			// With the W A S D box ticked those four scroll alongside the arrow keys, and
+			// CommandMapWASD.ini moves what they were bound to.  They are read here as raw keys
+			// instead of being bound there for two reasons: the meta map holds one key per command, so
+			// binding them would have taken the arrows away, and a meta record fires its UP only while
+			// the modifier state still matches the one the key went down with - letting go of W with
+			// ctrl held for a control group would have left the camera scrolling with nothing to stop
+			// it.  A press with ctrl or alt down belongs to whatever that combination is bound to.
+			//
+			const Bool letterPressScrolls = TheGlobalData->isWasdCamera() &&
+																		 !BitTest( state, KEY_STATE_CONTROL ) &&
+																		 !BitTest( state, KEY_STATE_ALT );
+
 			switch (key)
 			{
 			case KEY_UP:
@@ -261,6 +233,18 @@ GameMessageDisposition LookAtTranslator::translateGameMessage(const GameMessage 
 				break;
 			case KEY_RIGHT:
 				scrollDir[DIR_RIGHT] = isPressed;
+				break;
+			case KEY_W:
+				scrollByLetter( DIR_UP, isPressed, letterPressScrolls );
+				break;
+			case KEY_S:
+				scrollByLetter( DIR_DOWN, isPressed, letterPressScrolls );
+				break;
+			case KEY_A:
+				scrollByLetter( DIR_LEFT, isPressed, letterPressScrolls );
+				break;
+			case KEY_D:
+				scrollByLetter( DIR_RIGHT, isPressed, letterPressScrolls );
 				break;
 			}
 
@@ -287,13 +271,32 @@ GameMessageDisposition LookAtTranslator::translateGameMessage(const GameMessage 
 		}
 
 		//-----------------------------------------------------------------------------
-		// The right button belongs to the order layer now - a click commands, a drag draws a
-		// formation line - so nothing here touches the camera.  Both cases stay only to keep the
-		// idle timer honest: a player who is right-clicking is not away from the keyboard.
+		// Modern's right button belongs to the order layer - a click commands, a drag draws a
+		// formation line - so here it only keeps the idle timer honest: a player who is
+		// right-clicking is not away from the keyboard.  Legacy's right drag scrolls the camera, as
+		// the game shipped.
 		case GameMessage::MSG_RAW_MOUSE_RIGHT_BUTTON_DOWN:
+		{
+			m_lastMouseMoveFrame = TheGameLogic->getFrame();
+
+			if (TheGlobalData->isLegacyInput())
+			{
+				m_anchor = msg->getArgument( 0 )->pixel;
+				m_currentPos = msg->getArgument( 0 )->pixel;
+
+				if (!TheInGameUI->isSelecting() && !m_isScrolling)
+					setScrolling(SCROLL_RMB);
+			}
+			break;
+		}
+
+		//-----------------------------------------------------------------------------
 		case GameMessage::MSG_RAW_MOUSE_RIGHT_BUTTON_UP:
 		{
 			m_lastMouseMoveFrame = TheGameLogic->getFrame();
+
+			if (m_scrollType == SCROLL_RMB)
+				stopScrolling();
 			break;
 		}
 
@@ -311,8 +314,9 @@ GameMessageDisposition LookAtTranslator::translateGameMessage(const GameMessage 
 			// the drag turns the camera instead.  It used to be the other way round, with a
 			// MiddleMousePans switch in Options.ini deciding; there is no switch now because the
 			// right button no longer scrolls anything and the pan has to live somewhere.  The
-			// click-to-reset below works either way.
-			if( !TheKeyboard->isCtrl() )
+			// click-to-reset below works either way.  Legacy's middle drag only ever turns the camera,
+			// because its right button is the one that scrolls.
+			if( !TheKeyboard->isCtrl() && !TheGlobalData->isLegacyInput() )
 			{
 				m_isRotating = false;
 				if (!TheInGameUI->isSelecting() && !m_isScrolling)
@@ -405,7 +409,7 @@ GameMessageDisposition LookAtTranslator::translateGameMessage(const GameMessage 
 
 				Real angle = FACTOR * (m_currentPos.x - m_anchor.x);
 
-				if (TheGlobalData->m_snapCameraRotateTo45)
+				if (TheGlobalData->m_snapCameraRotateTo45 && !TheGlobalData->isLegacyInput())
 				{
 					// discrete heading: the drag turns an angle we keep to ourselves and the camera
 					// jumps to the eighth it is nearest, as the mouse crosses each halfway point.
@@ -461,28 +465,15 @@ GameMessageDisposition LookAtTranslator::translateGameMessage(const GameMessage 
 			//
 			// Whole notches only: half a touchpad swipe is not a 45 degree turn.
 			const Int rotateSteps = (Int)spin;
-			if (TheKeyboard->isCtrl() && rotateSteps != 0 && TheInGameUI->rotatePendingPlacement( rotateSteps ))
+			if (!TheGlobalData->isLegacyInput() && TheKeyboard->isCtrl() && rotateSteps != 0 &&
+					TheInGameUI->rotatePendingPlacement( rotateSteps ))
 				return DESTROY_MESSAGE;
 
-			//
-			// ZoomToCursor: remember the world point under the cursor and keep it there while the
-			// camera moves. Measuring it again right after the zoom call - which is what this used
-			// to do - always measured a camera that had not moved yet: zoomIn()/zoomOut() only
-			// change the *desired* height above ground, and W3DView::update eases the actual zoom
-			// towards it over the frames that follow. The shift therefore came out zero every time
-			// and the feature did nothing at all. The anchor is now followed frame by frame in
-			// updateZoomToCursor() for as long as that easing lasts, which also keeps it correct
-			// whatever the pitch and the field of view are.
-			//
-			if (TheGlobalData->m_zoomToCursor && TheInGameUI->getInputEnabled())
-			{
-				m_zoomAnchorPixel = msg->getArgument( 0 )->pixel;
-				m_zoomAnchorWorld.zero();
-				TheTacticalView->screenToTerrain( &m_zoomAnchorPixel, &m_zoomAnchorWorld );
-				m_zoomAnchorZoom = TheTacticalView->getZoom();
-				m_zoomAnchorTicks = ZOOM_ANCHOR_MAX_TICKS;
-				m_zoomAnchorValid = TRUE;
-			}
+			// ZoomToCursor: the view holds the ground under the cursor while the zoom eases in.  It does
+			// it inside its own update, between the zoom moving and the frame being drawn; held from
+			// here, the correction always landed a frame late.
+			if (TheGlobalData->m_zoomToCursor && !TheGlobalData->isLegacyInput() && TheInGameUI->getInputEnabled())
+				TheTacticalView->anchorZoomAt( &msg->getArgument( 0 )->pixel );
 
 			if (spin > 0.0f)
 				TheTacticalView->zoomIn( spin );
@@ -510,9 +501,6 @@ GameMessageDisposition LookAtTranslator::translateGameMessage(const GameMessage 
 		{
 			Coord2D offset = {0, 0};
 
-			// hold whatever the wheel was spun over under the cursor while the zoom eases
-			updateZoomToCursor();
-
 			// If we've been forced to stop scrolling (script action?) then stop
 			if (m_isScrolling && !TheInGameUI->isScrolling())
 			{
@@ -525,6 +513,7 @@ GameMessageDisposition LookAtTranslator::translateGameMessage(const GameMessage 
 			{
 				switch (m_scrollType)
 				{
+				case SCROLL_RMB:
 				case SCROLL_MMB:
 					{
 						// The anchor stays where the button went down and the camera runs away from it,
@@ -603,10 +592,12 @@ GameMessageDisposition LookAtTranslator::translateGameMessage(const GameMessage 
 				}
 
 				TheInGameUI->setScrollAmount(offset);
-				TheTacticalView->scrollBy( &offset );
 			}
 			else	//not scrolling so reset amount
 				TheInGameUI->setScrollAmount(offset);
+
+			// Advance the pan clock even while stationary, so restarting does not include idle time.
+			TheTacticalView->scrollBy( &offset );
 
 			//if (TheGlobalData->m_saveCameraInReplay /*&& TheRecorder->getMode() != RECORDERMODETYPE_PLAYBACK *//**/&& (TheGameLogic->isInSinglePlayerGame() || TheGameLogic->isInSkirmishGame())/**/)
 			//if (TheGlobalData->m_saveCameraInReplay && (TheGameLogic->isInMultiplayerGame() || TheGameLogic->isInSinglePlayerGame() || TheGameLogic->isInSkirmishGame()))
@@ -825,7 +816,10 @@ void LookAtTranslator::resetModes()
 	// the flags that say a scroll is in progress.
 	//
 	for( Int i = 0; i < 4; ++i )
+	{
 		scrollDir[i] = false;
+		letterScrollDir[i] = false;
+	}
 
 	if( m_isScrolling && TheInGameUI && TheTacticalView && TheMouse )
 		stopScrolling();

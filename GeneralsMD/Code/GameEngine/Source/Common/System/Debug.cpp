@@ -233,6 +233,23 @@ static const char *prepBuffer(const char* format, char *buffer, size_t bufferSiz
 */
 // ----------------------------------------------------------------------------
 #ifdef DEBUG_LOGGING
+/* The log used to be flushed after every line, which made each DEBUG_LOG inside a logic frame a
+	 synchronous write to disk. Single units in big fights logged update times of 60 to 145ms with
+	 nothing in the pathfinder, always beside a log line, and did not repeat on a rerun of the same
+	 seed. The file is flushed at most once a second now, and in full on every crash path before the
+	 process exits, so the last lines before a crash still reach it. */
+static const DWORD LOG_FLUSH_INTERVAL_MS = 1000;
+static DWORD theLastLogFlushMS = 0;
+
+static void flushLogFileAtMostOnceASecond(void)
+{
+	const DWORD nowMS = ::GetTickCount();
+	if (nowMS - theLastLogFlushMS < LOG_FLUSH_INTERVAL_MS)
+		return;
+	theLastLogFlushMS = nowMS;
+	fflush(theLogFile);
+}
+
 static void doLogOutput(const char *buffer)
 {
 	// log message to file
@@ -241,7 +258,7 @@ static void doLogOutput(const char *buffer)
 		if (theLogFile)
 		{
 			fprintf(theLogFile, "%s", buffer);	// note, no \n (should be there already)
-			fflush(theLogFile);
+			flushLogFileAtMostOnceASecond();
 		}
 	}
 
@@ -277,6 +294,8 @@ static int doCrashBox(const char *buffer, Bool logResult)
 #ifdef DEBUG_LOGGING
 			if (logResult)
 				DebugLog("[Abort]\n");
+			if (theLogFile)
+				fflush(theLogFile);
 #endif
 			_exit(1);
 			break;
@@ -697,6 +716,12 @@ double SimpleProfiler::getAverageTime()
 
 void ReleaseCrash(const char *reason)
 {
+#ifdef DEBUG_LOGGING
+	// the debug log is flushed on a timer, and this function ends in _exit, which skips the CRT's own flush
+	if (theLogFile)
+		fflush(theLogFile);
+#endif
+
 	/// do additional reporting on the crash, if possible
 
 	if (!DX8Wrapper_IsWindowed) {
@@ -741,6 +766,8 @@ void ReleaseCrash(const char *reason)
 		if (hadPreviousCrashLog && rotated != 0)
 			fprintf(theReleaseCrashLogFile, "(the previous crash report could not be rotated aside; %s is older than it looks)\n", prevbuf);
 		fprintf(theReleaseCrashLogFile, "\nLast error:\n%s\n\nCurrent stack:\n", g_LastErrorDump.str());
+		// The stack walk below can fault, and the reason and the registers above it must survive that.
+		fflush(theReleaseCrashLogFile);
 		const int STACKTRACE_SIZE	= 12;
 		// 1, not 6: FillStackAddresses drops its own frame itself now, so 6 skipped
 		// past everything the game did and logged two ntdll frames instead.
@@ -794,6 +821,11 @@ void ReleaseCrash(const char *reason)
 
 void ReleaseCrashLocalized(const AsciiString& p, const AsciiString& m)
 {
+#ifdef DEBUG_LOGGING
+	// see ReleaseCrash: the log is flushed on a timer and _exit below skips the CRT's flush
+	if (theLogFile)
+		fflush(theLogFile);
+#endif
 	if (!TheGameText) {
 		ReleaseCrash(m.str());
 		// This won't ever return

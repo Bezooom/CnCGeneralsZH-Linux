@@ -839,6 +839,8 @@ WinInputReturnCode GameWindowManager::winProcessKey( UnsignedByte key,
 //-------------------------------------------------------------------------------------------------
 /** Process a single mouse event through the window system */
 //-------------------------------------------------------------------------------------------------
+Bool OpenWindowOwnsPoint( Bool isOpen, Int originX, Int originY, Int width, Int height, Int x, Int y );
+
 WinInputReturnCode GameWindowManager::winProcessMouseEvent( GameWindowMessage msg,
 																														ICoord2D *mousePos,
 																														void *data )
@@ -851,6 +853,9 @@ WinInputReturnCode GameWindowManager::winProcessMouseEvent( GameWindowMessage ms
 	GameWindow *childWindow;
 	Int dx, dy;
 	Bool clearGrabWindow = FALSE;
+	// Only right-button events may reach disabled production buttons. Left clicks and
+	// hotkeys still obey the normal availability check.
+	Bool allowDisabledCancel = msg == GWM_RIGHT_DOWN || msg == GWM_RIGHT_UP;
 
 	// pack mouse coords into one entity for message passing
 	packedMouseCoords = SHORTTOLONG( mousePos->x, mousePos->y );
@@ -866,7 +871,7 @@ WinInputReturnCode GameWindowManager::winProcessMouseEvent( GameWindowMessage ms
 		m_grabWindow = NULL;
 
 		// what what window within the captured window are we in
-		window = m_mouseCaptor->winPointInChild( mousePos->x, mousePos->y );
+		window = m_mouseCaptor->winPointInChild( mousePos->x, mousePos->y, FALSE, FALSE, allowDisabledCancel );
 
 		//
 		// send buttons, drags, wheels to the windows, we don't continually
@@ -1011,11 +1016,22 @@ WinInputReturnCode GameWindowManager::winProcessMouseEvent( GameWindowMessage ms
 		else
 		{
 
-			if( m_modalHead && m_modalHead->window )
+			// the rows of an open dropdown that hang past its panel; see OpenWindowOwnsPoint
+			if( m_loneWindow )
 			{
-				window = m_modalHead->window->winPointInChild( mousePos->x, mousePos->y );
+				ICoord2D origin, size;
+				m_loneWindow->winGetScreenPosition( &origin.x, &origin.y );
+				m_loneWindow->winGetSize( &size.x, &size.y );
+				if( OpenWindowOwnsPoint( !m_loneWindow->winIsHidden(), origin.x, origin.y,
+																 size.x, size.y, mousePos->x, mousePos->y ) )
+					window = m_loneWindow->winPointInChild( mousePos->x, mousePos->y, FALSE, FALSE, allowDisabledCancel );
 			}
-			else
+
+			if( window == NULL && m_modalHead && m_modalHead->window )
+			{
+				window = m_modalHead->window->winPointInChild( mousePos->x, mousePos->y, FALSE, FALSE, allowDisabledCancel );
+			}
+			else if( window == NULL )
 			{
 			
 				/**@todo Colin, there are 3 cases here that are nearly identical code,
@@ -1045,7 +1061,7 @@ WinInputReturnCode GameWindowManager::winProcessMouseEvent( GameWindowMessage ms
 						if( BitTest( window->m_status, WIN_STATUS_ENABLED ) )
 						{
 							// determine which child window the mouse is in
-							window = window->winPointInChild( mousePos->x, mousePos->y );
+							window = window->winPointInChild( mousePos->x, mousePos->y, FALSE, FALSE, allowDisabledCancel );
 							break;  // exit for
 						}
 						
@@ -1081,7 +1097,7 @@ WinInputReturnCode GameWindowManager::winProcessMouseEvent( GameWindowMessage ms
 							if( BitTest( window->m_status, WIN_STATUS_ENABLED ))
 							{								
 								// determine which child window the mouse is in
-								window = window->winPointInChild( mousePos->x, mousePos->y );
+								window = window->winPointInChild( mousePos->x, mousePos->y, FALSE, FALSE, allowDisabledCancel );
 								break;  // exit for
 							}
 						}
@@ -1115,7 +1131,7 @@ WinInputReturnCode GameWindowManager::winProcessMouseEvent( GameWindowMessage ms
 							if( BitTest( window->m_status, WIN_STATUS_ENABLED ))
 							{
 								// determine which child window the mouse is in
-								window = window->winPointInChild( mousePos->x, mousePos->y );
+								window = window->winPointInChild( mousePos->x, mousePos->y, FALSE, FALSE, allowDisabledCancel );
 								break;  // exit for
 							}
 						}
@@ -1612,6 +1628,25 @@ Int GameWindowManager::winSetModal( GameWindow *window )
 		DEBUG_LOG(( "WinSetModal: Non Root window attempted to go modal." ));
 		return WIN_ERR_INVALID_PARAMETER;			// return error if not
 	}
+
+	// A window already on the stack moves to the top instead of going on twice.  winUnsetModal and
+	// windowHiding pop one entry, so a second one stayed behind and went on swallowing input for a
+	// window that had closed.
+	ModalWindow *previous = NULL;
+	for( ModalWindow *existing = m_modalHead; existing != NULL; previous = existing, existing = existing->next )
+	{
+		if( existing->window != window )
+			continue;
+
+		if( previous != NULL )
+		{
+			previous->next = existing->next;
+			existing->next = m_modalHead;
+			m_modalHead = existing;
+		}
+		return WIN_ERR_OK;
+	}
+
 	// Allocate new Modal Window Entry
 	modal = newInstance(ModalWindow);
 	if( modal == NULL )

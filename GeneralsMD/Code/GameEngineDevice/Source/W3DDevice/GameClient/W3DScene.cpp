@@ -449,10 +449,17 @@ void RTS3DScene::Visibility_Check(CameraClass * camera)
 
 			if( draw )
 			{
+				// The flags are last frame's.  Customized_Render leaves an occluder, and any drawable
+				// the behind-building markers delay, for the occlusion lists to draw, and this pass
+				// fills no lists, so a stale flag keeps the object out of the mirror altogether.
+				drawInfo->m_flags = DrawableInfo::ERF_IS_NORMAL;
 				if (robj->Is_Force_Visible()) {
 					robj->Set_Visible(true);
 				} else {
-					robj->Set_Visible(draw->getDrawsInMirror() && !camera->Cull_Sphere(robj->Get_Bounding_Sphere()));
+					// The same test the main pass hides a drawable by, or a unit under the fog of war,
+					// or a building standing in for its own ghost, shows up in the water and nowhere else.
+					Bool hidden = robj->Is_Hidden() || draw->isDrawableEffectivelyHidden() || draw->getFullyObscuredByShroud();
+					robj->Set_Visible(!hidden && draw->getDrawsInMirror() && !camera->Cull_Sphere(robj->Get_Bounding_Sphere()));
 				}
 			}
 			else
@@ -858,6 +865,21 @@ void RTS3DScene::renderOneObject(RenderInfoClass &rinfo, RenderObjClass *robj, I
 
 DECLARE_PERF_TIMER(translucentRender)
 
+#ifdef DEBUG_LOGGING
+extern Real TheTranslucentMS;
+extern UnsignedInt TheTranslucentDraws;
+extern UnsignedInt TheSortingPolygonsRefused;
+
+static Real sceneElapsedMS( const Int64 &from, const Int64 &to )
+{
+	Int64 freq;
+	QueryPerformanceFrequency( (LARGE_INTEGER *)&freq );
+	if( freq < 1 )
+		return 0.0f;
+	return (Real)((double)(to - from) * 1000.0 / (double)freq);
+}
+#endif
+
 /**Draw everything that was submitted from this scene*/
 void RTS3DScene::Flush(RenderInfoClass & rinfo)
 {
@@ -890,12 +912,27 @@ void RTS3DScene::Flush(RenderInfoClass & rinfo)
 
 	{
 		USE_PERF_TIMER(translucentRender)
+#ifdef DEBUG_LOGGING
+		// Timed as one block: the heat smudges at the end of DoParticles flush the sorting pool
+		// themselves, so the line between building the quads and drawing them is not here.
+		// doParticles times its own system loop into TheParticleFillMS.
+		Int64 tTranslucentStart, tTranslucentEnd;
+		const unsigned drawsBefore = DX8Wrapper::Get_Draw_Calls();
+		const unsigned refusedBefore = SortingRendererClass::Get_Refused_Polygon_Count();
+		QueryPerformanceCounter( (LARGE_INTEGER *)&tTranslucentStart );
+#endif
 
 		//don't draw transparent in this mode because they interfere with destination alpha
 		if (m_customPassMode == SCENE_PASS_DEFAULT && Get_Extra_Pass_Polygon_Mode() == EXTRA_PASS_DISABLE)
 			DoParticles(rinfo);	//queue up particles for rendering.
 
 		SortingRendererClass::Flush();	//draw sorted translucent polys like particles.
+#ifdef DEBUG_LOGGING
+		QueryPerformanceCounter( (LARGE_INTEGER *)&tTranslucentEnd );
+		TheTranslucentMS += sceneElapsedMS( tTranslucentStart, tTranslucentEnd );
+		TheTranslucentDraws += DX8Wrapper::Get_Draw_Calls() - drawsBefore;
+		TheSortingPolygonsRefused += SortingRendererClass::Get_Refused_Polygon_Count() - refusedBefore;
+#endif
 	}
 	TheDX8MeshRenderer.Clear_Pending_Delete_Lists();
 }

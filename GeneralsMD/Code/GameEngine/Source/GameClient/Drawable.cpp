@@ -2978,6 +2978,7 @@ void Drawable::drawIconUI( void )
 			return;
 		drawHealing( healthBarRegion );//call so dead things can kill their healing icons
 		drawBombed( healthBarRegion );
+		drawCaptureProgress();
 	
 	
 		//Disabled for multiplay!
@@ -4119,6 +4120,60 @@ void Drawable::drawVeterancy( const IRegion2D *healthBarRegion )
 }  // end drawVeterancy
 
 // ------------------------------------------------------------------------------------------------
+/** The capture clock, drawn under the health bar of the building being taken.
+	*
+	* A capture is a man standing at a door for several seconds and a building that flashes while it
+	* happens. The flash says somebody is taking it; it does not say whether that is nearly over or
+	* barely started, so the choice between driving over to shoot him and carrying on with the fight
+	* was made blind. The bar says how long is left.
+	*
+	* Drawn by the man rather than by the building, because he is the one who knows: a building being
+	* captured is told nothing about it until it changes hands. So this runs in the captor's icon
+	* pass and puts its rectangle under the target's health bar, in the capturing player's colour -
+	* whose capture it is, is the other half of the question.
+	*/
+// ------------------------------------------------------------------------------------------------
+void Drawable::drawCaptureProgress( void )
+{
+	const Object *obj = getObject();
+	if( obj == NULL || !obj->isKindOf( KINDOF_INFANTRY ) )
+		return;
+
+	ObjectID targetID = INVALID_ID;
+	Real progress = 0.0f;
+	if( !obj->getCaptureProgress( &targetID, &progress ) )
+		return;
+
+	const Object *target = TheGameLogic->findObjectByID( targetID );
+	const Drawable *targetDraw = target ? target->getDrawable() : NULL;
+	if( targetDraw == NULL )
+		return;
+
+	IRegion2D healthBarRegion;
+	if( !computeHealthRegion( targetDraw, healthBarRegion ) )
+		return;
+
+	const Real barWidth = healthBarRegion.hi.x - healthBarRegion.lo.x;
+	const Real barHeight = max( 3, healthBarRegion.hi.y - healthBarRegion.lo.y );
+	const Real barTop = healthBarRegion.hi.y + 2;		// clear of the health bar, and of its outline
+
+	Color fillColor = GameMakeColor( 255, 255, 255, 255 );
+	const Player *owner = obj->getControllingPlayer();
+	if( owner != NULL && owner->getPlayerColor() != 0 )
+	{
+		UnsignedByte r, g, b, a;
+		GameGetColorComponents( clientPlayerColor( owner ), &r, &g, &b, &a );
+		fillColor = GameMakeColor( r, g, b, 255 );
+	}
+
+	TheDisplay->drawOpenRect( healthBarRegion.lo.x, barTop, barWidth, barHeight,
+														1.0f, GameDarkenColor( fillColor, 60 ) );
+	TheDisplay->drawFillRect( healthBarRegion.lo.x + 1, barTop + 1,
+														(barWidth - 2) * progress, barHeight - 2, fillColor );
+
+}  // end drawCaptureProgress
+
+// ------------------------------------------------------------------------------------------------
 /** Draw health bar information for drawable */
 // ------------------------------------------------------------------------------------------------
 void Drawable::drawHealthBar(const IRegion2D* healthBarRegion)
@@ -4361,14 +4416,6 @@ void Drawable::drawHealthBar(const IRegion2D* healthBarRegion)
 				logicFps = LOGICFRAMES_PER_SECOND;
 			Int secondsLeft = REAL_TO_INT_CEIL( totalFrames * (1.0f - pct * 0.01f) / logicFps );
 
-			// everything behind the head of the queue has not started yet, so each costs its full
-			// build time (an entry builds its whole quantity at once, so quantity does not scale it)
-			Int queuedFrames = 0;
-			for( const ProductionEntry *q = pu->nextProduction( pe ); q != NULL; q = pu->nextProduction( q ) )
-				queuedFrames += q->getProductionType() == PRODUCTION_UNIT
-												? q->getProductionObject()->calcTimeToBuild( player )
-												: q->getProductionUpgrade()->calcTimeToBuild( player );
-
 			// one shared string: draw() renders immediately, and the manager lives for the whole app
 			static DisplayString *prodTimeString = NULL;
 			if( prodTimeString == NULL )
@@ -4378,13 +4425,8 @@ void Drawable::drawHealthBar(const IRegion2D* healthBarRegion)
 																TheGlobalLanguageData->adjustFontSize( TheInGameUI->getDrawableCaptionPointSize() - 2 ),
 																FALSE ) );
 			}
-			// "52s (70s)": this one, then the whole queue. Nothing behind it, no parentheses.
 			UnicodeString text;
-			if( queuedFrames > 0 )
-				text.format( L"%ds (%ds)", secondsLeft,
-										 secondsLeft + REAL_TO_INT_CEIL( INT_TO_REAL( queuedFrames ) / logicFps ) );
-			else
-				text.format( L"%ds", secondsLeft );
+			text.format( L"%ds", secondsLeft );
 			if( prodTimeString->getText().compare( text ) != 0 )
 				prodTimeString->setText( text );
 			Int textW, textH;
@@ -4394,25 +4436,6 @@ void Drawable::drawHealthBar(const IRegion2D* healthBarRegion)
 
 			// whatever comes next goes above the seconds, not through them
 			stackY = prodY - textH - 1;
-
-			// how many entries the queue holds, right-aligned on the bar (one is not worth saying)
-			if( pu->getProductionCount() > 1 )
-			{
-				static DisplayString *prodCountString = NULL;
-				if( prodCountString == NULL )
-				{
-					prodCountString = TheDisplayStringManager->newDisplayString();
-					prodCountString->setFont( prodTimeString->getFont() );
-				}
-				UnicodeString countText;
-				countText.format( L"x%d", pu->getProductionCount() );
-				if( prodCountString->getText().compare( countText ) != 0 )
-					prodCountString->setText( countText );
-				Int countW, countH;
-				prodCountString->getSize( &countW, &countH );
-				prodCountString->draw( healthBarRegion->hi.x - countW, prodY - countH,
-															 GameMakeColor( 255, 255, 255, 255 ), GameMakeColor( 0, 0, 0, 255 ) );
-			}
 		}
 
 		//

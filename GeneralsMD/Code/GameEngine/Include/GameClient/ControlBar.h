@@ -788,6 +788,19 @@ public:
 	/// find existing command set
 	const CommandSet *findCommandSet( const AsciiString& name );
 
+	/// whose promotion screen and skills are shown: your own while playing, the selected or
+	/// observed player's while watching
+	Player *getWatchedPlayer( void );
+
+	/// watching, the player whose thing is selected; NULL for nothing selected, which is the
+	/// whole-match view
+	Player *getSelectedPlayer( void );
+
+	/// watching, follow the selection: the player's readouts, his money and his side's metal
+	void updateWatchedPlayer( void );
+	void showObserverPlayerInfo( void );		///< his readouts up, the player list down
+	void showObserverPlayerList( void );		///< and back again
+
 	void showPurchaseScience( void );
 	void hidePurchaseScience( void );
 	void togglePurchaseScience( void );
@@ -838,6 +851,7 @@ public:
 
 	// Functions for repositioning/resizing the control bar
 	void switchControlBarStage( ControlBarStages stage );
+	void restoreStageAfterScheme( void );		///< a new scheme keeps a minimised bar minimised
 	void toggleControlBarStage( void );
 
 	const Image *getStarImage( void );
@@ -941,6 +955,13 @@ public:
 
 	/// how far down that panel has slid, in pixels - the plate art travels with its windows
 	Int getPanelSlideOffset( Int panel ) const;
+
+	/** TRUE when a click at this screen point, over this window, belongs to the world after all: the
+		* window is one of the bar's input-blocking panes or CenterBackground, no window inside it is
+		* under the point, and every plate painted there is transparent at that texel.  The panes are
+		* rectangles and the plates are not, so without this a click on the sky above a sloped edge
+		* went nowhere.  GameWindow::winPointInChild asks, so clicking and unit picking agree. */
+	Bool letsClickThrough( GameWindow *window, Int x, Int y );
 
 	/// the same journey as a fraction, 0 home and 1 gone.  Needs no display, which is why the test
 	/// for the rebuild ordering asks this one; see clearPanelSlide
@@ -1260,6 +1281,8 @@ protected:
 
 	Bool m_isObserverCommandBar;												///< If this is true, the command bar behaves greatly differnt
 	Player *m_observerLookAtPlayer;											///< The current player we're looking at, Null if we're not looking at anyone.
+	AsciiString m_watchedSide;													///< the side the bar is wearing while watching, so a selection change only lays it out again when it really changes side
+	Player *m_watchedSelection;													///< the player the selection last named while watching, NULL for nobody
 
 	WindowLayout *m_buildToolTipLayout;										///< The window that will slide on/display tooltips
 	Bool m_showBuildToolTipLayout;											///< every frame we test to see if we aregoing to continue showing this or not.
@@ -1372,6 +1395,12 @@ struct ControlBarPlate
 /** The plate 'panel' wears while the bar is dressed in 'side'.  A general's scheme names a side
 	* like "ChinaTankGeneral", so the match is on the front of the name.  NULL when nothing fits. */
 extern const ControlBarPlate *ControlBarPlateForSide( const AsciiString& side, Int panel );
+
+/** One flag per texel of a plate's painting, read out of its targa (32 bits, plain or run-length
+	* encoded), row 0 at the top: 1 where the painting is solid enough to catch a click.  FALSE, and
+	* nothing to rely on in 'mask', for anything that is not a 32-bit targa at least artW by artH. */
+extern Bool ControlBarPlateMaskFromTarga( const UnsignedByte *data, Int length, Int artW, Int artH,
+																				 std::vector<UnsignedByte> &mask );
 
 /** Where a design rectangle belonging to 'panel' lands on a display this size.  This is the one
 	* piece of arithmetic the whole layout is built out of: one uniform scale, and an anchor that

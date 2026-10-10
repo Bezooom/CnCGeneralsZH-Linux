@@ -26,6 +26,7 @@
 #include "Common/GlobalData.h"
 #include "Common/UserPreferences.h"
 #include "GameClient/PlayerColorScheme.h"
+#include "GameClient/View.h"
 
 //-----------------------------------------------------------------------------
 // The accessors.  Each is two lines and exists only because a member pointer cannot span Bool and
@@ -41,6 +42,18 @@
 	static Int get_##field( void ) { return TheGlobalData->field; }															\
 	static void set_##field( Int value ) { TheWritableGlobalData->field = value; }
 
+OPTION_BOOL_ACCESSORS( m_useCameraConstraints )
+
+static Int get_m_cameraBoundaryMargin( void ) { return TheGlobalData->m_cameraBoundaryMargin; }
+static void set_m_cameraBoundaryMargin( Int value )
+{
+	TheWritableGlobalData->m_cameraBoundaryMargin = value;
+	if (TheTacticalView)
+	{
+		TheTacticalView->forceCameraConstraintRecalc();
+		TheTacticalView->forceRedraw();
+	}
+}
 OPTION_BOOL_ACCESSORS( m_edgeScrollInWindowedMode )
 OPTION_BOOL_ACCESSORS( m_snapCameraRotateTo45 )
 OPTION_BOOL_ACCESSORS( m_zoomToCursor )
@@ -56,6 +69,18 @@ OPTION_INT_ACCESSORS( m_msaaLevel )
 OPTION_BOOL_ACCESSORS( m_vsync )
 OPTION_INT_ACCESSORS( m_healthBarMode )
 OPTION_INT_ACCESSORS( m_playerColorScheme )
+OPTION_INT_ACCESSORS( m_textLanguage )
+OPTION_INT_ACCESSORS( m_inputScheme )
+OPTION_BOOL_ACCESSORS( m_wasdCamera )
+OPTION_BOOL_ACCESSORS( m_showOrderLines )
+OPTION_BOOL_ACCESSORS( m_useShadowVolumesForSkins )
+OPTION_BOOL_ACCESSORS( m_shadowsForProjectiles )
+OPTION_BOOL_ACCESSORS( m_shadowsForProps )
+OPTION_BOOL_ACCESSORS( m_shadowsForParticles )
+OPTION_BOOL_ACCESSORS( m_particleGroundBounce )
+OPTION_BOOL_ACCESSORS( m_showProductionStrip )
+OPTION_BOOL_ACCESSORS( m_showSkillStrip )
+OPTION_BOOL_ACCESSORS( m_showSuperweaponStrip )
 
 //-----------------------------------------------------------------------------
 static const unsigned TheMsaaSamples[ OPTION_MSAA_LEVEL_COUNT ] = { 0, 2, 4, 8, 16 };
@@ -116,6 +141,21 @@ static Int nearestLevel( const Int *percents, Int count, Int percent )
 	return best;
 }
 
+// Bare -smoke is 2, and 4 is where the thicker smoke was measured at 0.7 ms a frame over a burning
+// column.  The switch goes to 8; a level for that would be a slider position nobody could see
+// through.
+static const Int TheSmokeThicknesses[ SMOKE_LEVEL_COUNT ] = { 0, 2, 4 };
+
+static Int get_smokeLevel( void )
+{
+	return nearestLevel( TheSmokeThicknesses, SMOKE_LEVEL_COUNT, REAL_TO_INT( TheGlobalData->m_smokeThickness ) );
+}
+
+static void set_smokeLevel( Int level )
+{
+	TheWritableGlobalData->m_smokeThickness = (Real)TheSmokeThicknesses[ clampLevel( level, SMOKE_LEVEL_COUNT ) ];
+}
+
 static Int get_bloomLevel( void )
 {
 	return nearestLevel( TheBloomPercents, BLOOM_LEVEL_COUNT, TheGlobalData->m_bloomIntensity );
@@ -154,10 +194,18 @@ const OptionDef TheOptionCatalog[] =
 {
 	// iniKey, widgetName, labelKey, kind, apply, lo, hi, get, set
 
-	// The four camera and mouse habits below have no control in OptionsMenu.wnd any more.  They are
+	// The camera and mouse habits below have no control in OptionsMenu.wnd any more.  They are
 	// not gone: an empty widgetName only makes the menu passes skip the row, so Options.ini still
 	// loads, clamps and saves each one and a player who wants the old behaviour can put the key
 	// back by hand.  The defaults in GlobalData are what everybody else gets.
+
+	{ "UseCameraConstraints", "", "",
+		OPTION_BOOL, APPLY_LIVE, 0, 1,
+		get_m_useCameraConstraints, set_m_useCameraConstraints },
+
+	{ "CameraBoundaryMargin", "", "",
+		OPTION_INT, APPLY_LIVE, 0, 1000,
+		get_m_cameraBoundaryMargin, set_m_cameraBoundaryMargin },
 
 	// Retail refuses to edge-scroll in a window because the cursor can legitimately sit on the
 	// border while you reach for something else; on a second monitor, or borderless, that is
@@ -172,7 +220,10 @@ const OptionDef TheOptionCatalog[] =
 
 	// MiddleMousePans used to sit here.  The middle button is the only camera drag there is now, so
 	// there is nothing left to choose: it pans, and Ctrl turns the same drag into a rotate.
-	{ "ZoomToCursor",							"", "",
+
+	// Back on Options > Controls: players split on whether the wheel should chase the cursor, and
+	// Legacy zooms on the middle of the screen whatever this says.
+	{ "ZoomToCursor",							OPT_WND( "CheckZoomToCursor" ), "GUI:ZoomToCursor",
 		OPTION_BOOL, APPLY_LIVE, 0, 1,
 		get_m_zoomToCursor, set_m_zoomToCursor },
 
@@ -267,6 +318,80 @@ const OptionDef TheOptionCatalog[] =
 	{ "PlayerColors",							OPT_WND( "ComboBoxPlayerColors" ), "GUI:PlayerColors",
 		OPTION_ENUM, APPLY_LIVE, 0, PLAYER_COLOR_SCHEME_COUNT - 1,
 		get_m_playerColorScheme, set_m_playerColorScheme },
+
+	// Modern or Legacy.  Legacy is the mouse and the keys the game shipped with and switches off what
+	// this fork added to both.  Every click and key asks, so it changes the moment Accept is pressed,
+	// and it is local: two players in one match can give orders two different ways.
+	// The line from each selected unit to where it is going, with every point of a shift queue after
+	// it.  The list is rebuilt from the units every frame, so turning it off takes the lines away at
+	// once and turning it back on shows the orders already given.
+	{ "OrderLines",								OPT_WND( "CheckOrderLines" ), "GUI:OrderLines",
+		OPTION_BOOL, APPLY_LIVE, 0, 1,
+		get_m_showOrderLines, set_m_showOrderLines },
+
+	{ "InputScheme",							OPT_WND( "ComboBoxInputScheme" ), "GUI:InputScheme",
+		OPTION_ENUM, APPLY_LIVE, 0, INPUT_SCHEME_COUNT - 1,
+		get_m_inputScheme, set_m_inputScheme },
+
+	// W A S D on the camera, and the keys they held moved to F G H J K.  Modern only: the box greys
+	// while Legacy is picked, and a tick saved under Modern is kept but ignored until Modern is back.
+	// Every key asks, and Accept rebuilds the command bar's letters, so it changes at once.
+	{ "WasdCamera",								OPT_WND( "CheckWasdCamera" ), "GUI:WasdCamera",
+		OPTION_BOOL, APPLY_LIVE, 0, 1,
+		get_m_wasdCamera, set_m_wasdCamera },
+
+	// Which language the words are in.  English is the string table the game shipped with, and every
+	// other entry is a translation laid over it, so a line the translation lacks stays English.  The
+	// table is built once while the game starts: a new language is on screen from the next launch.
+	// Purely local, like the colours above - two players in one match can read it in two languages.
+	{ "TextLanguage",							OPT_WND( "ComboBoxLanguage" ), "GUI:Language",
+		OPTION_ENUM, APPLY_RESTART, 0, TEXT_LANGUAGE_COUNT - 1,
+		get_m_textLanguage, set_m_textLanguage },
+
+	// The Effects page.  These four sat in GameData.ini with no control, all on.  Each is read when the
+	// thing that casts the shadow is made, so a change shows on the next map rather than on the units
+	// already standing there - except smoke clouds, which ask every frame.
+	{ "UseShadowVolumesForSkins",	OPT_WND( "CheckInfantryShadows" ), "GUI:InfantryShadows",
+		OPTION_BOOL, APPLY_LIVE, 0, 1,
+		get_m_useShadowVolumesForSkins, set_m_useShadowVolumesForSkins },
+
+	{ "ShadowsForProjectiles",		OPT_WND( "CheckProjectileShadows" ), "GUI:ProjectileShadows",
+		OPTION_BOOL, APPLY_LIVE, 0, 1,
+		get_m_shadowsForProjectiles, set_m_shadowsForProjectiles },
+
+	{ "ShadowsForProps",					OPT_WND( "CheckPropShadows" ), "GUI:PropShadows",
+		OPTION_BOOL, APPLY_LIVE, 0, 1,
+		get_m_shadowsForProps, set_m_shadowsForProps },
+
+	{ "ShadowsForParticles",			OPT_WND( "CheckParticleShadows" ), "GUI:ParticleShadows",
+		OPTION_BOOL, APPLY_LIVE, 0, 1,
+		get_m_shadowsForParticles, set_m_shadowsForParticles },
+
+	// -smoke and -particlebounce as settings.  Both are spent on the particle system templates while
+	// the particle manager starts, so they wait for the next launch.  The command line is parsed after
+	// this catalog loads, so either switch still wins for the one run it is given.
+	{ "Smoke",										OPT_WND( "ComboBoxSmoke" ), "GUI:Smoke",
+		OPTION_ENUM, APPLY_RESTART, 0, SMOKE_LEVEL_COUNT - 1,
+		get_smokeLevel, set_smokeLevel },
+
+	{ "ParticleBounce",						OPT_WND( "CheckParticleBounce" ), "GUI:ParticleBounce",
+		OPTION_BOOL, APPLY_RESTART, 0, 1,
+		get_m_particleGroundBounce, set_m_particleGroundBounce },
+
+	// The strips over the battlefield while watching a match.  They have no control in the options
+	// menu: a spectator switches them from the drop-down in the top left corner, which writes them
+	// back itself.  Playing, every strip is drawn whatever these say.
+	{ "ShowProductionStrip",			NULL, "GUI:HudProductionStrip",
+		OPTION_BOOL, APPLY_LIVE, 0, 1,
+		get_m_showProductionStrip, set_m_showProductionStrip },
+
+	{ "ShowSkillStrip",						NULL, "GUI:HudSkillStrip",
+		OPTION_BOOL, APPLY_LIVE, 0, 1,
+		get_m_showSkillStrip, set_m_showSkillStrip },
+
+	{ "ShowSuperweaponStrip",			NULL, "GUI:HudSuperweaponStrip",
+		OPTION_BOOL, APPLY_LIVE, 0, 1,
+		get_m_showSuperweaponStrip, set_m_showSuperweaponStrip },
 
 	{ NULL, NULL, NULL, OPTION_BOOL, APPLY_LIVE, 0, 0, NULL, NULL }
 };

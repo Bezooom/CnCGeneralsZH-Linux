@@ -1487,10 +1487,10 @@ Relationship Team::getRelationship(const Team *that) const
 		Player* thatPlayer = that->getControllingPlayer();
 		if (thatPlayer != NULL)
 		{
-			PlayerRelationMapType::const_iterator it = m_playerRelations->m_map.find(thatPlayer->getPlayerIndex());
-			if (it != m_playerRelations->m_map.end())
+			Relationship r;
+			if (m_playerRelations->lookup(thatPlayer->getPlayerIndex(), &r))
 			{
-				return (*it).second;
+				return r;
 			}
 		}
 	}
@@ -1593,7 +1593,7 @@ void Team::setOverridePlayerRelationship( Int playerIndex, Relationship r )
 	if (playerIndex != PLAYER_INDEX_INVALID)
 	{
 		// note that this creates the entry if it doesn't exist.
-		m_playerRelations->m_map[playerIndex] = r;
+		m_playerRelations->assign(playerIndex, r);
 	}
 }
 
@@ -1604,15 +1604,13 @@ Bool Team::removeOverridePlayerRelationship( Int playerIndex )
 	{
 		if (playerIndex == PLAYER_INDEX_INVALID)
 		{
-			m_playerRelations->m_map.clear();
+			m_playerRelations->removeAll();
 			return true;
 		}
 		else
 		{
-			PlayerRelationMapType::iterator it = m_playerRelations->m_map.find(playerIndex);
-			if (it != m_playerRelations->m_map.end())
+			if (m_playerRelations->remove(playerIndex))
 			{
-				m_playerRelations->m_map.erase(it);
 				return true;
 			}
 		}
@@ -1698,6 +1696,12 @@ void Team::iterateObjects( ObjectIterateFunc func, void *userData )
 }
 
 // ------------------------------------------------------------------------
+static Bool objectKeepsOwnerAlive(const Object *obj)
+{
+	return Object_keepsOwnerAlive(obj->testStatus(OBJECT_STATUS_UNDER_CONSTRUCTION), obj->getConstructionPercent());
+}
+
+// ------------------------------------------------------------------------
 Bool Team::hasAnyBuildings() const
 {
 	for (DLINK_ITERATOR<Object> iter = iterate_TeamMemberList(); !iter.done(); iter.advance())
@@ -1705,7 +1709,10 @@ Bool Team::hasAnyBuildings() const
 		if (iter.cur()->isEffectivelyDead())
 			continue;
 
-		if (iter.cur()->isDestroyed()) 
+		if (iter.cur()->isDestroyed())
+			continue;
+
+		if (!objectKeepsOwnerAlive(iter.cur()))
 			continue;
 
 		if (iter.cur()->isKindOf(KINDOF_STRUCTURE))
@@ -1722,7 +1729,10 @@ Bool Team::hasAnyBuildings(KindOfMaskType kindOf) const
 		if (iter.cur()->isEffectivelyDead())
 			continue;
 
-		if (iter.cur()->isDestroyed()) 
+		if (iter.cur()->isDestroyed())
+			continue;
+
+		if (!objectKeepsOwnerAlive(iter.cur()))
 			continue;
 
 		kindOf.set(KINDOF_STRUCTURE);
@@ -1803,6 +1813,9 @@ Bool Team::hasAnyObjects() const
 			// Mines don't count.
 			continue;
 		}
+
+		if (!objectKeepsOwnerAlive(iter.cur()))
+			continue;
 
 		return true;
 	}

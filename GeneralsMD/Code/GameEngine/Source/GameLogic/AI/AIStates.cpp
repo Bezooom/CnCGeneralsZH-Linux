@@ -2632,7 +2632,15 @@ StateReturnType AIAttackApproachTargetState::onEnter()
 			}
 		}
 
-		// Check here:  If we are a player, and we got to this state via an ai command (ie we auto-acquired), 
+		// A Stinger soldier is its site's weapon.  Its SlavedUpdate has no guard range, so nothing ever walks
+		// it home: a computer player's soldier followed a reversing tank across the map and stood wherever
+		// the tank died.  Like the site, it shoots what is in range or nothing.
+		if (source->isKindOf(KINDOF_SPAWNS_ARE_THE_WEAPONS))
+		{
+			return STATE_FAILURE;
+		}
+
+		// Check here:  If we are a player, and we got to this state via an ai command (ie we auto-acquired),
 		// we don't want to chase the unit. isAllowedToChase is set when we are in a deploy and attack state (troop crawler).
 		// Kris (July 2003): If we are retaliating... don't fail out!
 		if( ai->getCurrentStateID() != AI_GUARD_RETALIATE )
@@ -5573,6 +5581,17 @@ StateReturnType AIAttackAimAtTargetState::update()
 //			if (m_isAttackingObject && source->canCrushOrSquish(victim)) {
 //				return STATE_SUCCESS;
 //			}
+
+			// The fire state holds the round when the victim is already paid for, and falls back to aiming,
+			// which is fine for a unit that leaves this state; a turret's aim never does.  A Gattling Cannon
+			// that had picked the tank itself went silent until the booking lapsed, with a second tank
+			// driving up.  Let go of a target we chose ourselves: the scan that chose it passes over doomed
+			// ones.  An order is kept, as the fire state promises.
+			if (m_isAttackingObject && sourceAI->getLastCommandSource() == CMD_FROM_AI &&
+					IncomingDamageTracker::isSpokenFor(victim, source->getID()))
+			{
+				return STATE_FAILURE;
+			}
 			return STATE_CONTINUE;
 		}
 
@@ -5712,11 +5731,56 @@ StateReturnType AIAttackFireWeaponState::onEnter()
 		}
 	}
 
-	m_saidHeldFire = FALSE;
-
 	obj->setStatus( MAKE_OBJECT_STATUS_MASK( OBJECT_STATUS_IS_FIRING_WEAPON ) );
 	obj->preFireCurrentWeapon( getMachineGoalObject() );
 	return STATE_CONTINUE;
+}
+
+//----------------------------------------------------------------------------------------------------------
+/**
+ * Passengers firing out of the same transport or building take turns with the others carrying the same
+ * weapon, instead of all loosing on the one frame the attack order reached them.  After the group's last
+ * shot the rest wait that shooter's reload divided by the size of the group, so five rocket soldiers in a
+ * Humvee still put five rockets out per reload, spread across it rather than stacked on one frame.  Rifles
+ * and rockets are separate groups, so a rifle never waits behind a rocket.
+ *
+ * Only a shot already fired is read, and the object walk is the same on every machine, so this adds no
+ * state of its own.
+ */
+static Bool isWaitingForPassengerTurn(const Object *passenger, const Weapon *weapon)
+{
+	const Object *container = passenger->getContainedBy();
+	if (!container || !container->getContain()->isPassengerAllowedToFire(passenger->getID()))
+		return FALSE;
+
+	const ContainedItemsList *passengers = container->getContain()->getContainedItemsList();
+	Int groupSize = 0;
+	UnsignedInt groupLastShotFrame = 0;
+	UnsignedInt groupReloadFrames = 0;
+	for (ContainedItemsList::const_iterator it = passengers->begin(); it != passengers->end(); ++it)
+	{
+		const Weapon *otherWeapon = (*it)->getCurrentWeapon();
+		if (!otherWeapon || otherWeapon->getTemplate() != weapon->getTemplate())
+			continue;
+
+		++groupSize;
+		// an empty weapon that does not reload by itself never fires again, and its next shot frame is
+		// parked at the end of time
+		if (*it == passenger || otherWeapon->getStatus() == OUT_OF_AMMO)
+			continue;
+
+		if (otherWeapon->getLastShotFrame() > groupLastShotFrame)
+		{
+			groupLastShotFrame = otherWeapon->getLastShotFrame();
+			groupReloadFrames = otherWeapon->getPossibleNextShotFrame() - groupLastShotFrame;
+		}
+	}
+
+	if (groupLastShotFrame == 0)
+		return FALSE;
+
+	UnsignedInt turnFrames = groupReloadFrames / groupSize;
+	return TheGameLogic->getFrame() - groupLastShotFrame < turnFrames;
 }
 
 //----------------------------------------------------------------------------------------------------------
@@ -5756,18 +5820,7 @@ StateReturnType AIAttackFireWeaponState::update()
 		// damage lapses on its own if the shot never lands, so nothing holds fire forever.
 		//
 		if (IncomingDamageTracker::isSpokenFor(victim, obj->getID()))
-		{
-			if (!m_saidHeldFire)
-			{
-				m_saidHeldFire = TRUE;
-				DEBUG_LOG(("held fire: %s holds, %s has %.0f left and %.0f is already in the air\n",
-									 obj->getTemplate()->getName().str(),
-									 victim->getTemplate()->getName().str(),
-									 victim->getBodyModule()->getHealth(),
-									 IncomingDamageTracker::getBookedDamage(victim->getID())));
-			}
 			return STATE_FAILURE;
-		}
 
 		// still ours to take, so keep saying so: the wind-up before a shot can run for a second and
 		// nothing is in the air during it
@@ -5786,6 +5839,12 @@ StateReturnType AIAttackFireWeaponState::update()
 		return STATE_CONTINUE;
 	} 
 	else if (status != READY_TO_FIRE)
+	{
+		return STATE_FAILURE;
+	}
+
+	// back to aiming, the same way a reload waits
+	if (isWaitingForPassengerTurn(obj, weapon))
 	{
 		return STATE_FAILURE;
 	}

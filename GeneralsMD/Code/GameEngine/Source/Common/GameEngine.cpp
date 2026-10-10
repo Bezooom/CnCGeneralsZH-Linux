@@ -699,6 +699,22 @@ void GameEngine::init( int argc, char *argv[] )
 	#endif/////////////////////////////////////////////////////////////////////////////////////////////
 
 
+		// Every INI below comes out of INIZH.big beside the exe.  Started anywhere else, the unzipped
+		// package folder being the usual place, the first of them failed to open and the player got
+		// EA's "viruses, overheated hardware" box, which names nothing they can act on.
+		if (!TheFileSystem->doesFileExist("Data\\INI\\Default\\GameData.ini"))
+		{
+			Char gameDirectory[ _MAX_PATH ];
+			GetCurrentDirectory( ARRAY_SIZE(gameDirectory), gameDirectory );
+			DEBUG_LOG(("GameEngine::init - Data\\INI\\Default\\GameData.ini is in no archive under %s\n", gameDirectory));
+
+			AsciiString message;
+			message.format("Zero Hour's game files are not in\n\n%s\n\nThis generals.exe has to be in the Zero Hour folder, the one with INIZH.big in it. Run install.bat from the zip instead of starting the game in the folder it was unzipped to.", gameDirectory);
+			extern int MessageBoxWrapper( LPCSTR lpText, LPCSTR lpCaption, UINT uType );
+			MessageBoxWrapper( message.str(), "Command & Conquer Generals Zero Hour", MB_OK | MB_TASKMODAL | MB_ICONERROR );
+			_exit(1);
+		}
+
 		initSubsystem(TheWritableGlobalData, "TheWritableGlobalData", MSGNEW("GameEngineSubsystem") GlobalData(), &xferCRC, "Data\\INI\\Default\\GameData.ini", "Data\\INI\\GameData.ini");
 
 
@@ -811,7 +827,7 @@ void GameEngine::init( int argc, char *argv[] )
 			 loose copy of FXList.ini because a loose copy shadows the whole 190K shipped file: it goes
 			 stale against every patch, it cannot be reviewed, and - since it lands in the INI CRC below -
 			 it silently refuses every multiplayer join from a machine that does not have the same one. */
-		ini.load( AsciiString( "Data\\INI\\FXListReborn.ini" ), INI_LOAD_OVERWRITE, &xferCRC );
+		ini.load( AsciiString( "Data\\INI\\FXListReforged.ini" ), INI_LOAD_OVERWRITE, &xferCRC );
 		initSubsystem(TheWeaponStore,"TheWeaponStore", MSGNEW("GameEngineSubsystem") WeaponStore(), &xferCRC, NULL, "Data\\INI\\Weapon.ini");
 		initSubsystem(TheObjectCreationListStore,"TheObjectCreationListStore", MSGNEW("GameEngineSubsystem") ObjectCreationListStore(), &xferCRC, "Data\\INI\\Default\\ObjectCreationList.ini", "Data\\INI\\ObjectCreationList.ini");
 		initSubsystem(TheLocomotorStore,"TheLocomotorStore", MSGNEW("GameEngineSubsystem") LocomotorStore(), &xferCRC, NULL, "Data\\INI\\Locomotor.ini");
@@ -874,6 +890,8 @@ void GameEngine::init( int argc, char *argv[] )
 		AsciiString fname;
 		fname.format("Data\\%s\\CommandMap.ini", GetRegistryLanguage().str());
 		initSubsystem(TheMetaMap,"TheMetaMap", MSGNEW("GameEngineSubsystem") MetaMap(), NULL, fname.str(), "Data\\INI\\CommandMap.ini");
+		// Legacy mouse and keyboard answers to the game's own map and to nothing this fork binds
+		TheMetaMap->loadLegacyBindings(fname);
 
 #if defined(_DEBUG) || defined(_INTERNAL)
 		ini.load("Data\\INI\\CommandMapDebug.ini", INI_LOAD_MULTIFILE, NULL);
@@ -882,6 +900,9 @@ void GameEngine::init( int argc, char *argv[] )
 #if defined(_ALLOW_DEBUG_CHEATS_IN_RELEASE)
 		ini.load("Data\\INI\\CommandMapDemo.ini", INI_LOAD_MULTIFILE, NULL);
 #endif
+
+		// Modern with W A S D on the camera: everything Modern binds above, and the keys that moves
+		TheMetaMap->loadWasdBindings("Data\\INI\\CommandMapWASD.ini");
 
 
 		initSubsystem(TheActionManager,"TheActionManager", MSGNEW("GameEngineSubsystem") ActionManager(), NULL);
@@ -1225,6 +1246,28 @@ extern Real TheUIPostDrawMS;			///< ...of which the overlays and the HUD strips
 extern Real TheWindowRepaintMS;		///< ...and the window system's repaint
 extern Real TheStripGatherMS;			///< ...of the overlays, the production strip's sweep
 extern Real TheStripDrawMS;				///< ...and the production strip's own drawing
+extern Real TheParticleUpdateMS;		///< GameClient.cpp: the three places particles cost
+extern Real TheParticleFillMS;
+extern Real TheTranslucentMS;
+extern UnsignedInt TheTranslucentDraws;
+extern UnsignedInt TheSortingPolygonsRefused;
+extern UnsignedInt TheParticlesPastGroupLimit;
+
+/** Particle cost summed over an unattended run, per drawn frame, for HEADLESS PARTICLECOST. */
+struct ParticleCostTotals
+{
+	Int			m_passes;
+	double	m_updateMS;
+	double	m_fillMS;
+	double	m_flushMS;
+	double	m_draws;
+	double	m_particles;
+	double	m_onScreen;
+	double	m_refusedPolygons;
+	double	m_pastGroupLimit;
+	UnsignedInt	m_peakParticles;
+};
+static ParticleCostTotals theParticleCost;
 
 #endif
 
@@ -1388,6 +1431,9 @@ static void startFrameTimeStats( void )
 	theFrameTimes.reset();
 	theLogicTimes.reset();
 	theFrameTimesStarted = TRUE;
+#ifdef DEBUG_LOGGING
+	memset( &theParticleCost, 0, sizeof(theParticleCost) );
+#endif
 }
 
 static void reportFrameTimeStats( void )
@@ -1425,6 +1471,19 @@ static void reportFrameTimeStats( void )
 							 (Int)TheGlobalData->m_useHeatEffects,
 							 lodName));
 	}
+
+#ifdef DEBUG_LOGGING
+	if( theParticleCost.m_passes > 0 )
+	{
+		const double passes = (double)theParticleCost.m_passes;
+		DEBUG_LOG(("HEADLESS PARTICLECOST: per drawn frame | update %.3f fill %.3f translucent flush %.3f ms | %.1f translucent draws | %.0f particles, %.0f on screen, peak %u | not drawn: %.0f polygons refused by the sorting pool, %.0f particles past the per-system limit\n",
+							 theParticleCost.m_updateMS / passes, theParticleCost.m_fillMS / passes,
+							 theParticleCost.m_flushMS / passes, theParticleCost.m_draws / passes,
+							 theParticleCost.m_particles / passes, theParticleCost.m_onScreen / passes,
+							 theParticleCost.m_peakParticles,
+							 theParticleCost.m_refusedPolygons / passes, theParticleCost.m_pastGroupLimit / passes));
+	}
+#endif
 
 	if( theLogicTimes.count() > 0 )
 	{
@@ -2041,6 +2100,8 @@ void GameEngine::update( void )
 		Int logicTicks = 0;
 		TheClientDrawMS = TheSceneDrawMS = TheUIDrawMS = TheUIPostDrawMS = TheWindowRepaintMS = 0.0f;
 		TheStripGatherMS = TheStripDrawMS = 0.0f;
+		TheParticleUpdateMS = TheParticleFillMS = TheTranslucentMS = 0.0f;
+		TheTranslucentDraws = TheSortingPolygonsRefused = TheParticlesPastGroupLimit = 0;
 		QueryPerformanceCounter( (LARGE_INTEGER *)&tClientStart );
 #endif
 
@@ -2208,6 +2269,21 @@ void GameEngine::update( void )
 		fpsWinTotal += TheWindowRepaintMS;
 		fpsStripGatherTotal += TheStripGatherMS;
 		fpsStripDrawTotal += TheStripDrawMS;
+		if( theFrameTimesStarted && TheParticleSystemManager )
+		{
+			const UnsignedInt particles = TheParticleSystemManager->getParticleCount();
+			++theParticleCost.m_passes;
+			theParticleCost.m_updateMS += TheParticleUpdateMS;
+			theParticleCost.m_fillMS += TheParticleFillMS;
+			theParticleCost.m_flushMS += TheTranslucentMS - TheParticleFillMS;
+			theParticleCost.m_draws += TheTranslucentDraws;
+			theParticleCost.m_refusedPolygons += TheSortingPolygonsRefused;
+			theParticleCost.m_pastGroupLimit += TheParticlesPastGroupLimit;
+			theParticleCost.m_particles += particles;
+			theParticleCost.m_onScreen += TheParticleSystemManager->getOnScreenParticleCount();
+			if( particles > theParticleCost.m_peakParticles )
+				theParticleCost.m_peakParticles = particles;
+		}
 		if( TheClientDrawMS > fpsDrawMax ) fpsDrawMax = TheClientDrawMS;
 		fpsLogicTotal += logicMS;
 		fpsLogicTicks += logicTicks;

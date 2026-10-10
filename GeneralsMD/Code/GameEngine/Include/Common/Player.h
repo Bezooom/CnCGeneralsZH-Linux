@@ -240,11 +240,37 @@ public:
 		* m_map from public access and make access methods for our operations */
 	PlayerRelationMapType m_map;
 
+	/* Every "is that unit my enemy" asked in a fight ends in a hash lookup on this map, keyed by a
+		 player index that is never more than fifteen: 3% of a 530-unit battle. The map stays the saved
+		 form; this array is the same contents indexed directly, and every write goes through the three
+		 calls below so the two cannot drift. */
+	Bool lookup( PlayerIndex index, Relationship *r ) const
+	{
+		if (index < 0 || index >= MAX_PLAYER_COUNT)
+		{
+			PlayerRelationMapType::const_iterator it = m_map.find( index );
+			if (it == m_map.end())
+				return FALSE;
+			*r = (*it).second;
+			return TRUE;
+		}
+		if (!m_present[index])
+			return FALSE;
+		*r = m_dense[index];
+		return TRUE;
+	}
+	void assign( PlayerIndex index, Relationship r );
+	Bool remove( PlayerIndex index );
+	void removeAll( void );
+
 protected:
 
 	virtual void crc( Xfer *xfer );
 	virtual void xfer( Xfer *xfer );
 	virtual void loadPostProcess( void );
+
+	Relationship m_dense[ MAX_PLAYER_COUNT ];
+	Bool m_present[ MAX_PLAYER_COUNT ];
 
 };
 
@@ -525,6 +551,12 @@ public:
 
 	/// Have the ai check for bridges.
 	virtual Bool checkBridges(Object *unit, Waypoint *way);
+
+	/// The skirmish approach this player's team should take: the script's choice, unless the AI reads the map.
+	AsciiString chooseApproachLabel(const Coord3D *from, const AsciiString &requested, Int pathSuffix);
+
+	/// TRUE when the AI parks this team to go out with the rest of its wave instead of on its own.
+	Bool holdTeamForWave(Team *team, const AsciiString &approach, Int pathSuffix);
 
 	/// Get the center of the ai's base.
 	virtual Bool getAiBaseCenter(Coord3D *pos);

@@ -446,7 +446,7 @@ public:  // ********************************************************************
 		ObjectID owner;					///< the selected unit this one belongs to
 		UnsignedInt bornMs;			///< when the marker first appeared, so it can be slid in
 	};
-	const std::vector<OrderHint>& getOrderHints( void ) const { return m_orderHints; }
+	const std::vector<OrderHint>& getOrderHints( void ) const { return m_drawnOrderHints; }
 
 	// Where each ally's mouse is pointing.  A network game only: the position arrives about ten
 	// times a second on a side channel of its own, carries nothing the simulation reads, and is
@@ -511,7 +511,7 @@ public:  // ********************************************************************
 	void showNamedTimerDisplay( Bool show );
 
 	// mouse mode interface
-	virtual void setScrolling( Bool isScrolling );							///< set right-click scroll mode
+	virtual void setScrolling( Bool isScrolling, Bool moveCursor = TRUE );	///< set scroll mode; moveCursor puts up the scroll arrows and takes them down
 	virtual Bool isScrolling( void );														///< are we scrolling?
 	virtual void setSelecting( Bool isSelecting );							///< set drag select mode
 	virtual Bool isSelecting( void );														///< are we selecting?
@@ -688,9 +688,6 @@ public:  // ********************************************************************
 
 	virtual void setRadiusCursor(RadiusCursorType r, const SpecialPowerTemplate* sp, WeaponSlotType wslot);
 	virtual void setRadiusCursorNone() { setRadiusCursor(RADIUSCURSOR_NONE, NULL, PRIMARY_WEAPON); }
-	/// ring an explicit radius with the guard-area decal; used while placing a defensive structure,
-	/// where there is no Object yet to read a weapon range off.
-	virtual void setRadiusCursorForRadius(Real radius);
 
 	virtual void setInputEnabled( Bool enable );										///< Set the input enabled or disabled
 	virtual void clearModifierModes( void );												///< forget every mode a held key puts us in (see the definition)
@@ -777,6 +774,11 @@ public:  // ********************************************************************
 	enum { SUPERWEAPON_STRIP_COLS = 6 };		///< cameos in one row, the soonest at the right hand end
 	enum { SUPERWEAPON_STRIP_ROWS = 3 };		///< rows of them, and the rest become a "+N"
 	enum { SUPERWEAPON_STRIP_MAX = SUPERWEAPON_STRIP_COLS * SUPERWEAPON_STRIP_ROWS };
+
+	enum { SKILL_STRIP_COLS = 6 };			///< bought promotions in one row, under the countdowns
+	enum { SKILL_STRIP_ROWS = 8 };			///< a row per player watching the whole match, or one
+																			///  player's promotions wrapped over as many as they need
+	enum { SKILL_STRIP_MAX = SKILL_STRIP_COLS * SKILL_STRIP_ROWS };
 	struct SuperweaponIconSlot
 	{
 		const Image *	image;							///< the cameo the command bar wears for this power
@@ -868,6 +870,7 @@ public:  // ********************************************************************
 	void toggleForceAttackArmed( void )				{ m_forceAttackArmed = !m_forceAttackArmed; m_attackMoveToMode = FALSE; m_guardArmed = FALSE; }
 	Bool isForceAttackArmed( void ) const			{ return m_forceAttackArmed; }
 	Bool isOrderKeyArmed( void ) const				{ return m_forceAttackArmed || m_attackMoveToMode || m_guardArmed; }	///< the next left click is an attack, an attack move or a guard
+	Bool isForceFireOn( void ) const;					///< the next order click force fires: the attack key armed it, or Legacy's ctrl is held
 
 	// and the guard key arms guard the same way: the next order click posts the selection on that
 	// spot, or on that object, and a drag posts them along the line instead of stacking them all
@@ -1052,7 +1055,8 @@ protected:
 	Bool												m_isFormationDragging;												///< TRUE while a formation line is being drawn (fork)
 	std::vector<ICoord2D>				m_formationDragPoints;												///< the traced curve, in pixels, first point is where it started
 	Int													m_formationDragSpacing;												///< pixels a new point has to earn, doubled each time the curve fills up
-	std::vector<OrderHint>			m_orderHints;																	///< who is going where, for drawing
+	std::vector<OrderHint>			m_orderHints;																	///< who is going where, one per unit and queued point
+	std::vector<OrderHint>			m_drawnOrderHints;														///< the same, units headed the same way bunched into one
 
 	AllyCursor									m_allyCursors[ MAX_PLAYER_COUNT ];						///< where every ally's mouse was last seen (fork)
 	UnsignedInt									m_allyCursorSentMs;														///< wall clock of the last position this machine sent
@@ -1079,6 +1083,8 @@ protected:
 
 	void updateFormationHints( void );													///< recompute who goes where from the curve being drawn
 	void updateOrderHints( void );															///< read the selection's own goals, once a frame
+	void collectOrderHints( void );															///< one hint per selected unit and queued point
+	void bunchOrderHints( void );																///< merge the hints of units going the same way
 	void updateShiftAttackQueue( void );												///< send the next queued attack once the current one is over
 	void addOrderHint( OrderHint& hint, const std::vector<OrderHint>& previous );	///< keep a marker's age across the frame the list is rebuilt on
 	Bool getHeldAircraftOrder( const Object *obj, OrderHintKind& kind, Coord3D& to ) const;	///< the order an aircraft is sitting on until it is airborne
@@ -1156,9 +1162,25 @@ protected:
 	void drawStripQuantity( Int which, Int x, Int y, Int w, Int quantity );	///< the "xN" in a cameo's top right corner
 	void addSuperweaponIcon( const Image *image, Int seconds, Int percent, Bool ready, Color color );
 	void drawSuperweaponStrip( void );		///< those icons, top right, soonest at the right hand end
+	void drawSkillStrip( void );					///< the watched player's bought promotions, under those
 
-	Bool												m_placementRangeRingUp;	///< we put a radius cursor up for a pending structure, so we owe a clear
-	Real												m_placementRingRadius;	///< the radius that ring was built at, so it is not rebuilt every frame
+	//
+	// The drop-down in the top left corner that switches the strips on and off.  Row 0 is its header,
+	// the rest are one check box each.
+	//
+	enum { HUD_TOGGLE_ROWS = 4 };
+	void drawHudToggles( void );
+	Bool handleHudTogglesClick( const ICoord2D *mouse, Bool act );	///< TRUE when the click landed on it
+	Bool												m_hudTogglesOpen;
+	Int													m_hudToggleRowsShown;		///< rows drawn this frame, header included
+	Int													m_hudTogglesBottom;			///< its bottom edge, so the message list starts under it
+	IRegion2D										m_hudToggleRects[ HUD_TOGGLE_ROWS ];
+	DisplayString *							m_hudToggleStrings[ HUD_TOGGLE_ROWS ];
+
+	Bool												m_placementRangeRingUp;	///< the structure on the cursor is armed, so its reach is drawn
+	Real												m_placementRingRadius;	///< how far from its centre it hits
+	void drawPlacementReach( void );			///< while placing, the reach of every armed building in sight, as one outline
+	void drawPlacementBlindSpots( void );	///< shade the ground behind buildings a placed defence cannot shoot past
 
 	DisplayString *							m_hudDisplayString;			///< the ShowHudOverlay line (fps / clock)
 	DisplayString *							m_peaceTimeDisplayString;	///< the peace time clock at the top of the screen

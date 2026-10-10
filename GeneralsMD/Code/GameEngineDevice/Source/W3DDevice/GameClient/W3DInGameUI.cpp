@@ -904,8 +904,8 @@ void W3DInGameUI::drawFormationLine( void )
 		TheDisplay->drawLine( curve[ i - 1 ].x, curve[ i - 1 ].y, curve[ i ].x, curve[ i ].y,
 													width, color );
 
-	// no ticks along it any more.  Every station already carries the cursor of the order it is about
-	// to receive, drawn by drawOrderHints off the same hints, and a tick beside a cursor was the
+	// no ticks along it any more.  Every station already carries the marker of the order it is about
+	// to receive, drawn by drawOrderHints off the same hints, and a tick beside a marker was the
 	// same fact said twice
 
 }  // end drawFormationLine
@@ -959,19 +959,10 @@ void W3DInGameUI::drawAttackCircle( void )
 }  // end drawAttackCircle
 
 //-------------------------------------------------------------------------------------------------
-/** The marker on a destination is the cursor the player would be holding if they were pointing at
-	* it: the move cursor for a move, the attack-move one for an attack-move, the attack one for an
-	* attack.  Same art, out of Mouse.ini, so nothing here has to invent a second visual language. */
-//-------------------------------------------------------------------------------------------------
-//-------------------------------------------------------------------------------------------------
-/** One cursor per order, out of the set the game already draws under the hand.  A unit told to
-	* garrison shows the garrison cursor where it is going, one sent to a repair bay shows that one,
-	* and a group given four different jobs reads as four different markers rather than four arrows. */
-//-------------------------------------------------------------------------------------------------
 /** The thread is coloured by what it is for: anything that ends in a shot is red, an attack move
 	* is pink, a post to be held is blue, everything else is green.  The marker on the end of it is
 	* the plain pointer in the same colour - one shape for every order, so the colour is the whole
-	* message. */
+	* message.  A dot and a ring were tried in its place and players wanted the pointer back. */
 //-------------------------------------------------------------------------------------------------
 static UnsignedInt orderHintLineColor( InGameUI::OrderHintKind kind )
 {
@@ -1114,8 +1105,7 @@ static const Image *loadOrderCursorImage( Mouse::MouseCursor cursor, ICoord2D *h
 
 //-------------------------------------------------------------------------------------------------
 /** The marker on a destination is the cursor the player would be holding if they were pointing at
-	* it: the move cursor for a move, the attack-move one for an attack-move, the attack one for an
-	* attack.  Same art, so nothing here has to invent a second visual language.  Built once. */
+	* it.  Built once. */
 //-------------------------------------------------------------------------------------------------
 static const Image *orderCursorImage( Mouse::MouseCursor cursor, ICoord2D *hotSpot )
 {
@@ -1131,10 +1121,10 @@ static const Image *orderCursorImage( Mouse::MouseCursor cursor, ICoord2D *hotSp
 }
 
 //-------------------------------------------------------------------------------------------------
-/** One faint line per selected unit, from where it stands to where it is going, with the order's
-	* own cursor sitting on the destination.  Green for a move, pink for an attack-move, red for an
-	* attack.  The goals are read off the units every frame, so the lines last as long as the orders
-	* do and go when the units arrive or the selection changes. */
+/** One faint line per bunch of selected units going the same way, from where they stand to where
+	* they are going, with the order's own cursor sitting on the destination.  Green for a move, pink
+	* for an attack-move, red for an attack.  The goals are read off the units every frame, so the
+	* lines last as long as the orders do and go when the units arrive or the selection changes. */
 //-------------------------------------------------------------------------------------------------
 void W3DInGameUI::drawOrderHints( void )
 {
@@ -1174,7 +1164,10 @@ void W3DInGameUI::drawOrderHints( void )
 		if( TheTacticalView->worldToScreenTriReturn( &it->to, &to ) == View::WTS_INVALID )
 			continue;
 
-		TheDisplay->drawLine( from.x, from.y, to.x, to.y, width, lineColor );
+		// Order Lines off in the options takes the lines away and leaves the markers: where a unit is
+		// going is still worth a glance when the thread across the map is not
+		if( TheGlobalData->m_showOrderLines )
+			TheDisplay->drawLine( from.x, from.y, to.x, to.y, width, lineColor );
 
 		// the marker is the plain pointer, tinted: its white body takes the order colour and the
 		// dark outline stays.  The hot spot is the pixel the player aims with, so that is the pixel

@@ -53,6 +53,7 @@
 #include "GameClient/GameWindowManager.h"
 #include "GameClient/Keyboard.h"
 #include "GameClient/SelectionInfo.h"
+#include "GameClient/SelectionPriority.h"
 #include "GameClient/SelectionXlat.h"
 #include "GameClient/TerrainVisual.h"
 
@@ -215,6 +216,15 @@ Bool CanSelectDrawable( const Drawable *draw, Bool dragSelecting )
 }  // end canSelect
 
 //-----------------------------------------------------------------------------
+static Bool isSelectableMilitaryInBox(Drawable *draw)
+{
+	if (!CanSelectDrawable(draw, TRUE))
+		return FALSE;
+	const Object *obj = draw->getObject();
+	return obj->getContainedBy() == NULL && isMilitaryBoxSelectionUnit(obj);
+}
+
+//-----------------------------------------------------------------------------
 static Bool canSelectWrapper( Drawable *draw, void *userData )
 {
 	Bool dragSelecting = *((Bool *)userData);
@@ -274,6 +284,10 @@ SelectionTranslator::SelectionTranslator()
 	m_selectFeedbackAnchor.x = 0;
 	m_selectFeedbackAnchor.y = 0;
 	m_displayedMaxWarning = FALSE;
+	m_rightDownPixel.x = 0;
+	m_rightDownPixel.y = 0;
+	m_rightDownTime = 0;
+	m_rightDownCamera.zero();
 	m_selectCountMap.clear();
 
 	TheSelectionTranslator = this;
@@ -456,14 +470,14 @@ GameMessageDisposition SelectionTranslator::translateGameMessage(const GameMessa
 				//      when we're not in force attackable mode!
 				UnsignedInt pickType = getPickTypesForContext( true /*TheInGameUI->isInForceAttackMode()*/ );
 				
-				Drawable *underCursor = TheTacticalView->pickDrawable( &pixel, TheInGameUI->isForceAttackArmed(), (PickType) pickType );
+				Drawable *underCursor = TheTacticalView->pickDrawable( &pixel, TheInGameUI->isForceFireOn(), (PickType) pickType );
 
 				//
 				// a click on a health bar selects its owner, so the cursor has to say so before the
 				// click - the same fallback, in the same order, as the point pick in
 				// W3DView::iterateDrawablesInRegion
 				//
-				if( underCursor == NULL )
+				if( underCursor == NULL && !TheGlobalData->isLegacyInput() )
 					underCursor = TheGameClient->pickDrawableByHealthBar( &pixel );
 
 				Object *objUnderCursor = underCursor ? underCursor->getObject() : NULL;
@@ -501,8 +515,8 @@ GameMessageDisposition SelectionTranslator::translateGameMessage(const GameMessa
 				break;
 			}
 
-			// an armed order key makes this click an order, which CommandXlat gives
-			if (TheInGameUI->isOrderKeyArmed())
+			// an armed order key, or Legacy's ctrl, makes this click an order, which CommandXlat gives
+			if (TheInGameUI->isOrderKeyArmed() || TheInGameUI->isForceFireOn())
 				break;
 
 			const IRegion2D& region = msg->getArgument(0)->pixelRegion;
@@ -684,8 +698,8 @@ GameMessageDisposition SelectionTranslator::translateGameMessage(const GameMessa
 				 was a way to take things back out and a way to leave the base staff behind: Alt keeps
 				 only what can shoot, Ctrl removes the box from the selection instead of replacing it.
 				 Both are drag-only.  A point click has to stay exactly what it was - a filter that eats
-				 single clicks reads as a broken mouse. */
-			if (!isPoint)
+				 single clicks reads as a broken mouse.  Legacy has neither: its Ctrl is force fire. */
+			if (!isPoint && !TheGlobalData->isLegacyInput())
 			{
 				if (TheKeyboard->isAlt())
 				{
@@ -742,6 +756,12 @@ GameMessageDisposition SelectionTranslator::translateGameMessage(const GameMessa
 					break;
 				}
 			}
+
+			// A box with an army in it takes the army and leaves the dozers and trucks standing among
+			// it; a box of workers alone still takes the workers.  Drag-only, like the filters above,
+			// and not under Legacy, which is the 2003 box.
+			if (!isPoint && !TheGlobalData->isLegacyInput())
+				prioritizeMilitaryBoxSelection(drawablesThatWillSelect, isSelectableMilitaryInBox);
 
 			SelectionInfo si;
 			if (contextCommandForNewSelection(currentList, &drawablesThatWillSelect, &si, isPoint))
@@ -1114,8 +1134,9 @@ GameMessageDisposition SelectionTranslator::translateGameMessage(const GameMessa
 				if( !TheInGameUI->getGUICommand() && !TheInGameUI->isOrderKeyArmed()
 						&& !TheKeyboard->isShift() && !TheKeyboard->isCtrl() && !TheKeyboard->isAlt() )
 				{
-					//No GUI command mode, so a click on empty ground deselects everyone.
-					if( TheInGameUI->getPendingPlaceSourceObjectID() == INVALID_ID )
+					//No GUI command mode, so a click on empty ground deselects everyone.  Not in Legacy,
+					//where that click is a move order and the right button is what deselects.
+					if( TheInGameUI->getPendingPlaceSourceObjectID() == INVALID_ID && !TheGlobalData->isLegacyInput() )
 					{
 						if( !TheInGameUI->getPreventLeftClickDeselectionInAlternateMouseModeForOneClick() )
 						{
@@ -1135,8 +1156,38 @@ GameMessageDisposition SelectionTranslator::translateGameMessage(const GameMessa
 		}
 
 		//-----------------------------------------------------------------------------
+		case GameMessage::MSG_RAW_MOUSE_RIGHT_BUTTON_DOWN:
+		case GameMessage::MSG_RAW_MOUSE_RIGHT_DOUBLE_CLICK:
+		{
+			m_rightDownPixel = msg->getArgument( 0 )->pixel;
+			m_rightDownTime = (UnsignedInt)msg->getArgument( 2 )->integer;
+			TheTacticalView->getPosition( &m_rightDownCamera );
+			break;
+		}
+
+		//-----------------------------------------------------------------------------
 		case GameMessage::MSG_RAW_MOUSE_RIGHT_BUTTON_UP:
 		{
+			//
+			// Legacy is the game as shipped: a right drag scrolled the camera and did nothing else, and
+			// a right click cancelled whatever was armed or, with nothing armed, deselected everyone.
+			//
+			if( TheGlobalData->isLegacyInput() )
+			{
+				const ICoord2D lift = msg->getArgument( 0 )->pixel;
+				Coord3D cameraNow;
+				TheTacticalView->getPosition( &cameraNow );
+				if( !TheMouse->isClick( &m_rightDownPixel, &lift, &m_rightDownCamera, &cameraNow,
+																m_rightDownTime, (UnsignedInt)msg->getArgument( 2 )->integer ) )
+					break;
+
+				if( TheInGameUI->getGUICommand() == NULL && TheInGameUI->getPendingPlaceType() == NULL )
+				{
+					deselectAll();
+					break;
+				}
+			}
+
 			//
 			// The right button drops whatever is armed, and it does so on a drag as well as on a
 			// click.  A dozer placing a row of structures with shift held is the case that made this
@@ -1219,7 +1270,7 @@ GameMessageDisposition SelectionTranslator::translateGameMessage(const GameMessa
 			// A screen that fills the middle of the display and answers nothing on the keyboard is
 			// the thing being fixed, so group selection gives way for as long as it is up.
 			//
-			if( TheControlBar && TheControlBar->isPurchaseScienceVisible()
+			if( TheControlBar && TheControlBar->isPurchaseScienceVisible() && !TheGlobalData->isLegacyInput()
 					&& group >= 1 && group <= PURCHASE_SCIENCE_COLUMNS )
 			{
 				TheControlBar->pressPurchaseScienceColumn( group - 1 );

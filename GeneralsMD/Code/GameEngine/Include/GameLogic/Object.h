@@ -180,6 +180,12 @@ extern Bool Object_deathIsSilent( Bool underConstruction, Real constructionPerce
 ///< is there anything standing here for a weapon to shoot at, or is it still only a plan?
 extern Bool Object_isAttackableStructure( Bool underConstruction, Real constructionPercent );
 
+///< does this object count as something its player still has, for defeat and "team destroyed"?
+extern Bool Object_keepsOwnerAlive( Bool underConstruction, Real constructionPercent );
+
+///< is this a plan a viewer on that footing with its owner must not see, live or remembered in the fog?
+extern Bool Object_isPlanHiddenFrom( Bool underConstruction, Real constructionPercent, Relationship viewerToOwner );
+
 class Object : public Thing, public Snapshot
 {
 
@@ -354,6 +360,7 @@ public:
 	SpecialPowerModuleInterface* findAnyShortcutSpecialPowerModuleInterface() const;
 	SpecialAbilityUpdate* findSpecialAbilityUpdate( SpecialPowerType type ) const;
 	SpecialPowerCompletionDie* findSpecialPowerCompletionDie() const;
+	Bool getCaptureProgress( ObjectID *targetID, Real *progress ) const;	///< the building this one is taking, and how far through it is
 	SpecialPowerUpdateInterface* findSpecialPowerWithOverridableDestinationActive( SpecialPowerType type = SPECIAL_INVALID ) const;
 	SpecialPowerUpdateInterface* findSpecialPowerWithOverridableDestination( SpecialPowerType type = SPECIAL_INVALID ) const;
 
@@ -617,6 +624,7 @@ public:
 	void setDisabled( DisabledType type );
 	void setDisabledUntil( DisabledType type, UnsignedInt frame );
 	Bool isDisabledByType( DisabledType type ) const { return TEST_DISABLEDMASK( m_disabledMask, type ); }
+	Bool isAIHaltedByDisable() const;	///< disabled in a way that stops this object's AI from updating at all
 
 	UnsignedInt getDisabledUntil( DisabledType type = DISABLED_ANY ) const;
 

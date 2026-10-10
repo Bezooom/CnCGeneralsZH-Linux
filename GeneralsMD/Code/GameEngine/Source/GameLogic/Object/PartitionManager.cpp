@@ -1650,6 +1650,13 @@ ObjectShroudStatus PartitionData::getShroudedStatus(Int playerIndex)
 		return m_shroudedness[playerIndex];
 	}
 
+	// answered before the cache, so no snapshot is taken and the site is not marked as seen: the
+	// building that goes up there later is news to this player like any other
+	if (m_object && Object_isPlanHiddenFrom(m_object->testStatus(OBJECT_STATUS_UNDER_CONSTRUCTION),
+																					m_object->getConstructionPercent(),
+																					ThePlayerList->getNthPlayer(playerIndex)->getRelationship(m_object->getTeam())))
+		return OBJECTSHROUD_SHROUDED;
+
 #ifndef DISABLE_INVALID_PREVENTION
 	if (m_shroudedness[playerIndex] == OBJECTSHROUD_INVALID || m_shroudedness[playerIndex] == OBJECTSHROUD_INVALID_BUT_PREVIOUS_VALID)
 	{
@@ -3354,6 +3361,36 @@ Object *PartitionManager::getClosestObjects(
 
 	static Int theIterFlag = 1;	// nonzero, thanks
 	++theIterFlag;
+
+	/* A gathering query keeps everything in range in whatever order it finds it, and the caller sorts
+		 afterwards. When the range covers the whole map the ring walk below still steps through every
+		 cell offset either side of the centre, four times the map's cells and most of them off it: a
+		 hunting unit's whole-map search spent 15-33ms there to find 3,600 objects. The master module
+		 list holds exactly the objects that sit in cells, so walking it gathers the same set. */
+	if (iterArg && maxRadius >= m_maxGcoRadius)
+	{
+		for (PartitionData *thisMod = m_moduleList; thisMod; thisMod = thisMod->getNext())
+		{
+			if (thisMod->friend_getCoiInUseCount() == 0)
+				continue;
+
+			Object *thisObj = thisMod->getObject();
+			++thePartitionQueryObjects;
+			if (thisObj == obj || thisObj == NULL)
+				continue;
+
+			Real thisDistSqr;
+			Coord3D distVec;
+			if (!(*distProc)(objPos, objToUse, thisObj->getPosition(), thisObj, thisDistSqr, distVec, closestDistSqr))
+				continue;
+
+			if (!filtersAllow(filters, thisObj))
+				continue;
+
+			iterArg->insert(thisObj, thisDistSqr);
+		}
+		maxRadiusLimit = -1;	// nothing left for the ring walk to find
+	}
 
 	/*
 		m_radiusVec[curRadius] contains a list of the cells (foo) that could

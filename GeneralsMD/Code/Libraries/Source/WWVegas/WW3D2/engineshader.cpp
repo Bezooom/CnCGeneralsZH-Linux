@@ -66,6 +66,8 @@ static const EngineShaderEntry ENGINE_SHADERS[] = {
 	{ ENGINE_SHADER_WATER_TRAPEZOID, "trapezoid water ps.1.1", "engine:trapezoidwater",
 		NULL, NULL },
 	{ ENGINE_SHADER_WATER_RIVER, "river water ps.1.1", "engine:riverwater", NULL, NULL },
+	{ ENGINE_SHADER_WATER_REFLECTION, "water reflection ps.1.1", "engine:waterreflection",
+		NULL, NULL },
 	{ ENGINE_SHADER_TERRAIN, "terrain.pso", "engine:terrain",
 		TERRAIN_OPENING, TERRAIN_CHAIN },
 	{ ENGINE_SHADER_TERRAIN_NOISE, "terrainnoise.pso", "engine:terrainnoise",
@@ -278,6 +280,35 @@ static void write_river_water(std::string & hlsl)
 		"    current.rgb = saturate(current.rgb + sparkle);\n";
 }
 
+/*
+** The reflection W3DWater lays over map water once the water itself is drawn:
+**
+**     def c1, 0.333333, 0.333333, 0.333333, 0
+**     tex t0 ; the mirrored scene, looked up through a projected stage
+**     dp3 r1.rgb, t0, c1
+**     mov r1.rgb, 1-r1
+**     add r1.rgb, r1, r1
+**     add r1.rgb, r1, r1
+**     mul r0.rgb, r1, c0
+**     mov r0.rgb, 1-r0
+**     +mov r0.a, c0
+**
+** The result multiplies the water already drawn, and the mirror was cleared to white, so open sky
+** leaves the water its own colour.  Whatever stands in the mirror darkens it by the same amount
+** whatever its own colour: a sunlit palm is nearly as bright as the white around it and used to
+** vanish from the water the moment the fog lifted off it.  The two doublings clamp at one each, which
+** is the saturate.  D3D9 reads the strength out of c0.  A transcribed program shares the combiners'
+** constant buffer and not the engine's register bank, so here it is the texture factor's alpha,
+** which W3DWater sets to the same value.
+*/
+static void write_water_reflection(std::string & hlsl)
+{
+	write_pixel_preamble(hlsl);
+	hlsl +=
+		"    float coverage = saturate((1.0 - dot(texel0.rgb, float3(0.333333, 0.333333, 0.333333))) * 4.0);\n"
+		"    float4 current = float4((1.0 - TextureFactor.a * coverage).xxx, TextureFactor.a);\n";
+}
+
 // Every ps_1_1 instruction clamps its result to zero and one, so each step saturates and not only
 // the last: a chain that overflows in the middle and comes back down is a different colour with the
 // clamps than without them.
@@ -356,6 +387,9 @@ bool EngineShader_Pixel_Program(EngineShaderProgram program,
 	}
 	else if (program == ENGINE_SHADER_WATER_RIVER) {
 		write_river_water(hlsl);
+	}
+	else if (program == ENGINE_SHADER_WATER_REFLECTION) {
+		write_water_reflection(hlsl);
 	}
 	else {
 		return false;

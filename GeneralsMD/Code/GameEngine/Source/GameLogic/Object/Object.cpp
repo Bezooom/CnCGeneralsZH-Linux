@@ -2139,6 +2139,17 @@ void Object::setDisabled( DisabledType type )
 }
 
 //-------------------------------------------------------------------------------------------------
+Bool Object::isAIHaltedByDisable() const
+{
+	if( !m_ai )
+		return FALSE;
+
+	DisabledMaskType halting = m_disabledMask;
+	halting.clear( m_ai->getDisabledTypesToProcess() );
+	return halting.any();
+}
+
+//-------------------------------------------------------------------------------------------------
 void Object::setDisabledUntil( DisabledType type, UnsignedInt frame )
 {
 	Bool edgeCase = !isDisabled();
@@ -2191,6 +2202,16 @@ void Object::setDisabledUntil( DisabledType type, UnsignedInt frame )
 		
 		m_disabledTillFrame[ type ] = frame;
 		m_disabledMask.set( type, frame > TheGameLogic->getFrame() );
+
+		// A building's AI does not run while it is EMPed, hacked, subdued or out of power, so the attack it
+		// was in never exited and kept its look: a Gattling Cannon spun its barrels through the whole EMP.
+		// Selling a building idles it the same way, and it picks a target again once it is back.
+		if( isAIHaltedByDisable() )
+		{
+			m_ai->stopTurretsTurning();
+			if( isKindOf( KINDOF_STRUCTURE ) )
+				m_ai->aiIdle( CMD_FROM_AI );
+		}
 
 		if( m_drawable )
 		{
@@ -5425,6 +5446,26 @@ Bool Object_isAttackableStructure( Bool underConstruction, Real constructionPerc
 	return !Object_isAwaitingBuilder( underConstruction, constructionPercent );
 }
 
+//-------------------------------------------------------------------------------------------------
+/** A plan no enemy can see or shoot must not keep its owner in the game either.  A player whose last
+	* building fell with one plan still standing in the fog was never beaten: the match waited on a
+	* structure the other side had no way to find or destroy. */
+//-------------------------------------------------------------------------------------------------
+Bool Object_keepsOwnerAlive( Bool underConstruction, Real constructionPercent )
+{
+	return !Object_isAwaitingBuilder( underConstruction, constructionPercent );
+}
+
+//-------------------------------------------------------------------------------------------------
+/** Clearing no shroud of its own kept a plan out of fog only. An enemy whose units already had sight
+	* of the site saw the silhouette go down, and once they looked away the fog kept a snapshot of it,
+	* so a base could be read off the map before a builder arrived. Allies and observers still see it. */
+//-------------------------------------------------------------------------------------------------
+Bool Object_isPlanHiddenFrom( Bool underConstruction, Real constructionPercent, Relationship viewerToOwner )
+{
+	return viewerToOwner == ENEMIES && Object_isAwaitingBuilder( underConstruction, constructionPercent );
+}
+
 Real Object::getShroudClearingRange() const
 {
 	Real shroudClearingRange = Object_shroudClearingRange( m_shroudClearingRange,
@@ -6210,6 +6251,24 @@ ProjectileUpdateInterface* Object::getProjectileUpdateInterface() const
 
 // ------------------------------------------------------------------------------------------------
 // Simply find the special power module that is currently allowing plotting of positions to target.
+// ------------------------------------------------------------------------------------------------
+// ------------------------------------------------------------------------------------------------
+// The building this object is in the middle of taking, and how far through it is. Asked of the
+// capturing unit because that is where the clock lives: a building being captured is told nothing
+// about it until it changes hands.
+// ------------------------------------------------------------------------------------------------
+Bool Object::getCaptureProgress( ObjectID *targetID, Real *progress ) const
+{
+	for( BehaviorModule** u = m_behaviors; *u; ++u )
+	{
+		SpecialPowerUpdateInterface *spInterface = (*u)->getSpecialPowerUpdateInterface();
+		if( spInterface && spInterface->getCaptureProgress( targetID, progress ) )
+			return TRUE;
+	}
+
+	return FALSE;
+}
+
 // ------------------------------------------------------------------------------------------------
 SpecialPowerUpdateInterface* Object::findSpecialPowerWithOverridableDestinationActive( SpecialPowerType type ) const
 {

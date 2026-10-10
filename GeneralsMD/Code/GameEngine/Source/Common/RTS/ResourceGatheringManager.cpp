@@ -41,8 +41,18 @@
 #include "GameLogic/Module/SupplyWarehouseDockUpdate.h"
 #include "GameLogic/Module/UpdateModule.h"
 
-ResourceGatheringManager::ResourceGatheringManager()
+ResourceGatheringManager::ResourceGatheringManager() :
+	m_suppliesDepletedVoicePlayed( FALSE )
 {
+}
+
+Bool ResourceGatheringManager::claimSuppliesDepletedVoice()
+{
+	if( m_suppliesDepletedVoicePlayed )
+		return FALSE;
+
+	m_suppliesDepletedVoicePlayed = TRUE;
+	return TRUE;
 }
 
 ResourceGatheringManager::~ResourceGatheringManager()
@@ -199,8 +209,6 @@ Object *ResourceGatheringManager::findBestSupplyWarehouse( Object *queryObject )
 
 Object *ResourceGatheringManager::findBestSupplyCenter( Object *queryObject )
 {
-	Object *bestCenter = NULL;
-
 	if( ( queryObject == NULL ) || ( queryObject->getAI() == NULL ) )
 		return NULL;
 
@@ -224,6 +232,12 @@ Object *ResourceGatheringManager::findBestSupplyCenter( Object *queryObject )
 	}
 
 	//Otherwise, search for a good one.
+	return findBestSupplyCenterInList(queryObject);
+}
+
+Object *ResourceGatheringManager::findBestSupplyCenterInList(Object *queryObject)
+{
+	Object *bestCenter = NULL;
 	Real bestCost = FLT_MAX;
 
 	objectIDListIterator iterator = m_supplyCenters.begin();
@@ -234,7 +248,7 @@ Object *ResourceGatheringManager::findBestSupplyCenter( Object *queryObject )
 
 		if( currentCenter == NULL )
 		{
-			iterator = m_supplyWarehouses.erase( iterator );
+			iterator = m_supplyCenters.erase( iterator );
 		}
 		else
 		{
@@ -288,4 +302,3 @@ void ResourceGatheringManager::loadPostProcess( void )
 {
 
 }  // end loadPostProcess
-

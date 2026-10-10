@@ -47,35 +47,19 @@ public:
 	void resetModes(); //Used when disabling input, so when we reenable it we aren't stuck in a mode.
 
 private:
-	//
-	// ZoomToCursor: the wheel only moves the camera's *desired* height, and W3DView::update eases
-	// the real zoom towards it over the frames that follow, so the world point under the cursor is
-	// held in place by re-measuring it every frame for as long as that easing lasts.
-	//
 	enum
-	{
-		ZOOM_ANCHOR_MAX_TICKS = 240,	///< hard budget, so a stalled camera cannot pin the view forever
-		ZOOM_ANCHOR_GRACE_TICKS = 4		///< ticks before a still zoom is allowed to end the pin
-	};
-	void updateZoomToCursor( void );	///< keep the anchored world point under its pixel
-	Bool m_zoomAnchorValid;						///< a wheel zoom is being followed
-	ICoord2D m_zoomAnchorPixel;				///< the pixel the wheel was spun over
-	Coord3D m_zoomAnchorWorld;				///< the terrain point that has to stay under it
-	Real m_zoomAnchorZoom;						///< last zoom seen, to tell whether the camera is still easing
-	Int m_zoomAnchorTicks;						///< ticks left in the budget
-
-	enum 
 	{
 		MAX_VIEW_LOCS = 8
 	};
-	// The right button used to be in here as SCROLL_RMB.  It is not any more: the right button
-	// gives orders now, and the camera drag lives on the middle one.
+	// Modern drags the camera with the middle button and gives orders with the right one; Legacy
+	// drags it with the right button, the way the game shipped.
 	enum
 	{
 		SCROLL_NONE = 0,
 		SCROLL_KEY,
 		SCROLL_SCREENEDGE,
-		SCROLL_MMB				// middle-button drag pan
+		SCROLL_MMB,				// middle-button drag pan, Modern
+		SCROLL_RMB				// right-button drag pan, Legacy
 	};
 	ICoord2D m_anchor;
 	ICoord2D m_originalAnchor;
@@ -89,6 +73,7 @@ private:
 	DrawableID m_lastPlaneID;
 	ViewLocation m_viewLocation[ MAX_VIEW_LOCS ];
 	Int m_scrollType;
+	Bool m_scrollMovesCursor;	// the scroll in progress swapped the cursor for the scroll arrows and puts it back when it stops
 	void setScrolling( Int );
 	void stopScrolling( void );
 	UnsignedInt m_lastMouseMoveFrame;

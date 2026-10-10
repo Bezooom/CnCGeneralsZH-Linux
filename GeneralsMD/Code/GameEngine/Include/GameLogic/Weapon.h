@@ -437,6 +437,8 @@ public:
 	inline WeaponPrefireType getPrefireType() const { return m_prefireType; }
 	inline Bool getAutoReloadsClip() const { return m_reloadType == AUTO_RELOAD; }
 	inline Int getClipSize() const { return m_clipSize; }
+	inline Int getMinDelayBetweenShots() const { return m_minDelayBetweenShots; }	///< frames; unlike getDelayBetweenShots, draws no random number
+	inline Int getMaxDelayBetweenShots() const { return m_maxDelayBetweenShots; }
 	inline Int getContinuousFireOneShotsNeeded() const { return m_continuousFireOneShotsNeeded; }
 	inline Int getContinuousFireTwoShotsNeeded() const { return m_continuousFireTwoShotsNeeded; }
 	inline UnsignedInt getContinuousFireCoastFrames() const { return m_continuousFireCoastFrames; }
@@ -628,6 +630,7 @@ public:
 	*/
 	Bool isWithinAttackRange(const Object *source, const Object *target) const;
 	Bool isWithinAttackRange(const Object *source, const Coord3D* pos) const;
+	Bool isWithinAttackRangeFromFirePoint(const Object *source, const Object *victim, const Coord3D *victimPos) const;	///< also from the best free fire point of a garrison the source is inside
 
 	Bool isTooClose(const Object *source, const Object *target) const;
 	Bool isTooClose(const Object *source, const Coord3D *pos) const;

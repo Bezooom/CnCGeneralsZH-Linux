@@ -54,6 +54,7 @@ static void drawFramerateBar(void);
 #include "ffshadercache.h"
 #include "dx11runtime.h"
 #include "Common/PerfTimer.h"
+#include "Common/JobSystem.h"
 #include "Common/FileSystem.h"
 #include "Common/LocalFileSystem.h"
 #include "Common/Player.h"
@@ -759,6 +760,13 @@ void Reset_D3D_Device(bool active)
 {
 	if (TheDisplay && WW3D::Is_Initted() && !TheDisplay->getWindowed())
 	{
+		// Under the Direct3D 11 picture nothing owns the display exclusively, so leaving loses no
+		// device: the mode and the window covering it go, and come back with the game.
+		if (Direct3D11_Present_Is_Enabled())
+		{
+			DX8Wrapper::Apply_Fullscreen_Display(active);
+			return;
+		}
 		if (active)
 		{	
 			//switch back to desired mode when user alt-tabs back into game
@@ -1123,6 +1131,10 @@ void W3DDisplay::init( void )
 		ApplicationHWnd
 		) != WW3D_ERROR_OK)
 		throw ERROR_INVALID_D3D;	//failed to initialize.  User probably doesn't have DX 8.1
+
+	// The sorting pool's depth pass and batch copy split across the job pool.  WW3D2 cannot see it,
+	// so it is handed over here; parallel_for runs inline when the pool has no workers.
+	SortingRendererClass::Set_Parallel_For( JobSystem::parallel_for );
 
 	WW3D::Set_Prelit_Mode( WW3D::PRELIT_MODE_LIGHTMAP_MULTI_PASS );
 	WW3D::Set_Collision_Box_Display_Mask(0x00);	///<set to 0xff to make collision boxes visible
@@ -2159,6 +2171,7 @@ static void captureVideoFrame(void);
 //
 extern Real TheSceneDrawMS;
 extern Real TheUIDrawMS;
+extern Real TheParticleUpdateMS;
 
 static Real w3dElapsedMS( const Int64 &from, const Int64 &to )
 {
@@ -2398,6 +2411,10 @@ AGAIN:
 			//trying to refresh the visible terrain geometry.
 //			if(TheGlobalData->m_loadScreenRender != TRUE)
 				updateViews();
+#ifdef DEBUG_LOGGING
+			Int64 tParticleStart, tParticleEnd;
+			QueryPerformanceCounter( (LARGE_INTEGER *)&tParticleStart );
+#endif
      		TheParticleSystemManager->update();//LORENZEN AND WILCZYNSKI MOVED THIS FROM ITS NATIVE POSITION, ABOVE
                                            //FOR THE PURPOSE OF LETTING THE PARTICLE SYSTEM LOOK UP THE RENDER OBJECT"S
                                            //TRANSFORM MATRIX, WHILE IT IS STILL VALID (HAVING DONE ITS CLIENT TRANSFORMS
@@ -2407,8 +2424,12 @@ AGAIN:
                                            //REVOLUTIONARY!
                                            //-LORENZEN
 
+#ifdef DEBUG_LOGGING
+			QueryPerformanceCounter( (LARGE_INTEGER *)&tParticleEnd );
+			TheParticleUpdateMS = w3dElapsedMS( tParticleStart, tParticleEnd );
+#endif
 
-			if (TheWaterRenderObj && TheGlobalData->m_waterType == 2)
+			if (TheWaterRenderObj)
 				TheWaterRenderObj->updateRenderTargetTextures(primaryW3DView->get3DCamera());	//do a render into each texture
 
 			//Can't render into textures while rendering to screen so these textures need to be updated

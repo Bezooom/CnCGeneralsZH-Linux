@@ -45,6 +45,7 @@
 #include "Common/RandomValue.h"
 #include "GameClient/ClickTolerance.h"
 #include "GameClient/KeyDownInfo.h"
+#include "GameClient/GameWindowTransitions.h"
 #include "GameLogic/ScenarioDrill.h"
 #include "Common/ControlServer.h"
 #include "GameLogic/LogicRandomValue.h"
@@ -61,6 +62,8 @@
 #include "Common/GlobalData.h"
 #include "Common/EarlyOptions.h"
 #include "Common/OptionsCatalog.h"
+#include "Common/SubsystemInterface.h"
+#include "GameClient/GameText.h"
 #include "Common/GameLOD.h"
 #include "Common/UserPreferences.h"
 #include "GameNetwork/networkutil.h"
@@ -479,14 +482,14 @@ TEST(ini_unknown_block_aborts_the_file)
 	remove( TEST_INI );
 }
 
-/* Data\INI\FXListReborn.ini is the fork's own explosion light: 89 of EA's FXLists, each repeated
+/* Data\INI\FXListReforged.ini is the fork's own explosion light: 89 of EA's FXLists, each repeated
 	 whole with one LightPulse added.  Whole, because FXListStore::parseFXListDefinition clears an
 	 entry before re-reading it - a half-copied block does not add a light, it deletes an explosion.
 	 GameEngine::init loads the file and folds it into the multiplayer INI CRC, so both ways of
 	 getting it wrong are expensive: a malformed block throws and takes the whole startup down, and
 	 a regeneration that loses the LightPulse ships a file that lights nothing and still refuses
 	 every player who does not have that exact copy. */
-TEST(fxlist_reborn_ini_parses_and_keeps_its_light)
+TEST(fxlist_reforged_ini_parses_and_keeps_its_light)
 {
 	CHECK( bootOnce() );
 
@@ -494,7 +497,7 @@ TEST(fxlist_reborn_ini_parses_and_keeps_its_light)
 		TheFXListStore = NEW FXListStore;
 
 	/* through the game's own parser, not a lookalike */
-	CHECK( loadIni( FXLIST_REBORN_INI ) );
+	CHECK( loadIni( FXLIST_REFORGED_INI ) );
 
 	/* the blocks landed in the store, under the names the game looks them up by */
 	CHECK( TheFXListStore->findFXList( "ScudStormMissileDetonation" ) != NULL );
@@ -502,7 +505,7 @@ TEST(fxlist_reborn_ini_parses_and_keeps_its_light)
 	CHECK( TheFXListStore->findFXList( "NoSuchFXListIsDeclaredAnywhere" ) == NULL );
 
 	/* and every block in the file still carries the light it exists for */
-	FILE *fp = fopen( FXLIST_REBORN_INI, "rb" );
+	FILE *fp = fopen( FXLIST_REFORGED_INI, "rb" );
 	CHECK( fp != NULL );
 
 	Int blocks = 0, lit = 0, open = 0, hasLight = 0;
@@ -1040,6 +1043,22 @@ TEST(force_fire_is_the_attack_key_and_nothing_else)
 	/* neither key: nothing force fires, which is what ctrl held down now gets. */
 	CHECK( !CommandXlat_isForceAttackTargeting( false, false ) );
 	CHECK( !CommandXlat_isForceAttackTargeting( false, true ) );
+}
+
+/* InGameUI.cpp: Legacy is the game as shipped, where holding ctrl is force fire.  Modern keeps ctrl for
+   the shared pace and force fires on the attack key alone. */
+extern Bool InGameUI_isForceFireOn( Bool forceAttackArmed, Bool ctrlHeld, Bool legacyInput );
+
+TEST(legacy_ctrl_force_fires_and_modern_ctrl_does_not)
+{
+	CHECK(  InGameUI_isForceFireOn( false, true,  true  ) );
+	CHECK( !InGameUI_isForceFireOn( false, true,  false ) );
+
+	/* the attack key arms it under either scheme */
+	CHECK(  InGameUI_isForceFireOn( true,  false, false ) );
+	CHECK(  InGameUI_isForceFireOn( true,  false, true  ) );
+
+	CHECK( !InGameUI_isForceFireOn( false, false, true  ) );
 }
 
 /* Player.cpp: the lobby's unit limit is 840 units shared out by the players who are not watching. */
@@ -6135,6 +6154,16 @@ TEST(a_structure_waiting_for_its_builder_cannot_be_shot_at)
 	CHECK( Object_isAttackableStructure( FALSE, 0.0f ) == TRUE );
 }
 
+/** A plan nobody can see or shoot must not hold up the end of the match.  A player left with only a
+	 plan in the fog is beaten; the first percent of work makes it a building that counts. */
+TEST(a_structure_waiting_for_its_builder_does_not_keep_its_player_alive)
+{
+	CHECK( Object_keepsOwnerAlive( TRUE, 0.0f ) == FALSE );
+	CHECK( Object_keepsOwnerAlive( TRUE, 0.1f ) == TRUE );
+	CHECK( Object_keepsOwnerAlive( FALSE, CONSTRUCTION_COMPLETE ) == TRUE );
+	CHECK( Object_keepsOwnerAlive( FALSE, 0.0f ) == TRUE );
+}
+
 /** The first percent of work is what ends the plan, so the moment the builder arrives and starts
 	 the structure turns solid and stays solid for the rest of its life.  A finished building carries
 	 CONSTRUCTION_COMPLETE (-1) and must not be mistaken for one sitting at zero. */
@@ -6529,6 +6558,58 @@ TEST(your_own_plan_is_drawn_through_the_fog_that_hides_everything_else)
 	// nothing changes for what the player can see anyway
 	CHECK( GameClient_hiddenByShroud( OBJECTSHROUD_CLEAR, FALSE ) == FALSE );
 	CHECK( GameClient_hiddenByShroud( OBJECTSHROUD_PARTIAL_CLEAR, FALSE ) == FALSE );
+}
+
+/** Fog was the only thing hiding an enemy's plan, so a unit already looking at the site watched it go
+	 down and the fog remembered it afterwards. An enemy is shown nothing until the first percent of
+	 work; allies and observers, who are never enemies, see the plan as before. */
+TEST(an_enemy_plan_is_hidden_even_where_the_viewer_has_sight)
+{
+	CHECK( Object_isPlanHiddenFrom( TRUE, 0.0f, ENEMIES ) == TRUE );
+
+	CHECK( Object_isPlanHiddenFrom( TRUE, 0.0f, ALLIES ) == FALSE );
+	CHECK( Object_isPlanHiddenFrom( TRUE, 0.0f, NEUTRAL ) == FALSE );
+
+	// started or finished, it is a building the enemy is entitled to see
+	CHECK( Object_isPlanHiddenFrom( TRUE, 0.1f, ENEMIES ) == FALSE );
+	CHECK( Object_isPlanHiddenFrom( FALSE, CONSTRUCTION_COMPLETE, ENEMIES ) == FALSE );
+}
+
+extern Coord3D Locomotor_interceptOffset( const Coord3D& toVictim, const Coord3D& victimVelocity, Real speed );
+
+/** A locked missile curves towards where it will meet a moving victim. Curving towards where the
+	 victim is now left a rocket barely faster than a helicopter trailing it with its nose 40 degrees
+	 off, never closing. */
+TEST(a_locked_missile_aims_where_it_will_meet_a_moving_victim)
+{
+	Coord3D toVictim;
+	toVictim.set( 100.0f, 0.0f, 0.0f );
+	Coord3D offset;
+
+	Coord3D standing;
+	standing.set( 0.0f, 0.0f, 0.0f );
+	offset = Locomotor_interceptOffset( toVictim, standing, 10.0f );
+	CHECK_NEAR( offset.x, 100.0f, 0.001f );
+	CHECK_NEAR( offset.y, 0.0f, 0.001f );
+
+	// crossing at 6 a frame against 10: |(100, 6t)| = 10t meets at t = 12.5, 75 to the side
+	Coord3D crossing;
+	crossing.set( 0.0f, 6.0f, 0.0f );
+	offset = Locomotor_interceptOffset( toVictim, crossing, 10.0f );
+	CHECK_NEAR( offset.x, 100.0f, 0.001f );
+	CHECK_NEAR( offset.y, 75.0f, 0.01f );
+
+	// head on at the missile's own speed the two meet halfway
+	Coord3D closing;
+	closing.set( -10.0f, 0.0f, 0.0f );
+	offset = Locomotor_interceptOffset( toVictim, closing, 10.0f );
+	CHECK_NEAR( offset.x, 50.0f, 0.001f );
+
+	// running away faster than the missile flies there is no meeting point to lead, so aim at it
+	Coord3D fleeing;
+	fleeing.set( 12.0f, 0.0f, 0.0f );
+	offset = Locomotor_interceptOffset( toVictim, fleeing, 10.0f );
+	CHECK_NEAR( offset.x, 100.0f, 0.001f );
 }
 
 /** There is nothing to stop about a building that is still going up, so the stop key calls it off
@@ -8205,10 +8286,7 @@ TEST(the_difficulty_ladder_climbs_in_every_direction_it_should)
 		CHECK( upper.m_retreatIndividualUnits >= lower.m_retreatIndividualUnits );
 		CHECK( upper.m_retreatTeams >= lower.m_retreatTeams );
 		CHECK( upper.m_useInfluenceMapForAttackLane >= lower.m_useInfluenceMapForAttackLane );
-		// ... and it is off at every rung today: measured against itself with the lane as the only
-		// difference and both seats played, it went 7-9 over 32 matches. See the note on the table
-		// in AI.cpp before switching it back on.
-		CHECK( !upper.m_useInfluenceMapForAttackLane );
+		CHECK( upper.m_economyBuildings >= lower.m_economyBuildings );
 		CHECK( upper.m_focusFire >= lower.m_focusFire );
 		CHECK( upper.m_savesSciencePoints >= lower.m_savesSciencePoints );
 		CHECK( upper.m_adaptiveHarvesters >= lower.m_adaptiveHarvesters );
@@ -8237,51 +8315,103 @@ TEST(the_difficulty_ladder_climbs_in_every_direction_it_should)
 	 tanks. */
 TEST(counter_score_answers_what_the_enemy_actually_fields)
 {
-	AIEnemyComposition allAir;
-	allAir.m_air = 1.0f;
-
-	AITeamCapability aa;      aa.m_hitsAir = TRUE;
-	AITeamCapability tanks;   tanks.m_hitsGround = TRUE; tanks.m_prefersVehicles = TRUE;
-
-	// against an all-air enemy the AA team is the answer and the tank team is not
-	CHECK_NEAR( 1.0f, aiCounterScore( allAir, aa ), 0.0001f );
-	CHECK_NEAR( 0.0f, aiCounterScore( allAir, tanks ), 0.0001f );
-
-	// against an all-armour enemy it is the other way round: anti-tank scores its share plus the
-	// quarter share every ground-capable team gets
-	AIEnemyComposition allArmour;
-	allArmour.m_armour = 1.0f;
-	CHECK_NEAR( 1.0f, aiCounterScore( allArmour, tanks ), 0.0001f );
-	CHECK_NEAR( 0.0f, aiCounterScore( allArmour, aa ), 0.0001f );
-
-	// a team that can only shoot the ground is worth something against a ground army, but far less
-	// than one built for it
-	AITeamCapability generic;  generic.m_hitsGround = TRUE;
-	CHECK_NEAR( 0.25f, aiCounterScore( allArmour, generic ), 0.0001f );
-	CHECK( aiCounterScore( allArmour, generic ) < aiCounterScore( allArmour, tanks ) );
+	// the matchups are the score: a team whose units beat the visible army money for money is the
+	// answer, and one whose units lose to it is not
+	AIEnemyComposition ground;
+	ground.m_armour = 1.0f;
+	AITeamCapability antiTank;  antiTank.m_answer = 0.9f;
+	AITeamCapability rifles;    rifles.m_answer = 0.2f;
+	CHECK_NEAR( 0.9f, aiCounterScore( ground, antiTank ), 0.0001f );
+	CHECK( aiCounterScore( ground, antiTank ) > aiCounterScore( ground, rifles ) );
 
 	// stealth is the case A1 created: the AI stopped shooting through fog, so a detector earns its
 	// place the moment the enemy fields anything that can hide
 	AIEnemyComposition halfStealth;
 	halfStealth.m_armour = 1.0f;
 	halfStealth.m_stealth = 0.5f;
-	AITeamCapability detector;  detector.m_hitsGround = TRUE; detector.m_detectsStealth = TRUE;
-	CHECK( aiCounterScore( halfStealth, detector ) > aiCounterScore( halfStealth, generic ) );
+	AITeamCapability detector = rifles;
+	detector.m_detectsStealth = TRUE;
+	CHECK( aiCounterScore( halfStealth, detector ) > aiCounterScore( halfStealth, rifles ) );
 
 	// seen nothing yet -> no opinion, whatever the team is. The static priority then decides,
 	// which is EA's behaviour and the right fallback.
 	AIEnemyComposition unknown;
-	CHECK_NEAR( 0.0f, aiCounterScore( unknown, aa ), 0.0001f );
-	CHECK_NEAR( 0.0f, aiCounterScore( unknown, tanks ), 0.0001f );
+	AITeamCapability nothingSeen;
+	CHECK_NEAR( 0.0f, aiCounterScore( unknown, nothingSeen ), 0.0001f );
 
 	// the score is a share, so it never leaves 0..1 however many terms a team answers
-	AIEnemyComposition mixed;
-	mixed.m_air = 0.4f; mixed.m_armour = 0.4f; mixed.m_infantry = 0.2f; mixed.m_stealth = 0.3f;
 	AITeamCapability everything;
-	everything.m_hitsAir = everything.m_hitsGround = everything.m_detectsStealth = TRUE;
-	everything.m_prefersVehicles = everything.m_prefersInfantry = TRUE;
-	CHECK( aiCounterScore( mixed, everything ) <= 1.0f );
-	CHECK( aiCounterScore( mixed, everything ) > aiCounterScore( mixed, generic ) );
+	everything.m_answer = 1.0f;
+	everything.m_detectsStealth = TRUE;
+	CHECK_NEAR( 1.0f, aiCounterScore( halfStealth, everything ), 0.0001f );
+}
+
+
+/** The shot arithmetic under every matchup, checked against numbers read straight out of Weapon.ini
+	 and the Object INI rather than numbers made up to fit. */
+TEST(frames_to_kill_counts_shots_delays_and_reloads)
+{
+	// Crusader on Crusader: 480 health, CrusaderTankGun does 60 a shell every 2000 ms (60 frames),
+	// no clip. Eight shells, each paying one delay.
+	AIShotPattern crusaderGun;
+	crusaderGun.m_damagePerShot = 60.0f;
+	crusaderGun.m_delayFrames = 60.0f;
+	CHECK_NEAR( 480.0f, aiFramesToKill( 480.0f, crusaderGun ), 0.001f );
+
+	// the same shell through HumanArmor's 10% on a 120-health Rebel: twenty shells, not two
+	AIShotPattern crusaderOnInfantry = crusaderGun;
+	crusaderOnInfantry.m_damagePerShot = 6.0f;
+	CHECK_NEAR( 1200.0f, aiFramesToKill( 120.0f, crusaderOnInfantry ), 0.001f );
+
+	// a clip of two with a long reload: the third shot waits for the reload, not the delay
+	AIShotPattern clip;
+	clip.m_damagePerShot = 50.0f;
+	clip.m_delayFrames = 10.0f;
+	clip.m_clipSize = 2;
+	clip.m_reloadFrames = 100.0f;
+	CHECK_NEAR( 120.0f, aiFramesToKill( 150.0f, clip ), 0.001f );
+
+	// a sniper's aim is paid once, before the first shot
+	clip.m_openingFrames = 15.0f;
+	CHECK_NEAR( 135.0f, aiFramesToKill( 150.0f, clip ), 0.001f );
+
+	// overkill is one shot, and it still pays its delay: two one-shot kills tie instead of both
+	// reading as instant
+	CHECK_NEAR( 60.0f, aiFramesToKill( 10.0f, crusaderGun ), 0.001f );
+
+	// a weapon the armour ignores never kills
+	AIShotPattern harmless;
+	harmless.m_delayFrames = 30.0f;
+	CHECK_EQ( AI_CANNOT_KILL, aiFramesToKill( 480.0f, harmless ) );
+}
+
+
+/** One pairing as a score: money for money, log scale, and the two directions of it sum to one. */
+TEST(matchup_score_is_money_for_money)
+{
+	// an even fight at an even price is an even trade
+	CHECK_NEAR( 0.5f, aiMatchupScore( 480.0f, 480.0f, 900.0f, 900.0f ), 0.0001f );
+
+	// twice as fast for the same money is better, and the other side of it is worse by the same amount
+	const Real faster = aiMatchupScore( 240.0f, 480.0f, 900.0f, 900.0f );
+	const Real slower = aiMatchupScore( 480.0f, 240.0f, 900.0f, 900.0f );
+	CHECK( faster > 0.5f );
+	CHECK_NEAR( 1.0f, faster + slower, 0.0001f );
+
+	// sixteen times better is as good as it gets
+	CHECK_NEAR( 1.0f, aiMatchupScore( 30.0f, 480.0f, 900.0f, 900.0f ), 0.0001f );
+	CHECK_NEAR( 1.0f, aiMatchupScore( 1.0f, 480.0f, 900.0f, 900.0f ), 0.0001f );
+
+	// an Overlord that kills twice as fast for twice the price is no bargain
+	CHECK_NEAR( 0.5f, aiMatchupScore( 240.0f, 480.0f, 1800.0f, 900.0f ), 0.0001f );
+
+	// a unit that cannot hurt the target answers none of it; one the target cannot hurt answers all
+	CHECK_NEAR( 0.0f, aiMatchupScore( AI_CANNOT_KILL, 480.0f, 900.0f, 900.0f ), 0.0001f );
+	CHECK_NEAR( 1.0f, aiMatchupScore( 480.0f, AI_CANNOT_KILL, 900.0f, 900.0f ), 0.0001f );
+	CHECK_NEAR( 0.0f, aiMatchupScore( AI_CANNOT_KILL, AI_CANNOT_KILL, 900.0f, 900.0f ), 0.0001f );
+
+	// a free unit has no price to weigh, so only the kill times count
+	CHECK_NEAR( faster, aiMatchupScore( 240.0f, 480.0f, 0.0f, 900.0f ), 0.0001f );
 }
 
 
@@ -8575,6 +8705,92 @@ TEST(a_cash_hoard_shortens_the_wait_but_only_so_far)
 }
 
 
+/** Faster waits do not spend a hoard when there is nothing left to build.  On Twilight Flame a
+	 brutal USA banked 117,206 with every team its script allowed already on the map: the fifth wave
+	 teams allow one copy each, so it only ever replaced losses.  A hoard buys more copies. */
+TEST(a_cash_hoard_allows_more_copies_of_a_team)
+{
+	// under two thresholds the data's limit stands
+	CHECK_EQ( 1, aiHoardAllowedTeamInstances( 1, 4000, 4000 ) );
+	CHECK_EQ( 1, aiHoardAllowedTeamInstances( 1, 7999, 4000 ) );
+
+	// one more copy per two thresholds banked
+	CHECK_EQ( 2, aiHoardAllowedTeamInstances( 1, 8000, 4000 ) );
+	CHECK_EQ( 7, aiHoardAllowedTeamInstances( 5, 16000, 4000 ) );
+
+	// and three more at most, however big the pile gets
+	CHECK_EQ( 4, aiHoardAllowedTeamInstances( 1, 24000, 4000 ) );
+	CHECK_EQ( 4, aiHoardAllowedTeamInstances( 1, 999999, 4000 ) );
+
+	// a team the data never lets the AI build stays unbuildable
+	CHECK_EQ( 0, aiHoardAllowedTeamInstances( 0, 999999, 4000 ) );
+
+	// no threshold is the bottom rung, and EA's limit
+	CHECK_EQ( 1, aiHoardAllowedTeamInstances( 1, 999999, 0 ) );
+}
+
+
+/** B4, second attempt.  The cash map aimed at the enemy's money and walked past his army, 7-9; this
+	 one counts the guns the AI knows about along each approach and takes the quietest. */
+TEST(an_attack_takes_the_least_defended_lane)
+{
+	const Real quiet[3] = { 5000.0f, 800.0f, 2400.0f };
+	CHECK_EQ( 1, aiLeastDefendedLane( quiet, 3, 0 ) );
+
+	// nothing known anywhere: the lane the script asked for
+	const Real unknown[3] = { 0.0f, 0.0f, 0.0f };
+	CHECK_EQ( 2, aiLeastDefendedLane( unknown, 3, 2 ) );
+
+	// a tie with the asked-for lane keeps it
+	const Real tie[3] = { 800.0f, 800.0f, 2400.0f };
+	CHECK_EQ( 0, aiLeastDefendedLane( tie, 3, 0 ) );
+
+	// a lane the map does not have is never taken, however quiet it reads
+	const Real missing[3] = { 3000.0f, -1.0f, 1000.0f };
+	CHECK_EQ( 2, aiLeastDefendedLane( missing, 3, 0 ) );
+
+	// ... and when the asked-for lane is the missing one, the quietest that exists
+	const Real noCenter[3] = { -1.0f, 900.0f, 400.0f };
+	CHECK_EQ( 2, aiLeastDefendedLane( noCenter, 3, 0 ) );
+
+	// no lanes at all: the script's
+	const Real none[3] = { -1.0f, -1.0f, -1.0f };
+	CHECK_EQ( 1, aiLeastDefendedLane( none, 3, 1 ) );
+
+}
+
+
+/** C2, second attempt: parked attack teams leave together once they are a wave, or once they have
+	 waited long enough - and never on a threshold measured against the enemy. */
+TEST(a_parked_wave_goes_when_it_is_worth_sending_or_has_waited_long_enough)
+{
+	const Real WAVE = 6000.0f;
+	const UnsignedInt MAX_HOLD = 2700;
+
+	// a lone artillery piece waits for company
+	CHECK( !aiReleaseWave( 900.0f, WAVE, 100, MAX_HOLD ) );
+
+	// a wave's worth goes at once
+	CHECK( aiReleaseWave( 6000.0f, WAVE, 100, MAX_HOLD ) );
+	CHECK( aiReleaseWave( 9000.0f, WAVE, 0, MAX_HOLD ) );
+
+	// and a trickle still attacks eventually
+	CHECK( aiReleaseWave( 900.0f, WAVE, MAX_HOLD, MAX_HOLD ) );
+
+	// nothing parked that can fight: nothing to send, however long
+	CHECK( !aiReleaseWave( 0.0f, WAVE, MAX_HOLD * 10, MAX_HOLD ) );
+}
+
+
+TEST(the_ladder_switches_on_reading_the_map_and_buying_at_the_top)
+{
+	TAiData data;
+	CHECK( data.m_skill[ AISKILL_BRUTAL ].m_useInfluenceMapForAttackLane );
+	CHECK( data.m_skill[ AISKILL_BRUTAL ].m_economyBuildings );
+	CHECK( !data.m_skill[ AISKILL_EASY ].m_economyBuildings );
+}
+
+
 /** D8: role is the second axis - difficulty says how well the AI plays, role says what it is
 	 trying to do.  The property that has to hold is that a role is a *preference*, not a bonus: they
 	 all spend the same money, they spend it at different moments and on different things.  If one
@@ -8617,23 +8833,21 @@ TEST(every_role_commits_at_its_own_moment_and_none_of_them_is_a_bonus)
 	 itself orders.  The exemption used to be "the facing has started", a flag that is never cleared
 	 once set, so after the first turn nothing the unit did could break the capture: an AI ordering
 	 its riflemen to run from a fight left the derrick they were on flashing and sounding its
-	 capture tick with nobody there, and it changed hands anyway. */
+	 capture tick with nobody there, and it changed hands anyway.  The flag pair that followed had the
+	 same hole whenever the turn took more than a frame, so the exemption is now the AI state itself. */
 TEST(walking_away_breaks_a_capture_but_turning_towards_it_does_not)
 {
 	// standing on the building, working: nothing to break
-	CHECK( !abilityBrokenByMovement( FALSE, TRUE, TRUE, TRUE ) );
+	CHECK( !abilityBrokenByMovement( FALSE, TRUE, FALSE ) );
 
 	// the ability's own turn towards the target: moving, but not leaving
-	CHECK( !abilityBrokenByMovement( TRUE, TRUE, TRUE, FALSE ) );
+	CHECK( !abilityBrokenByMovement( TRUE, TRUE, TRUE ) );
 
-	// the turn is over and the unit is moving again: it has left, whoever ordered it
-	CHECK( abilityBrokenByMovement( TRUE, TRUE, TRUE, TRUE ) );
-
-	// an ability that never faces its target (NeedToFaceTarget = No) is broken by movement too
-	CHECK( abilityBrokenByMovement( TRUE, TRUE, FALSE, FALSE ) );
+	// a retreat order replaced the turn: it has left, whoever ordered it
+	CHECK( abilityBrokenByMovement( TRUE, TRUE, FALSE ) );
 
 	// and nothing is broken when no power is up: walking is just walking
-	CHECK( !abilityBrokenByMovement( TRUE, FALSE, TRUE, TRUE ) );
+	CHECK( !abilityBrokenByMovement( TRUE, FALSE, FALSE ) );
 }
 
 /* Every AI seat a lobby offers has to survive the trip to the other machines.  The host writes the
@@ -9231,6 +9445,38 @@ TEST(an_allocation_inside_a_job_is_counted)
 	JobSystem::shutdown();
 }
 
+/* A fork made the moment the last one returned finds some workers still on their way back to the
+	 wait; a fork made after a pause finds them all asleep.  A wake lost in either case hangs this test,
+	 and a wake left over from one fork and taken by the next returns before its workers are done,
+	 which the visit count sees.  A spin-before-sleep version of the pool hung the full test run once
+	 on exactly that, and measured worse on the particle scene besides, so the pool sleeps at once. */
+TEST(parallel_for_covers_forks_back_to_back_and_forks_after_a_pause)
+{
+	static const Int BACK_TO_BACK_FORKS = 2000;
+	static const Int PAUSED_FORKS = 20;
+	static const DWORD PAUSE_MS = 5;
+	static const Int ITEMS = 64;
+
+	JobSystem::shutdown();
+	JobSystem::init( 4 );
+
+	for( Int fork = 0; fork < BACK_TO_BACK_FORKS + PAUSED_FORKS; ++fork )
+	{
+		if( fork >= BACK_TO_BACK_FORKS )
+			::Sleep( PAUSE_MS );
+
+		resetJobVisits();
+		JobSystem::parallel_for( ITEMS, 1, jobTestCount, NULL );
+
+		Int seen = 0;
+		for( Int i = 0; i < ITEMS; ++i )
+			seen += (s_jobVisits[ i ] == 1) ? 1 : 0;
+		CHECK_EQ( ITEMS, seen );
+	}
+
+	JobSystem::shutdown();
+}
+
 /* The pool is torn down inside ~GameEngine, on the way out of a process that may be quitting from
 	 anywhere.  It has to survive being stopped without ever being started, being stopped twice, and
 	 being started again afterwards - none of which may hang. */
@@ -9682,6 +9928,66 @@ TEST(the_options_menu_buttons_all_wear_one_font)
 	CHECK_EQ( agreed, found );
 }
 
+TEST(a_plates_mask_is_solid_under_its_windows_and_open_where_it_paints_nothing)
+{
+	/* A click on the bar reaches the world where the plate is transparent, and the mask saying where
+		 that is comes out of the targa.  So every tracked targa has to decode, the windows a player
+		 clicks have to stand on solid art, and every plate has to have some open texels - a mask read
+		 off the wrong channel or upside down fails one of those three. */
+	struct Seated { Int panel; Int x, y; };
+	static const Seated seated[] =
+	{
+		{ ControlBar::CB_PANEL_LEFT,		 90, 519 },		// radar
+		{ ControlBar::CB_PANEL_CENTER,	413, 541 },		// command grid
+		{ ControlBar::CB_PANEL_RIGHT,		690, 537 },		// selection portrait
+		{ -1, 0, 0 }
+	};
+	static const char *const sides[] = { "America", "China", "GLA", NULL };
+
+	for( const char *const *s = sides; *s; s++ )
+		for( Int p = 0; p < ControlBar::CB_PANEL_COUNT; p++ )
+		{
+			const ControlBarPlate *plate = ControlBarPlateForSide( AsciiString( *s ), p );
+			CHECK( plate != NULL );
+
+			char path[ _MAX_PATH ];
+			sprintf( path, "%s/%s", PLATE_TEXTURE_DIR, plate->filename );
+			FILE *fp = fopen( path, "rb" );
+			CHECK( fp != NULL );
+			if( fp == NULL )
+				continue;
+			std::vector<UnsignedByte> bytes;
+			UnsignedByte chunk[ 4096 ];
+			for( size_t got; ( got = fread( chunk, 1, sizeof( chunk ), fp ) ) > 0; )
+				bytes.insert( bytes.end(), chunk, chunk + got );
+			fclose( fp );
+
+			std::vector<UnsignedByte> mask;
+			CHECK( ControlBarPlateMaskFromTarga( &bytes[ 0 ], (Int)bytes.size(), plate->artW, plate->artH, mask ) );
+			if( (Int)mask.size() != plate->artW * plate->artH )
+				continue;
+
+			Int open = 0;
+			for( size_t i = 0; i < mask.size(); i++ )
+				open += mask[ i ] ? 0 : 1;
+			CHECK( open > 0 );
+			CHECK( open < (Int)mask.size() );
+
+			for( const Seated *w = seated; w->panel >= 0; w++ )
+			{
+				if( w->panel != p )
+					continue;
+				const Int texelX = ( w->x - plate->design.lo.x ) * plate->artW / plate->design.width();
+				const Int texelY = ( w->y - plate->design.lo.y ) * plate->artH / plate->design.height();
+				CHECK( mask[ texelY * plate->artW + texelX ] != 0 );
+			}
+
+			// and a file cut short is refused rather than read past its end
+			std::vector<UnsignedByte> scratch;
+			CHECK( ControlBarPlateMaskFromTarga( &bytes[ 0 ], (Int)bytes.size() / 2, plate->artW, plate->artH, scratch ) == FALSE );
+		}
+}
+
 TEST(every_plate_that_touches_a_design_edge_touches_the_screen_edge)
 {
 	/* The plate rectangles were measured against the paintings, and a painting stops a pixel or two
@@ -9890,6 +10196,52 @@ TEST(option_catalog_rows_are_well_formed)
 	CHECK( TheOptionCatalog[ TheOptionCatalogCount ].iniKey == NULL );
 }
 
+TEST(string_file_bytes_decode_utf8_and_keep_latin1)
+{
+	/* A translation .str is UTF-8 and EA's own .str files are ASCII with the odd Latin-1 byte.  Before
+		 the decoder every byte became the character of the same number, so "Kışla" drew as "KÄ±ÅŸla".
+		 Both kinds of file go through the same function, so both halves are checked: a well-formed
+		 sequence becomes its character, and a byte that does not start one stays what it was. */
+	WideChar decoded = 0;
+
+	const unsigned char plain[] = "K";
+	CHECK_EQ( decodeStringFileCharacter( plain, &decoded ), 1 );
+	CHECK_EQ( (Int)decoded, (Int)L'K' );
+
+	const unsigned char dotlessI[] = { 0xC4, 0xB1, 0 };						// U+0131, the ı in Kışla
+	CHECK_EQ( decodeStringFileCharacter( dotlessI, &decoded ), 2 );
+	CHECK_EQ( (Int)decoded, 0x0131 );
+
+	const unsigned char euro[] = { 0xE2, 0x82, 0xAC, 0 };					// U+20AC, three bytes
+	CHECK_EQ( decodeStringFileCharacter( euro, &decoded ), 3 );
+	CHECK_EQ( (Int)decoded, 0x20AC );
+
+	const unsigned char latin1Word[] = { 0xE9, 't', 0 };					// a Latin-1 é, not a lead byte here
+	CHECK_EQ( decodeStringFileCharacter( latin1Word, &decoded ), 1 );
+	CHECK_EQ( (Int)decoded, 0x00E9 );
+
+	const unsigned char truncated[] = { 0xC4, 0 };								// a lead byte at the very end
+	CHECK_EQ( decodeStringFileCharacter( truncated, &decoded ), 1 );
+	CHECK_EQ( (Int)decoded, 0x00C4 );
+
+	const unsigned char overlong[] = { 0xE0, 0x80, 0xAF, 0 };			// '/' spelled in three bytes
+	CHECK_EQ( decodeStringFileCharacter( overlong, &decoded ), 1 );
+	CHECK_EQ( (Int)decoded, 0x00E0 );
+}
+
+TEST(text_language_row_offers_every_language)
+{
+	/* The menu builds one combo entry per value up to hi and GameText indexes its overlay table with
+		 the same number, so the row and the enum have to end in the same place. */
+	const OptionDef *language = findOptionDef( "TextLanguage" );
+	CHECK( language != NULL );
+	if( language == NULL )
+		return;
+	CHECK_EQ( language->kind, OPTION_ENUM );
+	CHECK_EQ( language->lo, (Int)TEXT_LANGUAGE_ENGLISH );
+	CHECK_EQ( language->hi, (Int)TEXT_LANGUAGE_COUNT - 1 );
+}
+
 TEST(gameplay_conveniences_are_forced_on_and_left_the_catalog)
 {
 	/* The Gameplay page is one control now, health bars, and the eight settings that used to share
@@ -9924,11 +10276,11 @@ TEST(gameplay_conveniences_are_forced_on_and_left_the_catalog)
 	CHECK( bars != NULL );
 	CHECK( bars->widgetName != NULL && bars->widgetName[ 0 ] != '\0' );
 
-	/* The four camera and mouse habits went the other way: no control, but the row stays, so an
-		 Options.ini that names one still wins over the default. */
+	/* The camera and mouse habits went the other way: no control, but the row stays, so an
+		 Options.ini that names one still wins over the default.  ZoomToCursor came back to the menu. */
 	static const char *const hidden[] =
 	{
-		"FormationDrag", "ZoomToCursor", "EdgeScrollInWindowedMode", "SnapCameraRotateTo45", NULL
+		"FormationDrag", "EdgeScrollInWindowedMode", "SnapCameraRotateTo45", NULL
 	};
 	for( Int i = 0; hidden[ i ] != NULL; ++i )
 	{
@@ -9936,6 +10288,91 @@ TEST(gameplay_conveniences_are_forced_on_and_left_the_catalog)
 		CHECK( def != NULL );
 		CHECK( def->widgetName == NULL || def->widgetName[ 0 ] == '\0' );
 	}
+
+	TheWritableGlobalData = saved;
+	delete scratch;
+}
+
+TEST(the_input_scheme_is_a_live_menu_choice_that_starts_modern)
+{
+	/* Legacy is read on every click and key, so the row has to say APPLY_LIVE - a restart note on a
+		 setting that already took would send the player looking for a change that is not coming.  A
+		 player who never opens the menu keeps the game they already had. */
+	const OptionDef *def = findOptionDef( "InputScheme" );
+	CHECK( def != NULL );
+	if( def == NULL )
+		return;
+	CHECK_EQ( def->kind, OPTION_ENUM );
+	CHECK_EQ( def->apply, APPLY_LIVE );
+	CHECK_EQ( def->lo, 0 );
+	CHECK_EQ( def->hi, (Int)INPUT_SCHEME_COUNT - 1 );
+	CHECK( def->widgetName != NULL && def->widgetName[ 0 ] != '\0' );
+
+	GlobalData *saved = TheWritableGlobalData;
+	GlobalData *scratch = NEW GlobalData;
+	TheWritableGlobalData = scratch;
+
+	CHECK_EQ( scratch->m_inputScheme, (Int)INPUT_SCHEME_MODERN );
+	CHECK( !scratch->isLegacyInput() );
+	def->set( INPUT_SCHEME_LEGACY );
+	CHECK( scratch->isLegacyInput() );
+	CHECK_EQ( def->get(), (Int)INPUT_SCHEME_LEGACY );
+
+	TheWritableGlobalData = saved;
+	delete scratch;
+}
+
+TEST(wasd_camera_is_a_live_check_box_that_starts_off_and_needs_modern_input)
+{
+	/* The box moves eleven keys a player already has in their hands, so nobody gets it without asking.
+		 A tick saved under Modern is kept through a switch to Legacy, which plays the game's own map,
+		 and comes back with Modern. */
+	const OptionDef *def = findOptionDef( "WasdCamera" );
+	CHECK( def != NULL );
+	if( def == NULL )
+		return;
+	CHECK_EQ( def->kind, OPTION_BOOL );
+	CHECK_EQ( def->apply, APPLY_LIVE );
+	CHECK( def->widgetName != NULL && def->widgetName[ 0 ] != '\0' );
+
+	GlobalData *saved = TheWritableGlobalData;
+	GlobalData *scratch = NEW GlobalData;
+	TheWritableGlobalData = scratch;
+
+	CHECK( !scratch->m_wasdCamera );
+	CHECK( !scratch->isWasdCamera() );
+	def->set( 1 );
+	CHECK( scratch->isWasdCamera() );
+	scratch->m_inputScheme = INPUT_SCHEME_LEGACY;
+	CHECK( !scratch->isWasdCamera() );
+	CHECK_EQ( def->get(), 1 );
+	scratch->m_inputScheme = INPUT_SCHEME_MODERN;
+	CHECK( scratch->isWasdCamera() );
+
+	TheWritableGlobalData = saved;
+	delete scratch;
+}
+
+TEST(order_lines_are_a_live_check_box_that_starts_on)
+{
+	/* The lines are rebuilt from the units every frame, so the box takes effect at Accept, and a player
+		 who never opens the menu keeps the lines the game has drawn since they were added. */
+	const OptionDef *def = findOptionDef( "OrderLines" );
+	CHECK( def != NULL );
+	if( def == NULL )
+		return;
+	CHECK_EQ( def->kind, OPTION_BOOL );
+	CHECK_EQ( def->apply, APPLY_LIVE );
+	CHECK( def->widgetName != NULL && def->widgetName[ 0 ] != '\0' );
+
+	GlobalData *saved = TheWritableGlobalData;
+	GlobalData *scratch = NEW GlobalData;
+	TheWritableGlobalData = scratch;
+
+	CHECK( scratch->m_showOrderLines );
+	def->set( 0 );
+	CHECK( !scratch->m_showOrderLines );
+	CHECK_EQ( def->get(), 0 );
 
 	TheWritableGlobalData = saved;
 	delete scratch;
@@ -10202,6 +10639,72 @@ TEST(high_static_lod_keeps_the_picture_settings)
 	CHECK_EQ( (Int)high.m_useTrees, 1 );
 	CHECK_EQ( (Int)high.m_useHeatEffects, 1 );
 	CHECK_EQ( high.m_textureReduction, 0 );
+}
+
+/* Ultra sits between High and Custom, so a comparison against a level still reads High as the lower
+	 of the two, and Custom keeps its place as the last entry every table is sized by. */
+TEST(ultra_static_lod_is_high_with_the_ceiling_raised)
+{
+	GameLODManager manager;
+	CHECK_EQ( manager.getStaticGameLODIndex( "Ultra" ), (Int)STATIC_GAME_LOD_ULTRA );
+	CHECK_STR( manager.getStaticGameLODLevelName( STATIC_GAME_LOD_CUSTOM ), "Custom" );
+	CHECK( STATIC_GAME_LOD_HIGH < STATIC_GAME_LOD_ULTRA );
+	CHECK( STATIC_GAME_LOD_ULTRA < STATIC_GAME_LOD_CUSTOM );
+
+	StaticGameLODInfo high;
+	high.m_maxParticleCount = 3000;
+	high.m_maxTankTrackFadeDelay = 60000;
+	high.m_useHeatEffects = FALSE;
+	const StaticGameLODInfo ultra = makeUltraStaticGameLOD( high );
+	CHECK_EQ( ultra.m_maxParticleCount, 5000 );
+	CHECK_EQ( (Int)ultra.m_enableDynamicLOD, 0 );
+	CHECK_EQ( (Int)ultra.m_useHeatEffects, 1 );
+	// what Ultra has no opinion about is High's
+	CHECK_EQ( ultra.m_maxTankTrackFadeDelay, 60000 );
+}
+
+TEST(effects_page_rows_reach_the_fields_the_command_line_switches_set)
+{
+	GlobalData *saved = TheWritableGlobalData;
+	GlobalData *scratch = NEW GlobalData;
+	TheWritableGlobalData = scratch;
+
+	static const char *const shadows[] =
+	{
+		"UseShadowVolumesForSkins", "ShadowsForProjectiles", "ShadowsForProps", "ShadowsForParticles",
+	};
+	for( Int i = 0; i < (Int)( sizeof( shadows ) / sizeof( shadows[ 0 ] ) ); ++i )
+	{
+		const OptionDef *def = findOptionDef( shadows[ i ] );
+		CHECK( def != NULL );
+		CHECK_EQ( (Int)def->kind, (Int)OPTION_BOOL );
+		// on until the player says otherwise, as GameData.ini had them
+		CHECK_EQ( def->get(), 1 );
+		def->set( 0 );
+		CHECK_EQ( def->get(), 0 );
+	}
+	CHECK_EQ( (Int)scratch->m_shadowsForProps, 0 );
+
+	const OptionDef *smoke = findOptionDef( "Smoke" );
+	CHECK( smoke != NULL );
+	CHECK_EQ( (Int)smoke->apply, (Int)APPLY_RESTART );
+	CHECK_EQ( smoke->hi, SMOKE_LEVEL_COUNT - 1 );
+	CHECK_EQ( smoke->get(), 0 );
+	smoke->set( 2 );
+	CHECK_NEAR( scratch->m_smokeThickness, 4.0f, 0.001f );
+	CHECK_EQ( smoke->get(), 2 );
+	// a bare -smoke is 2, which the box shows as Thick
+	scratch->m_smokeThickness = 2.0f;
+	CHECK_EQ( smoke->get(), 1 );
+
+	const OptionDef *bounce = findOptionDef( "ParticleBounce" );
+	CHECK( bounce != NULL );
+	CHECK_EQ( (Int)bounce->apply, (Int)APPLY_RESTART );
+	bounce->set( 1 );
+	CHECK_EQ( (Int)scratch->m_particleGroundBounce, 1 );
+
+	TheWritableGlobalData = saved;
+	delete scratch;
 }
 
 TEST(window_mode_derives_the_boolean_the_device_layer_reads)
@@ -11566,6 +12069,24 @@ TEST(scenario_parses_a_spawn_line)
 	CHECK_NEAR( action.spacing, 55.0f, 0.01f );
 }
 
+TEST(scenario_parses_a_particles_line)
+{
+	ScenarioAction action;
+
+	CHECK_EQ( (Int)ScenarioDrill_parseLine( "30 particles 0 CINE_JetLenzflareExhaust 250 760 850 25", &action ),
+						(Int)SCENARIO_PARSE_OK );
+	CHECK_EQ( (Int)action.action, (Int)SCENARIO_ACTION_PARTICLES );
+	CHECK_STR( action.selector.str(), "CINE_JetLenzflareExhaust" );
+	CHECK_EQ( action.count, 250 );
+	CHECK_NEAR( action.at.x, 760.0f, 0.01f );
+	CHECK_NEAR( action.at.y, 850.0f, 0.01f );
+	CHECK_NEAR( action.spacing, 25.0f, 0.01f );
+
+	// the same count and position rules as spawn, because it shares spawn's parse
+	CHECK_EQ( (Int)ScenarioDrill_parseLine( "30 particles 0 X 0 760 850", &action ), (Int)SCENARIO_PARSE_BAD_COUNT );
+	CHECK_EQ( (Int)ScenarioDrill_parseLine( "30 particles 0 X 5 760", &action ), (Int)SCENARIO_PARSE_MISSING_ARGS );
+}
+
 TEST(scenario_parses_the_order_lines)
 {
 	ScenarioAction action;
@@ -11586,6 +12107,13 @@ TEST(scenario_parses_the_order_lines)
 	CHECK_EQ( (Int)action.action, (Int)SCENARIO_ACTION_ATTACK );
 	CHECK_EQ( action.targetSlot, 1 );
 	CHECK_STR( action.targetSelector.str(), "AmericaCommandCenter" );
+
+	CHECK_EQ( (Int)ScenarioDrill_parseLine( "40 enter 0 AmericaInfantryMissileDefender 0 AmericaVehicleHumvee", &action ),
+						(Int)SCENARIO_PARSE_OK );
+	CHECK_EQ( (Int)action.action, (Int)SCENARIO_ACTION_ENTER );
+	CHECK_EQ( action.targetSlot, 0 );
+	CHECK_STR( action.targetSelector.str(), "AmericaVehicleHumvee" );
+	CHECK_EQ( (Int)ScenarioDrill_parseLine( "40 enter 0 * 0", &action ), (Int)SCENARIO_PARSE_MISSING_ARGS );
 
 	CHECK_EQ( (Int)ScenarioDrill_parseLine( "900 stop 2 *", &action ), (Int)SCENARIO_PARSE_OK );
 	CHECK_EQ( (Int)action.action, (Int)SCENARIO_ACTION_STOP );
@@ -11801,3 +12329,95 @@ TEST(key_down_info_remembers_each_modifier_combination)
 	info.clearModState( CTRL_MASK | SHIFT_MASK );
 	CHECK( !info.isKeyDown() );
 }
+
+/* A button flash for a button the layout does not have.
+ *
+ * WindowTransitions.ini's single player groups name MainMenu.wnd:ButtonCustomMission, and only the
+ * 1.04 patch's MainMenu.wnd carries that button, so on another install the window lookup comes
+ * back empty. Every step of the flash skipped an empty window except the pause between fading to
+ * the background and fading to the gradient, which asked to draw it anyway. A player's crash log
+ * ended there, reading address 0x1F0 inside GameWindow::winGetScreenPosition.
+ */
+class ButtonFlashWithoutWindow : public ButtonFlashTransition
+{
+public:
+	enum
+	{
+		PAUSE_FIRST_FRAME = BUTTONFLASHTRANSITION_FADE_TO_BACKGROUND_4 + 1,
+		PAUSE_LAST_FRAME = BUTTONFLASHTRANSITION_FADE_TO_GRADE_IN_1 - 1,
+		NOTHING_TO_DRAW = -1
+	};
+
+	Int drawState( void ) const { return m_drawState; }
+};
+
+TEST(button_flash_draws_nothing_for_a_button_the_layout_lacks)
+{
+	ButtonFlashWithoutWindow flash;
+	for( Int frame = ButtonFlashWithoutWindow::PAUSE_FIRST_FRAME; frame <= ButtonFlashWithoutWindow::PAUSE_LAST_FRAME; ++frame )
+	{
+		flash.update( frame );
+		CHECK_EQ( flash.drawState(), (Int)ButtonFlashWithoutWindow::NOTHING_TO_DRAW );
+	}
+}
+
+// Camera scroll timing must advance during stationary frames as well as moving frames.
+#include "GameClient/CameraScrollClock.h"
+
+TEST(camera_scroll_restarts_after_idle_without_a_jump)
+{
+	CameraScrollClock clock;
+	CHECK_NEAR(clock.sample(1000, 33), 0.0f, 0.00001f);
+	for (uint32_t now = 1016; now <= 17000; now += 16)
+		clock.sample(now, 33); // stationary render frames
+	CHECK_NEAR(clock.sample(17016, 33), 16.0f / 33.0f, 0.00001f);
+	CHECK_NEAR(clock.sample(17032, 33), 16.0f / 33.0f, 0.00001f);
+}
+
+TEST(camera_scroll_elapsed_time_is_independent_of_render_rate)
+{
+	const int rates[] = {30, 60, 144, 240};
+	for (int r = 0; r < 4; ++r)
+	{
+		CameraScrollClock clock;
+		clock.sample(1000, 33);
+		float distance = 0.0f;
+		for (int frame = 1; frame <= rates[r]; ++frame)
+			distance += clock.sample(1000 + frame * 1000 / rates[r], 33);
+		CHECK_NEAR(distance, 1000.0f / 33.0f, 0.0001f);
+	}
+}
+
+TEST(camera_scroll_clocks_are_independent_and_handle_timer_wrap)
+{
+	CameraScrollClock first, second;
+	first.sample(0xfffffff0u, 33);
+	second.sample(2000, 33);
+	CHECK_NEAR(first.sample(0u, 33), 16.0f / 33.0f, 0.00001f);
+	CHECK_NEAR(second.sample(2033, 33), 1.0f, 0.00001f);
+	CHECK_NEAR(second.sample(9000, 33), 3.0f, 0.00001f);
+}
+
+TEST(camera_preferences_default_to_a_finite_map_margin)
+{
+	CHECK(bootOnce());
+	GlobalData *saved = TheWritableGlobalData;
+	GlobalData *scratch = NEW GlobalData;
+	TheWritableGlobalData = scratch;
+	CHECK(scratch->m_useCameraConstraints);
+	CHECK_EQ(scratch->m_cameraBoundaryMargin, 200);
+	const OptionDef *bounds = findOptionDef("UseCameraConstraints");
+	CHECK(bounds != NULL);
+	if (bounds)
+	{
+		bounds->set(0);
+		CHECK(!scratch->m_useCameraConstraints);
+	}
+	TheWritableGlobalData = saved;
+	delete scratch;
+}
+#include "test_camera_behavior.inc"
+#include "test_production_input.inc"
+#include "test_minimap_input.inc"
+#include "test_selection_priority.inc"
+#include "test_supply_center_save.inc"

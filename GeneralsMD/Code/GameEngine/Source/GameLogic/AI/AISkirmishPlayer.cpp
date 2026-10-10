@@ -199,6 +199,16 @@ void AISkirmishPlayer::processBaseBuilding( void )
 			if (bldg) {
 				continue; // already built.
 			}
+			// The safety check below is a range query over everything near the spot, most of a
+			// millisecond each late in a 4v4, and it ran for every unbuilt entry on every pass (36 of
+			// them, 28ms, in one frame). An entry that cannot change what this pass picks skips it.
+			const Bool couldBePriority = info->isPriorityBuild() && !isPriority;
+			const Bool couldBePower = powerPlan==NULL && curPlan->isKindOf(KINDOF_FS_POWER) &&
+				!curPlan->isKindOf(KINDOF_CASH_GENERATOR) && (isUnderPowered || info->isAutomaticBuild());
+			const Bool couldBeBuilt = bldgPlan==NULL && info->isAutomaticBuild() && info->isBuildable();
+			if (!couldBePriority && !couldBePower && !couldBeBuilt) {
+				continue;
+			}
 			// Make sure it is safe to build here.
 			AIPlayer::profileBaseSubBegin();
 			const Bool locationSafe = isLocationSafe(info->getLocation(), curPlan);
@@ -366,8 +376,14 @@ Bool AISkirmishPlayer::isAGoodIdeaToBuildTeam( TeamPrototype *proto )
 	if (!proto->evaluateProductionCondition()) {
 		return false;
 	}
-	// check build limit
-	if (proto->countTeamInstances() >= proto->getTemplateInfo()->m_maxInstances){
+	// check build limit, which a hoard raises for attack teams; defence teams keep the data's
+	const TeamTemplateInfo *info = proto->getTemplateInfo();
+	Int allowedInstances = info->m_maxInstances;
+	if (!info->m_isBaseDefense && !info->m_isPerimeterDefense) {
+		allowedInstances = aiHoardAllowedTeamInstances( allowedInstances, m_player->getMoney()->countMoney(),
+																										getSkillProfile()->m_cashHoardThreshold );
+	}
+	if (proto->countTeamInstances() >= allowedInstances){
 		if (TheGlobalData->m_debugAI) {	
 			AsciiString str;
 			str.format("Team %s not chosen - %d already exist.", proto->getName().str(), proto->countTeamInstances());

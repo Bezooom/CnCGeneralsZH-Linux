@@ -51,6 +51,7 @@
 #include "Common/Player.h"
 
 #include "GameClient/Color.h"
+#include "GameClient/CameraBoundary.h"
 #include "GameClient/CommandXlat.h"
 #include "GameClient/Drawable.h"
 #include "GameClient/GameClient.h"
@@ -205,6 +206,10 @@ W3DView::W3DView()
 	m_FXPitch = 1.0f;
 	m_freezeTimeForCameraMovement = false;
 	m_cameraHasMovedSinceRequest = true;
+	// Scripted pans may expand this region even while map constraints are disabled.
+	m_cameraConstraint.lo.x = m_cameraConstraint.lo.y = 0.0f;
+	m_cameraConstraint.hi.x = m_cameraConstraint.hi.y = 0.0f;
+	m_cameraConstraintValid = false;
 	m_locationRequests.clear();
 	m_locationRequests.reserve(MAX_REQUEST_CACHE_SIZE + 10);	// This prevents the vector from ever re-allocing
 
@@ -217,6 +222,8 @@ W3DView::W3DView()
 	m_shakerAngles.Z =0.0f;
 
 	m_recalcCamera = false;
+	m_zoomAnchorValid = false;
+	m_scrollWheelHeight = 0.0f;
 
 }  // end W3DView
 
@@ -323,12 +330,9 @@ void W3DView::buildCameraTransform( Matrix3D *transform )
 	pos.x += m_shakeOffset.x;
 	pos.y += m_shakeOffset.y;
 
-	if (m_cameraConstraintValid)
+	if (TheGlobalData->m_useCameraConstraints && m_cameraConstraintValid)
 	{
-		pos.x = maxf(m_cameraConstraint.lo.x, pos.x);
-		pos.x = minf(m_cameraConstraint.hi.x, pos.x);
-		pos.y = maxf(m_cameraConstraint.lo.y, pos.y);
-		pos.y = minf(m_cameraConstraint.hi.y, pos.y);
+		pos = constrainCameraPosition(pos, m_cameraConstraint);
 	}
 
 	// set position of camera itself
@@ -558,6 +562,13 @@ void W3DView::calcCameraConstraints()
 	{
 		Region3D mapRegion;
 		TheTerrainLogic->getExtent( &mapRegion );
+		if (TheGlobalData->m_cameraBoundaryMargin > 0)
+		{
+			// A fixed margin follows the map rather than shrinking with zoom or camera angle.
+			m_cameraConstraint = cameraBoundaryFromMap(mapRegion, (Real)TheGlobalData->m_cameraBoundaryMargin);
+			m_cameraConstraintValid = true;
+			return;
+		}
 		
 	/*
 		Note the following restrictions on camera constraints!
@@ -700,9 +711,7 @@ void W3DView::setCameraTransform( void )
 	}
 
 	m_3DCamera->Set_Clip_Planes(nearZ, farZ);
-#if defined(_DEBUG) || defined(_INTERNAL)
 	if (TheGlobalData->m_useCameraConstraints)
-#endif
 	{
 		if (!m_cameraConstraintValid)
 		{
@@ -714,11 +723,7 @@ void W3DView::setCameraTransform( void )
 
 		if (m_cameraConstraintValid)
 		{
-			Coord3D pos = *getPosition();
-			pos.x = maxf(m_cameraConstraint.lo.x, pos.x);
-			pos.x = minf(m_cameraConstraint.hi.x, pos.x);
-			pos.y = maxf(m_cameraConstraint.lo.y, pos.y);
-			pos.y = minf(m_cameraConstraint.hi.y, pos.y);
+			Coord3D pos = constrainCameraPosition(*getPosition(), m_cameraConstraint);
 			setPosition(&pos);
 		}
 	}
@@ -1512,6 +1517,7 @@ void W3DView::update(void)
 	 */
 	m_terrainHeightUnderCamera = getHeightAroundPos(m_pos.x, m_pos.y);
 	m_currentHeightAboveGround = m_cameraOffset.z * m_zoom - m_terrainHeightUnderCamera;
+	const Real zoomBeforeSettle = m_zoom;
 	//
 	// The settle below is an exponential approach tuned for one 30Hz step. Gating it on
 	// stepTime made the zoom crawl in visible 30Hz jumps on a faster display; run it every
@@ -1548,10 +1554,22 @@ void W3DView::update(void)
 					m_zoom += zoomAdj;
 					recalcCamera = true;
 				}
+				m_scrollWheelHeight = 0.0f;
+			}
+			else if (m_scrollWheelHeight != 0.0f)
+			{
+				// the wheel still moves the camera while it pans; the terrain under it does not
+				Real heightAdj = m_scrollWheelHeight*cameraAdjustSpeed;
+				if (fabs(heightAdj) < 0.01f)
+					heightAdj = m_scrollWheelHeight;
+				m_scrollWheelHeight -= heightAdj;
+				m_zoom += heightAdj / m_cameraOffset.z;
+				recalcCamera = true;
 			}
 		}
 		else
 		{
+			m_scrollWheelHeight = 0.0f;
 			// we're not scrolling; settle toward desired height above ground
 			Real zoomAdj = (m_zoom - desiredZoom)*cameraAdjustSpeed;
 			Real zoomAdjAbs = fabs(zoomAdj);
@@ -1563,6 +1581,8 @@ void W3DView::update(void)
 			}
 		}
 	}
+	if (m_zoomAnchorValid)
+		holdZoomAnchor( m_zoom != zoomBeforeSettle && !didScriptedMovement );
 	if (TheScriptEngine->isTimeFast()) {
 		return; // don't draw - makes it faster :) jba.
 	}
@@ -2125,26 +2145,18 @@ void W3DView::setSnapMode( CameraLockType lockType, Real lockDist )
 //-------------------------------------------------------------------------------------------------
 void W3DView::scrollBy( Coord2D *delta )
 {
-	// if we haven't moved, ignore
+	// Sample every render tick, including zero movement. Measuring only nonzero scrolls
+	// includes all the idle time in the first move and produces a jump on every restart.
+	const Real scrollDtFactor = m_scrollClock.sample(timeGetTime(), TheW3DFrameLengthInMsec);
+	if (delta)
+		m_scrollAmount = *delta;
+
 	if( delta && (delta->x != 0 || delta->y != 0) )
 	{
 		const Real SCROLL_RESOLUTION = 250.0f;
 
-		// The scroll offsets are tuned as per-30Hz-tick amounts but arrive once per render
-		// frame, so scale the applied movement by real elapsed time to keep scroll speed
-		// framerate-independent. m_scrollAmount stays unscaled - the height-adjust cutoff
-		// in update() compares it against per-tick thresholds.
-		static DWORD prevScrollTime = timeGetTime();
-		DWORD nowScrollTime = timeGetTime();
-		Real scrollDtFactor = (nowScrollTime - prevScrollTime) / (Real)TheW3DFrameLengthInMsec;
-		prevScrollTime = nowScrollTime;
-		if (scrollDtFactor > 3.0f)
-			scrollDtFactor = 3.0f;	// after a hitch or idle, don't teleport the camera
-
 		Vector3 world, worldStart, worldEnd;
 		Vector2 screen, start, end;
-
-		m_scrollAmount = *delta;
 
 		screen.X = delta->x;
 		screen.Y = delta->y;
@@ -2247,6 +2259,7 @@ void W3DView::setDefaultView(Real pitch, Real angle, Real maxHeight)
 //-------------------------------------------------------------------------------------------------
 void W3DView::setHeightAboveGround(Real z)
 {
+	const Real previousHeightAboveGround = m_heightAboveGround;
 	m_heightAboveGround = z;
 
   // if our zoom is limited, we will stay within a predefined distance from the terrain
@@ -2261,6 +2274,11 @@ void W3DView::setHeightAboveGround(Real z)
 
 	}  // end if
 
+	// A fast scroll does not settle the zoom on the terrain, so it would not move towards this height
+	// either; update() eases the wheel's part of it on its own until the scroll ends.
+	if (TheInGameUI->isScrolling())
+		m_scrollWheelHeight += m_heightAboveGround - previousHeightAboveGround;
+
 	stopDoingScriptedCamera();
 	m_cameraConstraintValid = false; // recalc it.
 	m_recalcCamera = true;
@@ -2274,6 +2292,7 @@ void W3DView::setHeightAboveGround(Real z)
 void W3DView::setZoom(Real z)
 {
 	View::setZoom(z);
+	m_zoomAnchorValid = false;	// a saved view or a script set this zoom, not the wheel
 
 	stopDoingScriptedCamera();
 	m_cameraConstraintValid = false; // recalc it.
@@ -2454,7 +2473,7 @@ Int W3DView::iterateDrawablesInRegion( IRegion2D *screenRegion,
 	if (regionIsPoint)
 	{
 		// Allow all drawables to be picked.
-		onlyDrawableToTest = pickDrawable(&screenRegion->lo, TRUE, (PickType) getPickTypesForContext(TheInGameUI->isForceAttackArmed()));
+		onlyDrawableToTest = pickDrawable(&screenRegion->lo, TRUE, (PickType) getPickTypesForContext(TheInGameUI->isForceFireOn()));
 
 		//
 		// Nothing under the cursor in the scene, so a health bar is allowed to answer for its owner.
@@ -2462,9 +2481,10 @@ Int W3DView::iterateDrawablesInRegion( IRegion2D *screenRegion,
 		// hidden behind a building or lost in a crowd - and infantry at full zoom out is a handful of
 		// pixels of model under a bar that is easier to hit than the man.  Fallback order matters: a
 		// bar hangs in the air above its own unit and so overlaps whatever stands behind it, so it may
-		// only answer a click that would otherwise have missed everything.
+		// only answer a click that would otherwise have missed everything.  Legacy input is the game
+		// as shipped, where a bar was only ever a picture.
 		//
-		if (onlyDrawableToTest == NULL)
+		if (onlyDrawableToTest == NULL && !TheGlobalData->isLegacyInput())
 			onlyDrawableToTest = TheGameClient->pickDrawableByHealthBar(&screenRegion->lo);
 
 		if (onlyDrawableToTest == NULL) {
@@ -2716,9 +2736,56 @@ void W3DView::lookAt( const Coord3D *o )
 	pos.z = 0;
 	setPosition(&pos);
 	stopDoingScriptedCamera();
+	// a jump across the map mid-zoom goes where it was sent, not back to the ground the wheel was on
+	m_zoomAnchorValid = false;
 
 	m_recalcCamera = true;
 
+}
+
+//-------------------------------------------------------------------------------------------------
+/** ZoomToCursor.  The wheel only moves the height the camera settles towards, and update() eases the
+	* real zoom there over the frames that follow, so the ground the wheel was spun over is held under
+	* its pixel by holdZoomAnchor for as long as that easing lasts.  A pixel over no ground has nothing
+	* to hold: screenToTerrain hands back the map corner for it, and holding that ran the camera off to
+	* the edge of the map. */
+//-------------------------------------------------------------------------------------------------
+void W3DView::anchorZoomAt( const ICoord2D *pixel )
+{
+	m_zoomAnchorPixel = *pixel;
+	m_zoomAnchorValid = screenToTerrain( pixel, &m_zoomAnchorWorld );
+}
+
+//-------------------------------------------------------------------------------------------------
+/** Runs inside update(), after the zoom has eased and before the frame's camera is built.  The pin
+	* used to run in the message stream, after the frame was already drawn, so every frame showed the
+	* ground sliding off the cursor and the next one pulled it back; the last correction landed after
+	* the zoom had stopped and read as a snap towards the cursor. */
+//-------------------------------------------------------------------------------------------------
+void W3DView::holdZoomAnchor( Bool zoomMoved )
+{
+	if (!zoomMoved || TheInGameUI->isScrolling())
+	{
+		m_zoomAnchorValid = false;
+		return;
+	}
+
+	// a locked view builds no camera this frame, so a measurement would read the last frame's again
+	if (m_viewLockedUntilFrame > TheGameClient->getFrame())
+		return;
+
+	setCameraTransform();
+	Coord3D world;
+	if (!screenToTerrain( &m_zoomAnchorPixel, &world ))
+	{
+		m_zoomAnchorValid = false;
+		return;
+	}
+
+	Coord3D pos = *getPosition();
+	pos.x += m_zoomAnchorWorld.x - world.x;
+	pos.y += m_zoomAnchorWorld.y - world.y;
+	setPosition( &pos );
 }
 
 //-------------------------------------------------------------------------------------------------
