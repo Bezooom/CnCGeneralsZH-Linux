@@ -37,19 +37,24 @@ struct PlatformVulkanTexture {
     VkDeviceMemory memory;
     VkImageView view;
     VkSampler sampler;
+    VkDescriptorSet descriptorSet;
     uint32_t width;
     uint32_t height;
 };
 
 static VkPipeline s_graphicsPipeline = VK_NULL_HANDLE;
 static VkPipelineLayout s_pipelineLayout = VK_NULL_HANDLE;
+static VkDescriptorSetLayout s_descriptorSetLayout = VK_NULL_HANDLE;
+static VkDescriptorPool s_descriptorPool = VK_NULL_HANDLE;
+static PlatformVulkanTexture *s_defaultTexture = nullptr;
+static PlatformVulkanTexture *s_boundTexture = nullptr;
+static PlatformVulkanPushConstants s_pushConstants = {};
 static VkBuffer s_dynamicVB = VK_NULL_HANDLE;
 static VkDeviceMemory s_dynamicVBMem = VK_NULL_HANDLE;
 static void *s_mappedVB = nullptr;
 static VkBuffer s_dynamicIB = VK_NULL_HANDLE;
 static VkDeviceMemory s_dynamicIBMem = VK_NULL_HANDLE;
 static void *s_mappedIB = nullptr;
-static PlatformVulkanTexture *s_boundTexture = nullptr;
 
 static uint32_t find_memory_type(VkPhysicalDevice phys_dev, uint32_t type_filter, VkMemoryPropertyFlags properties)
 {
@@ -64,70 +69,100 @@ static uint32_t find_memory_type(VkPhysicalDevice phys_dev, uint32_t type_filter
     return UINT32_MAX;
 }
 
-static const uint32_t k_vert_spv[] = {
-    0x07230203, 0x00010000, 0x00000000, 0x0000001b, 0x00000000,
-    0x00020011, 0x00000001,
-    0x0003000e, 0x00000000, 0x00000001,
-    0x0009000f, 0x00000000, 0x00000012, 0x6e69616d, 0x00000000, 0x00000009, 0x0000000c, 0x0000000e, 0x0000000f,
-    0x00030047, 0x00000007, 0x00000002,
-    0x00050048, 0x00000007, 0x00000000, 0x0000000b, 0x00000000,
-    0x00040047, 0x0000000c, 0x0000001e, 0x00000000,
-    0x00040047, 0x0000000e, 0x0000001e, 0x00000002,
-    0x00040047, 0x0000000f, 0x0000001e, 0x00000000,
-    0x00020013, 0x00000001,
-    0x00030021, 0x00000002, 0x00000001,
-    0x00030016, 0x00000003, 0x00000020,
-    0x00040015, 0x00000004, 0x00000020, 0x00000000,
-    0x00040017, 0x00000005, 0x00000003, 0x00000003,
-    0x00040017, 0x00000006, 0x00000003, 0x00000004,
-    0x0003001e, 0x00000007, 0x00000006,
-    0x00040020, 0x00000008, 0x00000003, 0x00000007,
-    0x0004003b, 0x00000008, 0x00000009, 0x00000003,
-    0x00040020, 0x0000000a, 0x00000003, 0x00000006,
-    0x00040020, 0x0000000b, 0x00000001, 0x00000005,
-    0x0004003b, 0x0000000b, 0x0000000c, 0x00000001,
-    0x00040020, 0x0000000d, 0x00000001, 0x00000006,
-    0x0004003b, 0x0000000d, 0x0000000e, 0x00000001,
-    0x0004003b, 0x0000000a, 0x0000000f, 0x00000003,
-    0x0004002b, 0x00000003, 0x00000010, 0x3f800000,
-    0x0004002b, 0x00000004, 0x00000011, 0x00000000,
-    0x00050036, 0x00000001, 0x00000012, 0x00000000, 0x00000002,
-    0x000200f8, 0x00000013,
-    0x0004003d, 0x00000005, 0x00000014, 0x0000000c,
-    0x00050051, 0x00000003, 0x00000015, 0x00000014, 0x00000000,
-    0x00050051, 0x00000003, 0x00000016, 0x00000014, 0x00000001,
-    0x00050051, 0x00000003, 0x00000017, 0x00000014, 0x00000002,
-    0x00070050, 0x00000006, 0x00000018, 0x00000015, 0x00000016, 0x00000017, 0x00000010,
-    0x00050041, 0x0000000a, 0x00000019, 0x00000009, 0x00000011,
-    0x0003003e, 0x00000019, 0x00000018,
-    0x0004003d, 0x00000006, 0x0000001a, 0x0000000e,
-    0x0003003e, 0x0000000f, 0x0000001a,
-    0x000100fd,
+// SPIR-V bytecode: vertex shader. The matrix is stored column-major, so the shader reads it as
+// sixteen scalars and rebuilds the matrix from them; a whole-array access is not valid SPIR-V.
+static const uint32_t s_vertexSPIRV[236] = {
+    0x07230203, 0x00010000, 0x00000000, 0x00000029, 0x00000000,
+    0x00020011, 0x00000001, 0x0003000e, 0x00000000, 0x00000001,
+    0x000b000f, 0x00000000, 0x0000001c, 0x6e69616d, 0x00000000,
+    0x00000015, 0x00000016, 0x00000017, 0x00000018, 0x00000019,
+    0x0000001a, 0x00040047, 0x0000000e, 0x0000000b, 0x00000000,
+    0x00030047, 0x00000008, 0x00000002, 0x00050048, 0x00000008,
+    0x00000000, 0x00000023, 0x00000000, 0x00050048, 0x00000008,
+    0x00000001, 0x00000023, 0x00000040, 0x00040047, 0x00000015,
+    0x0000001e, 0x00000000, 0x00040047, 0x00000016, 0x0000001e,
+    0x00000001, 0x00040047, 0x00000017, 0x0000001e, 0x00000002,
+    0x00040047, 0x00000018, 0x0000001e, 0x00000000, 0x00040047,
+    0x00000019, 0x0000001e, 0x00000001, 0x00040047, 0x0000001a,
+    0x0000001e, 0x00000002, 0x00020013, 0x00000001, 0x00030016,
+    0x00000002, 0x00000020, 0x00040015, 0x00000003, 0x00000020,
+    0x00000000, 0x00040017, 0x00000004, 0x00000002, 0x00000003,
+    0x00040017, 0x00000005, 0x00000002, 0x00000004, 0x00040017,
+    0x00000006, 0x00000002, 0x00000002, 0x00040018, 0x00000007,
+    0x00000005, 0x00000004, 0x0004001e, 0x00000008, 0x00000007,
+    0x00000005, 0x00040020, 0x00000009, 0x00000001, 0x00000004,
+    0x00040020, 0x0000000a, 0x00000001, 0x00000006, 0x00040020,
+    0x0000000b, 0x00000001, 0x00000005, 0x00040020, 0x0000000c,
+    0x00000003, 0x00000005, 0x00040020, 0x0000000d, 0x00000003,
+    0x00000006, 0x0003001e, 0x0000000e, 0x00000005, 0x00040020,
+    0x0000000f, 0x00000003, 0x0000000e, 0x00040020, 0x00000010,
+    0x00000009, 0x00000007, 0x00030021, 0x00000011, 0x00000001,
+    0x0004002b, 0x00000002, 0x00000012, 0x3f800000, 0x0004002b,
+    0x00000003, 0x00000013, 0x00000000, 0x0004002b, 0x00000003,
+    0x00000011, 0x00000001, 0x0004003b, 0x00000009, 0x00000015,
+    0x00000001, 0x0004003b, 0x0000000a, 0x00000016, 0x00000001,
+    0x0004003b, 0x0000000b, 0x00000017, 0x00000001, 0x0004003b,
+    0x0000000c, 0x00000018, 0x00000003, 0x0004003b, 0x0000000d,
+    0x00000019, 0x00000003, 0x0004003b, 0x0000000f, 0x0000001a,
+    0x00000003, 0x0004003b, 0x00000010, 0x0000001b, 0x00000009,
+    0x00050036, 0x00000001, 0x0000001c, 0x00000000, 0x00000011,
+    0x000200f8, 0x0000001d, 0x0004003d, 0x00000004, 0x0000001e,
+    0x00000015, 0x00050051, 0x00000002, 0x0000001f, 0x0000001e,
+    0x00000000, 0x00050051, 0x00000002, 0x00000020, 0x0000001e,
+    0x00000001, 0x00050051, 0x00000002, 0x00000021, 0x0000001e,
+    0x00000002, 0x00070050, 0x00000005, 0x00000022, 0x0000001f,
+    0x00000020, 0x00000021, 0x00000012, 0x00050041, 0x00000010,
+    0x00000023, 0x0000001b, 0x00000013, 0x0004003d, 0x00000007,
+    0x00000024, 0x00000023, 0x00050091, 0x00000005, 0x00000025,
+    0x00000024, 0x00000022, 0x00050041, 0x0000000c, 0x00000026,
+    0x0000001a, 0x00000013, 0x0003003e, 0x00000026, 0x00000025,
+    0x0004003d, 0x00000005, 0x00000027, 0x00000017, 0x0003003e,
+    0x00000018, 0x00000027, 0x0004003d, 0x00000006, 0x00000028,
+    0x00000016, 0x0003003e, 0x00000019, 0x00000028, 0x000100fd,
     0x00010038
 };
 
-static const uint32_t k_frag_spv[] = {
-    0x07230203, 0x00010000, 0x00000000, 0x0000000c, 0x00000000,
-    0x00020011, 0x00000001,
-    0x0003000e, 0x00000000, 0x00000001,
-    0x0007000f, 0x00000004, 0x00000009, 0x6e69616d, 0x00000000, 0x00000006, 0x00000008,
-    0x00030010, 0x00000009, 0x00000007,
-    0x00040047, 0x00000006, 0x0000001e, 0x00000000,
-    0x00040047, 0x00000008, 0x0000001e, 0x00000000,
-    0x00020013, 0x00000001,
-    0x00030021, 0x00000002, 0x00000001,
-    0x00030016, 0x00000003, 0x00000020,
-    0x00040017, 0x00000004, 0x00000003, 0x00000004,
-    0x00040020, 0x00000005, 0x00000003, 0x00000004,
-    0x0004003b, 0x00000005, 0x00000006, 0x00000003,
-    0x00040020, 0x00000007, 0x00000001, 0x00000004,
-    0x0004003b, 0x00000007, 0x00000008, 0x00000001,
-    0x00050036, 0x00000001, 0x00000009, 0x00000000, 0x00000002,
-    0x000200f8, 0x0000000a,
-    0x0004003d, 0x00000004, 0x0000000b, 0x00000008,
-    0x0003003e, 0x00000006, 0x0000000b,
-    0x000100fd,
-    0x00010038
+// SPIR-V bytecode: fragment shader. The texture is sampled, the vertex colour is multiplied by the
+// material colour from push constants, and the result is written through the output.
+static const uint32_t s_fragmentSPIRV[190] = {
+    0x07230203, 0x00010000, 0x00000000, 0x00000021, 0x00000000,
+    0x00020011, 0x00000001, 0x0003000e, 0x00000000, 0x00000001,
+    0x0009000f, 0x00000004, 0x00000017, 0x6e69616d, 0x00000000,
+    0x00000012, 0x00000013, 0x00000014, 0x00000015, 0x00030010,
+    0x00000017, 0x00000007, 0x00030047, 0x00000009, 0x00000002,
+    0x00050048, 0x00000009, 0x00000000, 0x00000023, 0x00000000,
+    0x00050048, 0x00000009, 0x00000001, 0x00000023, 0x00000040,
+    0x00040047, 0x00000012, 0x00000022, 0x00000000, 0x00040047,
+    0x00000012, 0x00000021, 0x00000000, 0x00040047, 0x00000013,
+    0x0000001e, 0x00000000, 0x00040047, 0x00000014, 0x0000001e,
+    0x00000001, 0x00040047, 0x00000015, 0x0000001e, 0x00000000,
+    0x00020013, 0x00000001, 0x00030016, 0x00000002, 0x00000020,
+    0x00040015, 0x00000003, 0x00000020, 0x00000000, 0x00040017,
+    0x00000004, 0x00000002, 0x00000004, 0x00040017, 0x00000005,
+    0x00000002, 0x00000002, 0x00080019, 0x00000006, 0x00000002,
+    0x00000002, 0x00000000, 0x00000000, 0x00000001, 0x00000000,
+    0x0003001b, 0x00000007, 0x00000006, 0x00040018, 0x00000008,
+    0x00000004, 0x00000004, 0x0004001e, 0x00000009, 0x00000008,
+    0x00000004, 0x00040020, 0x0000000a, 0x00000000, 0x00000007,
+    0x00040020, 0x0000000b, 0x00000001, 0x00000004, 0x00040020,
+    0x0000000c, 0x00000001, 0x00000005, 0x00040020, 0x0000000d,
+    0x00000003, 0x00000004, 0x00040020, 0x0000000e, 0x00000009,
+    0x00000004, 0x00030021, 0x0000000f, 0x00000001, 0x0004002b,
+    0x00000003, 0x00000010, 0x00000000, 0x0004002b, 0x00000003,
+    0x00000011, 0x00000001, 0x0004003b, 0x0000000a, 0x00000012,
+    0x00000000, 0x0004003b, 0x0000000b, 0x00000013, 0x00000001,
+    0x0004003b, 0x0000000c, 0x00000014, 0x00000001, 0x0004003b,
+    0x0000000d, 0x00000015, 0x00000003, 0x0004003b, 0x0000000e,
+    0x00000016, 0x00000009, 0x00050036, 0x00000001, 0x00000017,
+    0x00000000, 0x0000000f, 0x000200f8, 0x00000018, 0x0004003d,
+    0x00000007, 0x00000019, 0x00000012, 0x0004003d, 0x00000005,
+    0x0000001a, 0x00000014, 0x00050057, 0x00000004, 0x0000001b,
+    0x00000019, 0x0000001a, 0x0004003d, 0x00000004, 0x0000001c,
+    0x00000013, 0x00050041, 0x0000000e, 0x0000001d, 0x00000016,
+    0x00000011, 0x0004003d, 0x00000004, 0x0000001e, 0x0000001d,
+    0x00050085, 0x00000004, 0x0000001f, 0x0000001b, 0x0000001c,
+    0x00050085, 0x00000004, 0x00000020, 0x0000001f, 0x0000001e,
+    0x0003003e, 0x00000015, 0x00000020, 0x000100fd, 0x00010038
 };
 
 PlatformVulkanContext *Platform_GetVulkanContext(void)
@@ -536,25 +571,27 @@ bool Platform_CreateVulkanPipeline(void)
     // 1. Shaders
     VkShaderModuleCreateInfo vert_ci = {};
     vert_ci.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-    vert_ci.codeSize = sizeof(k_vert_spv);
-    vert_ci.pCode = k_vert_spv;
+    vert_ci.codeSize = sizeof(s_vertexSPIRV);
+    vert_ci.pCode = s_vertexSPIRV;
     VkShaderModule vert_mod = VK_NULL_HANDLE;
     if (vkCreateShaderModule(device, &vert_ci, nullptr, &vert_mod) != VK_SUCCESS) return false;
 
     VkShaderModuleCreateInfo frag_ci = {};
     frag_ci.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-    frag_ci.codeSize = sizeof(k_frag_spv);
-    frag_ci.pCode = k_frag_spv;
+    frag_ci.codeSize = sizeof(s_fragmentSPIRV);
+    frag_ci.pCode = s_fragmentSPIRV;
     VkShaderModule frag_mod = VK_NULL_HANDLE;
     if (vkCreateShaderModule(device, &frag_ci, nullptr, &frag_mod) != VK_SUCCESS) {
         vkDestroyShaderModule(device, vert_mod, nullptr);
         return false;
     }
 
-    // 2. Vertex Input State: pos (vec3) at offset 0, normal (vec3) at 12, diffuse (vec4) at 24
+    // 2. Vertex Input State: the one layout the pipeline accepts. Position at 0, one texture
+    // coordinate set at 12, colour at 20. Every FVF the engine uses is decoded into it before the
+    // draw, so the pipeline never has to be rebuilt per material.
     VkVertexInputBindingDescription bind_desc = {};
     bind_desc.binding = 0;
-    bind_desc.stride = 40; // Default stride for XYZNDUV1/XYZNDUV2
+    bind_desc.stride = PLATFORM_CANONICAL_VERTEX_STRIDE;
     bind_desc.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
 
     VkVertexInputAttributeDescription attr_descs[3] = {};
@@ -571,7 +608,7 @@ bool Platform_CreateVulkanPipeline(void)
     attr_descs[2].location = 2;
     attr_descs[2].binding = 0;
     attr_descs[2].format = VK_FORMAT_R32G32B32A32_SFLOAT;
-    attr_descs[2].offset = 24;
+    attr_descs[2].offset = 20;
 
     VkPipelineVertexInputStateCreateInfo vi_ci = {};
     vi_ci.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
@@ -626,13 +663,61 @@ bool Platform_CreateVulkanPipeline(void)
     dyn_ci.dynamicStateCount = 2;
     dyn_ci.pDynamicStates = dyn_states;
 
-    VkPipelineLayoutCreateInfo layout_ci = {};
-    layout_ci.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-    if (vkCreatePipelineLayout(device, &layout_ci, nullptr, &s_pipelineLayout) != VK_SUCCESS) {
+    // 3. Descriptor set: one combined image sampler. Each texture gets its own set at creation.
+    // Writing a set that a submitted command buffer is still reading is undefined, so the draw
+    // binds a set that was written once, instead of rewriting one shared set.
+    VkDescriptorSetLayoutBinding binding = {};
+    binding.binding = 0;
+    binding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    binding.descriptorCount = 1;
+    binding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+
+    VkDescriptorSetLayoutCreateInfo dsl_ci = {};
+    dsl_ci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    dsl_ci.bindingCount = 1;
+    dsl_ci.pBindings = &binding;
+    if (vkCreateDescriptorSetLayout(device, &dsl_ci, nullptr, &s_descriptorSetLayout) != VK_SUCCESS) {
         vkDestroyShaderModule(device, vert_mod, nullptr);
         vkDestroyShaderModule(device, frag_mod, nullptr);
         return false;
     }
+
+    VkDescriptorPoolSize pool_size = { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 8192 };
+    VkDescriptorPoolCreateInfo dp_ci = {};
+    dp_ci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+    dp_ci.maxSets = 8192;
+    dp_ci.poolSizeCount = 1;
+    dp_ci.pPoolSizes = &pool_size;
+    if (vkCreateDescriptorPool(device, &dp_ci, nullptr, &s_descriptorPool) != VK_SUCCESS) {
+        vkDestroyDescriptorSetLayout(device, s_descriptorSetLayout, nullptr);
+        vkDestroyShaderModule(device, vert_mod, nullptr);
+        vkDestroyShaderModule(device, frag_mod, nullptr);
+        return false;
+    }
+
+    VkPushConstantRange pc_range = {};
+    pc_range.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+    pc_range.offset = 0;
+    pc_range.size = sizeof(PlatformVulkanPushConstants);
+
+    VkPipelineLayoutCreateInfo layout_ci = {};
+    layout_ci.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+    layout_ci.setLayoutCount = 1;
+    layout_ci.pSetLayouts = &s_descriptorSetLayout;
+    layout_ci.pushConstantRangeCount = 1;
+    layout_ci.pPushConstantRanges = &pc_range;
+    if (vkCreatePipelineLayout(device, &layout_ci, nullptr, &s_pipelineLayout) != VK_SUCCESS) {
+        vkDestroyDescriptorSetLayout(device, s_descriptorSetLayout, nullptr);
+        vkDestroyDescriptorPool(device, s_descriptorPool, nullptr);
+        vkDestroyShaderModule(device, vert_mod, nullptr);
+        vkDestroyShaderModule(device, frag_mod, nullptr);
+        return false;
+    }
+
+    // A white 1x1 texture, so a draw with nothing bound gives what the fixed-function path gives
+    // when the texture stage is off: vertex colour times material colour.
+    static const uint8_t kWhitePixel[4] = { 255, 255, 255, 255 };
+    s_defaultTexture = (PlatformVulkanTexture *)Platform_CreateVulkanTexture(1, 1, kWhitePixel, 0);
 
     VkPipelineShaderStageCreateInfo stages[2] = {};
     stages[0].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
@@ -699,18 +784,21 @@ bool Platform_CreateVulkanPipeline(void)
     return true;
 }
 
-bool Platform_DrawVulkanIndexed(const void *vertices, uint32_t vertexCount, uint32_t vertexStride,
-                               const uint16_t *indices, uint32_t indexCount)
+void Platform_SetVulkanPushConstants(const PlatformVulkanPushConstants *pushConstants)
 {
-    if (!s_ctx.isInitialized || !s_graphicsPipeline || !vertices || !indices || indexCount == 0 || !s_mappedVB || !s_mappedIB) {
-        return false;
-    }
-    if (vertexCount * vertexStride > 4 * 1024 * 1024 || indexCount * sizeof(uint16_t) > 1024 * 1024) {
-        return false;
-    }
+    if (pushConstants) s_pushConstants = *pushConstants;
+}
 
-    memcpy(s_mappedVB, vertices, vertexCount * vertexStride);
-    memcpy(s_mappedIB, indices, indexCount * sizeof(uint16_t));
+// The engine hands over decoded canonical vertices, so this is the only draw path.
+bool Platform_DrawVulkanCanonical(const float *canonicalVertices, uint32_t vertexCount,
+                                  const uint16_t *indices, uint32_t indexCount)
+{
+    if (!s_ctx.isInitialized || !s_graphicsPipeline || !canonicalVertices || vertexCount == 0) return false;
+    if (!s_mappedVB) return false;
+    if (vertexCount * PLATFORM_CANONICAL_VERTEX_STRIDE > 4 * 1024 * 1024) return false;
+    if (indexCount * sizeof(uint16_t) > 1024 * 1024) return false;
+
+    memcpy(s_mappedVB, canonicalVertices, vertexCount * PLATFORM_CANONICAL_VERTEX_STRIDE);
 
     VkCommandBuffer cb = s_commandBuffers[s_ctx.currentImageIndex];
     vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, s_graphicsPipeline);
@@ -720,38 +808,133 @@ bool Platform_DrawVulkanIndexed(const void *vertices, uint32_t vertexCount, uint
     vkCmdSetViewport(cb, 0, 1, &vp);
     vkCmdSetScissor(cb, 0, 1, &scissor);
 
+    vkCmdPushConstants(cb, s_pipelineLayout,
+                       VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+                       0, sizeof(PlatformVulkanPushConstants), &s_pushConstants);
+
+    PlatformVulkanTexture *texture = s_boundTexture ? s_boundTexture : s_defaultTexture;
+    if (texture && texture->descriptorSet) {
+        VkDescriptorSet set = (VkDescriptorSet)texture->descriptorSet;
+        vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, s_pipelineLayout, 0, 1, &set, 0, nullptr);
+    }
+
     VkDeviceSize offsets[] = { 0 };
     vkCmdBindVertexBuffers(cb, 0, 1, &s_dynamicVB, offsets);
-    vkCmdBindIndexBuffer(cb, s_dynamicIB, 0, VK_INDEX_TYPE_UINT16);
 
-    vkCmdDrawIndexed(cb, indexCount, 1, 0, 0, 0);
+    if (indexCount > 0 && indices && s_mappedIB) {
+        memcpy(s_mappedIB, indices, indexCount * sizeof(uint16_t));
+        vkCmdBindIndexBuffer(cb, s_dynamicIB, 0, VK_INDEX_TYPE_UINT16);
+        vkCmdDrawIndexed(cb, indexCount, 1, 0, 0, 0);
+    } else {
+        vkCmdDraw(cb, vertexCount, 1, 0, 0);
+    }
     return true;
 }
 
-bool Platform_DrawVulkanVertices(const void *vertices, uint32_t vertexCount, uint32_t vertexStride)
+const uint32_t *Platform_GetVertexShaderSPIRV(uint32_t *wordCount)
 {
-    if (!s_ctx.isInitialized || !s_graphicsPipeline || !vertices || vertexCount == 0 || !s_mappedVB) {
+    if (wordCount) *wordCount = 236;
+    return s_vertexSPIRV;
+}
+
+const uint32_t *Platform_GetFragmentShaderSPIRV(uint32_t *wordCount)
+{
+    if (wordCount) *wordCount = 190;
+    return s_fragmentSPIRV;
+}
+// The engine fills a texture through LockRect and hands the bytes over at UnlockRect, so the copy
+// happens here, outside the render pass: a one-shot command buffer is the only way to move host
+// pixels into a device-local image. Without this the image exists but is never written, and every
+// textured surface samples whatever the allocator left in memory.
+static bool upload_texture_pixels(VkDevice device, PlatformVulkanTexture *tex, const void *pixels)
+{
+    VkPhysicalDevice phys_dev = (VkPhysicalDevice)s_ctx.physicalDevice;
+    const VkDeviceSize size = (VkDeviceSize)tex->width * tex->height * 4;
+
+    VkBufferCreateInfo buf_ci = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
+    buf_ci.size = size;
+    buf_ci.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+    VkBuffer staging = VK_NULL_HANDLE;
+    if (vkCreateBuffer(device, &buf_ci, nullptr, &staging) != VK_SUCCESS) return false;
+
+    VkMemoryRequirements reqs;
+    vkGetBufferMemoryRequirements(device, staging, &reqs);
+    VkMemoryAllocateInfo ai = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO };
+    ai.allocationSize = reqs.size;
+    ai.memoryTypeIndex = find_memory_type(phys_dev, reqs.memoryTypeBits,
+        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+    if (ai.memoryTypeIndex == UINT32_MAX) {
+        vkDestroyBuffer(device, staging, nullptr);
         return false;
     }
-    if (vertexCount * vertexStride > 4 * 1024 * 1024) {
+    VkDeviceMemory mem = VK_NULL_HANDLE;
+    if (vkAllocateMemory(device, &ai, nullptr, &mem) != VK_SUCCESS) {
+        vkDestroyBuffer(device, staging, nullptr);
+        return false;
+    }
+    vkBindBufferMemory(device, staging, mem, 0);
+
+    void *mapped = nullptr;
+    if (vkMapMemory(device, mem, 0, size, 0, &mapped) != VK_SUCCESS) {
+        vkFreeMemory(device, mem, nullptr);
+        vkDestroyBuffer(device, staging, nullptr);
+        return false;
+    }
+    memcpy(mapped, pixels, size);
+    vkUnmapMemory(device, mem);
+
+    VkCommandBufferAllocateInfo ca = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO };
+    ca.commandPool = s_commandPool;
+    ca.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    ca.commandBufferCount = 1;
+    VkCommandBuffer cb = VK_NULL_HANDLE;
+    if (vkAllocateCommandBuffers(device, &ca, &cb) != VK_SUCCESS) {
+        vkFreeMemory(device, mem, nullptr);
+        vkDestroyBuffer(device, staging, nullptr);
         return false;
     }
 
-    memcpy(s_mappedVB, vertices, vertexCount * vertexStride);
+    VkCommandBufferBeginInfo bi = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO };
+    bi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+    vkBeginCommandBuffer(cb, &bi);
 
-    VkCommandBuffer cb = s_commandBuffers[s_ctx.currentImageIndex];
-    vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, s_graphicsPipeline);
+    VkImageMemoryBarrier bar = { VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER };
+    bar.image = (VkImage)tex->image;
+    bar.subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 1 };
+    bar.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    bar.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    bar.srcAccessMask = 0;
+    bar.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+    bar.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    bar.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+    vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                         0, 0, nullptr, 0, nullptr, 1, &bar);
 
-    VkViewport vp = { 0.0f, 0.0f, (float)s_ctx.width, (float)s_ctx.height, 0.0f, 1.0f };
-    VkRect2D scissor = { { 0, 0 }, { (uint32_t)s_ctx.width, (uint32_t)s_ctx.height } };
-    vkCmdSetViewport(cb, 0, 1, &vp);
-    vkCmdSetScissor(cb, 0, 1, &scissor);
+    VkBufferImageCopy region = {};
+    region.imageSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 1 };
+    region.imageExtent = { tex->width, tex->height, 1 };
+    vkCmdCopyBufferToImage(cb, staging, (VkImage)tex->image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
 
-    VkDeviceSize offsets[] = { 0 };
-    vkCmdBindVertexBuffers(cb, 0, 1, &s_dynamicVB, offsets);
+    bar.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+    bar.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+    bar.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+    bar.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+                         0, 0, nullptr, 0, nullptr, 1, &bar);
 
-    vkCmdDraw(cb, vertexCount, 1, 0, 0);
-    return true;
+    vkEndCommandBuffer(cb);
+
+    VkSubmitInfo submit = { VK_STRUCTURE_TYPE_SUBMIT_INFO };
+    submit.commandBufferCount = 1;
+    submit.pCommandBuffers = &cb;
+    VkQueue queue = (VkQueue)s_graphicsQueue;
+    VkResult res = vkQueueSubmit(queue, 1, &submit, VK_NULL_HANDLE);
+    if (res == VK_SUCCESS) vkQueueWaitIdle(queue);
+
+    vkFreeMemory(device, mem, nullptr);
+    vkDestroyBuffer(device, staging, nullptr);
+    vkFreeCommandBuffers(device, s_commandPool, 1, &cb);
+    return res == VK_SUCCESS;
 }
 
 void *Platform_CreateVulkanTexture(uint32_t width, uint32_t height, const void *pixels, uint32_t format)
@@ -808,6 +991,28 @@ void *Platform_CreateVulkanTexture(uint32_t width, uint32_t height, const void *
     samp_ci.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
     vkCreateSampler(device, &samp_ci, nullptr, &tex->sampler);
 
+    if (pixels) upload_texture_pixels(device, tex, pixels);
+
+    // One set per texture, written once. Rewriting a shared set while an earlier submission is
+    // still reading it is undefined, which is why the set is not written at bind time.
+    if (s_descriptorPool != VK_NULL_HANDLE) {
+        VkDescriptorSetAllocateInfo sa = { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO };
+        sa.descriptorSetCount = 1;
+        sa.descriptorPool = s_descriptorPool;
+        sa.pSetLayouts = &s_descriptorSetLayout;
+        if (vkAllocateDescriptorSets(device, &sa, &tex->descriptorSet) == VK_SUCCESS) {
+            VkDescriptorImageInfo imageInfo = { (VkSampler)tex->sampler, (VkImageView)tex->view,
+                                                 VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
+            VkWriteDescriptorSet write = { VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET };
+            write.dstSet = tex->descriptorSet;
+            write.dstBinding = 0;
+            write.descriptorCount = 1;
+            write.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+            write.pImageInfo = &imageInfo;
+            vkUpdateDescriptorSets(device, 1, &write, 0, nullptr);
+        }
+    }
+
     return tex;
 }
 
@@ -845,6 +1050,13 @@ void Platform_ShutdownVulkan(void)
     if (s_commandPool) vkDestroyCommandPool(device, s_commandPool, nullptr);
     if (s_graphicsPipeline) { vkDestroyPipeline(device, s_graphicsPipeline, nullptr); s_graphicsPipeline = VK_NULL_HANDLE; }
     if (s_pipelineLayout) { vkDestroyPipelineLayout(device, s_pipelineLayout, nullptr); s_pipelineLayout = VK_NULL_HANDLE; }
+    if (s_defaultTexture) {
+        Platform_DestroyVulkanTexture(s_defaultTexture);
+        s_defaultTexture = nullptr;
+    }
+    s_boundTexture = nullptr;
+    if (s_descriptorPool) { vkDestroyDescriptorPool(device, s_descriptorPool, nullptr); s_descriptorPool = VK_NULL_HANDLE; }
+    if (s_descriptorSetLayout) { vkDestroyDescriptorSetLayout(device, s_descriptorSetLayout, nullptr); s_descriptorSetLayout = VK_NULL_HANDLE; }
     if (s_dynamicVBMem) { vkUnmapMemory(device, s_dynamicVBMem); vkFreeMemory(device, s_dynamicVBMem, nullptr); s_dynamicVBMem = VK_NULL_HANDLE; }
     if (s_dynamicVB) { vkDestroyBuffer(device, s_dynamicVB, nullptr); s_dynamicVB = VK_NULL_HANDLE; }
     if (s_dynamicIBMem) { vkUnmapMemory(device, s_dynamicIBMem); vkFreeMemory(device, s_dynamicIBMem, nullptr); s_dynamicIBMem = VK_NULL_HANDLE; }

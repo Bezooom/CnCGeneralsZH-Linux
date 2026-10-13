@@ -6,9 +6,9 @@
 
 ---
 
-## Current Status — 2026-10-10
+## Current Status — 2026-10-13
 
-### Full CTest 31/31 Green, Native Linux Port Installed, Wine Version Removed
+### Full CTest 32/32 Green, Native Linux Port Installed, Wine Version Removed
 
 - [x] **GameEngine Initialization Reaches Main Loop (Frame 0)**:
   - Fixed `win.h` `CRITICAL_SECTION` to use `PTHREAD_MUTEX_RECURSIVE`, resolving recursive self-deadlock in `TheUnicodeStringCriticalSection` during Object INI loading.
@@ -50,8 +50,33 @@
   - Verified staging installation via `ninja install` (`/usr/local/bin`, `/usr/local/lib`, `/usr/local/share`).
   - Installed standalone user launcher `~/.local/bin/generals`, XDG desktop entry `~/.local/share/applications/generals.desktop`, icons, and desktop shortcuts.
   - Removed legacy Wine installation (2.8 GB) and Wine desktop entries; game runs 100% standalone with native Linux binaries and bundled `.big` assets.
-- [x] **Full CTest Suite**: **31/31 passed, 0 failed (100% green)** including `test_registry_class_linux` and `test_gameengine`.
+- [x] **Full CTest Suite**: **32/32 passed, 0 failed (100% green)** including `test_registry_class_linux`, `test_vkvertexformat` and `test_gameengine`.
 Verification: `GeneralsMD/build-linux` (GCC 13.3, Release, C++17, Ninja).
+
+### FVF decode separated from the draw path — 2026-10-13
+
+- [x] **`vkvertexformat.h`/`.cpp`**: the pipeline reads one vertex layout - position, one texture
+  coordinate set, one colour as four normalised floats - so every FVF the engine uses is decoded into
+  it. Offsets follow the D3D9 packing order: position, blend weights, normal, point size, diffuse,
+  specular, then the texture coordinates.
+- [x] **`D3DFVF_PSIZE` corrected to `0x020`**: the shim had `0x0200`, a bit inside
+  `D3DFVF_TEXCOUNT_MASK`, so a point-size vertex read as `D3DFVF_TEX2` and the decoder skipped four
+  bytes the engine never wrote. The invented `D3DFVF_RASTER` field, which added four bytes at the same
+  place, is gone.
+- [x] **Stride covers every texture coordinate set**, not only the set the pipeline reads. A stride
+  that stops at set 0 reads the next vertex from the wrong bytes.
+- [x] **Descriptor set allocation fixed**: `VkDescriptorSetAllocateInfo.pSetLayouts` was left unset, so
+  `vkAllocateDescriptorSets` dereferenced a null layout and segfaulted inside the NVIDIA driver.
+- [x] **`PlatformVulkanTexture` defined once**: the header and the implementation each defined it with
+  different fields; the implementation's handles are now the only definition, including the per-texture
+  `descriptorSet`. `VkWriteDescriptorSet`'s member is `pImageInfo`, not `imageInfo`.
+- [x] **Embedded SPIR-V arrays**: the rows were missing the commas between them, so the file did not
+  compile. Both modules now walk cleanly, 236 and 190 words.
+- [x] **`test_vkvertexformat`** (11 tests, 64 checks): offsets per FVF, the two-bit texture-coordinate
+  sizes, blend-weight formats the engine never fills, BGRA unpack, the values a disabled stage produces,
+  and the draw path through `DrawPrimitiveUP`, including the transposed matrix with the y row negated for
+  Vulkan's flipped NDC y.
+
 ### Latest device continuation — 2026-09-17
 
 - [x] Reproduce current inventory: 59/103 compiled, 44 failed.

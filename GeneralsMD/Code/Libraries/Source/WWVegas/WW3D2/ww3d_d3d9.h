@@ -12,6 +12,7 @@
 #if defined(PLATFORM_LINUX) || defined(__linux__) || defined(_UNIX)
 #include "PAL_Window.h"
 #include "PAL_Vulkan.h"
+#include "vkvertexformat.h"
 #endif
 
 struct IDirect3D9;
@@ -142,7 +143,8 @@ constexpr DWORD D3D_OK=0;
 constexpr DWORD D3DFVF_XYZ=0x002, D3DFVF_XYZRHW=0x004, D3DFVF_NORMAL=0x010,
  D3DFVF_DIFFUSE=0x040, D3DFVF_SPECULAR=0x080, D3DFVF_TEX0=0x000,
  D3DFVF_TEX1=0x100, D3DFVF_TEX2=0x200, D3DFVF_TEX3=0x300, D3DFVF_TEX4=0x400,
- D3DFVF_TEXCOUNT_MASK=0xf00, D3DFVF_TEXCOUNT_SHIFT=8, D3DFVF_POSITION_MASK=0x400e;
+ D3DFVF_TEXCOUNT_MASK=0xf00, D3DFVF_TEXCOUNT_SHIFT=8, D3DFVF_POSITION_MASK=0x400e,
+ D3DFVF_PSIZE=0x020;
 #define D3DFVF_TEXCOORDSIZE1(i) (3u << (16u + (i)*2u))
 #define D3DFVF_TEXCOORDSIZE2(i) (0u)
 #define D3DFVF_TEXCOORDSIZE3(i) (1u << (16u + (i)*2u))
@@ -402,6 +404,13 @@ struct IDirect3DDevice9 {
   IDirect3DIndexBuffer9* m_currentIB = nullptr;
   bool m_inScene = false;
   uint32_t m_currentImageIndex = 0;
+  // Fixed-function state the Vulkan path has to reproduce. The engine sets these once per mesh and
+  // then draws, so a draw cannot know what to read without them.
+  DWORD m_fvf = 0;
+  D3DMATRIX m_world = { { { 1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1 } } };
+  D3DMATRIX m_view = { { { 1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1 } } };
+  D3DMATRIX m_projection = { { { 1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1 } } };
+  D3DMATERIAL9 m_material = { {1,1,1,1}, {0,0,0,0}, {0,0,0,0}, {0,0,0,0}, 0 };
 
   HRESULT CreateIndexBuffer(UINT, DWORD, D3DFORMAT, D3DPOOL, IDirect3DIndexBuffer9**, HANDLE);
   HRESULT CreateVertexBuffer(UINT, DWORD, DWORD, D3DPOOL, IDirect3DVertexBuffer9**, HANDLE);
@@ -410,8 +419,20 @@ struct IDirect3DDevice9 {
   HRESULT CreateVertexShader(const DWORD*, IDirect3DVertexShader9**);
   HRESULT CreateVertexDeclaration(const D3DVERTEXELEMENT9*, IDirect3DVertexDeclaration9**);
   HRESULT SetIndices(IDirect3DIndexBuffer9* ib) { m_currentIB = ib; return 0; }
-  HRESULT SetTransform(D3DTRANSFORMSTATETYPE, const D3DMATRIX*) { return 0; }
-  HRESULT GetTransform(D3DTRANSFORMSTATETYPE, D3DMATRIX*) { return 0; }
+  HRESULT SetTransform(D3DTRANSFORMSTATETYPE which, const D3DMATRIX *m) {
+    if (!m) return 0;
+    if (which == D3DTS_WORLD) m_world = *m;
+    else if (which == D3DTS_VIEW) m_view = *m;
+    else if (which == D3DTS_PROJECTION) m_projection = *m;
+    return 0;
+  }
+  HRESULT GetTransform(D3DTRANSFORMSTATETYPE which, D3DMATRIX *out) {
+    if (!out) return 0;
+    if (which == D3DTS_WORLD) *out = m_world;
+    else if (which == D3DTS_VIEW) *out = m_view;
+    else if (which == D3DTS_PROJECTION) *out = m_projection;
+    return 0;
+  }
   HRESULT SetStreamSource(UINT stream, IDirect3DVertexBuffer9* vb, UINT offset, UINT stride) {
     if (stream == 0) {
       m_currentVB = vb;
@@ -421,7 +442,7 @@ struct IDirect3DDevice9 {
     return 0;
   }
   HRESULT DrawIndexedPrimitive(D3DPRIMITIVETYPE, int, int, UINT, UINT, UINT);
-  HRESULT SetMaterial(const D3DMATERIAL9*) { return 0; }
+  HRESULT SetMaterial(const D3DMATERIAL9 *mat) { if (mat) m_material = *mat; return 0; }
   HRESULT SetLight(DWORD, const D3DLIGHT9*) { return 0; }
   HRESULT LightEnable(DWORD, BOOL) { return 0; }
   HRESULT SetClipPlane(DWORD, const float*) { return 0; }
@@ -429,7 +450,7 @@ struct IDirect3DDevice9 {
   HRESULT SetTextureStageState(UINT, D3DTEXTURESTAGESTATETYPE, DWORD) { return 0; }
   HRESULT SetSamplerState(DWORD, D3DSAMPLERSTATETYPE, DWORD) { return 0; }
   HRESULT TestCooperativeLevel() { return 0; }
-  HRESULT SetFVF(DWORD) { return 0; }
+  HRESULT SetFVF(DWORD fvf) { m_fvf = fvf; return 0; }
   HRESULT GetRenderState(D3DRENDERSTATETYPE, DWORD*) { return 0; }
   HRESULT GetRenderTarget(UINT, IDirect3DSurface9**);
   HRESULT GetDepthStencilSurface(IDirect3DSurface9**);
@@ -751,14 +772,84 @@ inline HRESULT IDirect3DDevice9::SetTexture(DWORD, IDirect3DBaseTexture9* tex) {
 #endif
   return 0;
 }
+#if defined(PLATFORM_LINUX) || defined(__linux__) || defined(_UNIX)
+// A row-major D3D9 matrix multiplies a row vector from the left; the shader multiplies the matrix
+// by a column vector, so the push constant is the transpose. The y row is negated on the way in:
+// Vulkan puts NDC y=+1 at the top of the image where Direct3D 9 puts it at the bottom, so without
+// the flip the whole frame is mirrored vertically.
+static void build_vulkan_push_constants(const IDirect3DDevice9 *device, PlatformVulkanPushConstants &pc)
+{
+  const float (*world)[4] = device->m_world.m;
+  const float (*view)[4] = device->m_view.m;
+  const float (*projection)[4] = device->m_projection.m;
+
+  float worldView[4][4];
+  for (int i = 0; i < 4; ++i) {
+    for (int j = 0; j < 4; ++j) {
+      float sum = 0.0f;
+      for (int k = 0; k < 4; ++k) sum += world[i][k] * view[k][j];
+      worldView[i][j] = sum;
+    }
+  }
+
+  float mvp[4][4];
+  for (int i = 0; i < 4; ++i) {
+    for (int j = 0; j < 4; ++j) {
+      float sum = 0.0f;
+      for (int k = 0; k < 4; ++k) sum += worldView[i][k] * projection[k][j];
+      mvp[i][j] = sum;
+    }
+  }
+
+  for (int i = 0; i < 4; ++i)
+    for (int j = 0; j < 4; ++j)
+      pc.mvp[j * 4 + i] = (i == 1) ? -mvp[i][j] : mvp[i][j];
+
+  // With lighting off, Direct3D 9 multiplies the vertex colour by the material diffuse. A material
+  // that is black in both places would paint the model black, so a preset carrying no colour falls
+  // back to white.
+  const D3DMATERIAL9 &mat = device->m_material;
+  float color[4] = {
+    mat.Ambient.r + mat.Diffuse.r,
+    mat.Ambient.g + mat.Diffuse.g,
+    mat.Ambient.b + mat.Diffuse.b,
+    mat.Ambient.a + mat.Diffuse.a
+  };
+  bool black = true;
+  for (int i = 0; i < 4; ++i) if (color[i] > 0.0f) { black = false; break; }
+  if (black) { color[0] = color[1] = color[2] = color[3] = 1.0f; }
+  for (int i = 0; i < 4; ++i) pc.materialColor[i] = color[i];
+}
+
+static std::vector<VKCanonicalVertex> s_canonicalVertices;
+
+// The engine writes its vertices by hand, so the bytes are the FVF it set. Decode them into the one
+// layout the pipeline reads, then draw.
+static void draw_canonical(const IDirect3DDevice9 *device, const unsigned char *source,
+                           uint32_t vertexCount, const uint16_t *indices, uint32_t indexCount)
+{
+  VKVertexLayout layout;
+  if (!VKLayout_From_FVF(device->m_fvf, layout)) return;
+  if (vertexCount == 0) return;
+
+  s_canonicalVertices.resize(vertexCount);
+  for (uint32_t i = 0; i < vertexCount; ++i)
+    VKDecodeVertex(source + i * layout.stride, layout, s_canonicalVertices[i]);
+
+  PlatformVulkanPushConstants pc = {};
+  build_vulkan_push_constants(device, pc);
+  Platform_SetVulkanPushConstants(&pc);
+  Platform_DrawVulkanCanonical((const float *)s_canonicalVertices.data(), vertexCount, indices, indexCount);
+}
+#endif
+
 inline HRESULT IDirect3DDevice9::DrawIndexedPrimitive(D3DPRIMITIVETYPE type, int, int, UINT num_vertices, UINT start_index, UINT prim_count) {
 #if defined(PLATFORM_LINUX) || defined(__linux__) || defined(_UNIX)
   if (m_currentVB && m_currentIB && prim_count > 0 && m_currentVB->m_buffer.size() > 0 && m_currentIB->m_buffer.size() > 0) {
-    uint32_t indexCount = (type == D3DPT_TRIANGLESTRIP) ? (prim_count + 2) : (prim_count * 3);
-    uint32_t stride = m_vbStride ? m_vbStride : 32;
-    const void *vData = m_currentVB->m_buffer.data() + m_vbOffset;
-    const uint16_t *iData = (const uint16_t*)(m_currentIB->m_buffer.data() + start_index * sizeof(uint16_t));
-    Platform_DrawVulkanIndexed(vData, num_vertices, stride, iData, indexCount);
+    uint32_t indexCount = (type == D3DPT_TRIANGLELIST) ? (prim_count * 3) : (prim_count + 2);
+    const unsigned char *vData = m_currentVB->m_buffer.data() + m_vbOffset;
+    const uint16_t *iData = (const uint16_t *)(m_currentIB->m_buffer.data() + start_index * sizeof(uint16_t));
+    draw_canonical(this, vData, num_vertices, iData, indexCount);
   }
 #endif
   return 0;
@@ -766,10 +857,9 @@ inline HRESULT IDirect3DDevice9::DrawIndexedPrimitive(D3DPRIMITIVETYPE type, int
 inline HRESULT IDirect3DDevice9::DrawPrimitive(D3DPRIMITIVETYPE type, UINT start_vertex, UINT prim_count) {
 #if defined(PLATFORM_LINUX) || defined(__linux__) || defined(_UNIX)
   if (m_currentVB && prim_count > 0 && m_currentVB->m_buffer.size() > 0) {
-    uint32_t vertexCount = (type == D3DPT_TRIANGLESTRIP) ? (prim_count + 2) : (prim_count * 3);
-    uint32_t stride = m_vbStride ? m_vbStride : 32;
-    const void *vData = m_currentVB->m_buffer.data() + m_vbOffset + start_vertex * stride;
-    Platform_DrawVulkanVertices(vData, vertexCount, stride);
+    uint32_t vertexCount = (type == D3DPT_TRIANGLELIST) ? (prim_count * 3) : (prim_count + 2);
+    const unsigned char *vData = m_currentVB->m_buffer.data() + m_vbOffset + start_vertex * m_vbStride;
+    draw_canonical(this, vData, vertexCount, nullptr, 0);
   }
 #endif
   return 0;
@@ -777,8 +867,12 @@ inline HRESULT IDirect3DDevice9::DrawPrimitive(D3DPRIMITIVETYPE type, UINT start
 inline HRESULT IDirect3DDevice9::DrawPrimitiveUP(D3DPRIMITIVETYPE type, UINT prim_count, const void* pVertexStreamZeroData, UINT stride) {
 #if defined(PLATFORM_LINUX) || defined(__linux__) || defined(_UNIX)
   if (pVertexStreamZeroData && prim_count > 0) {
-    uint32_t vertexCount = (type == D3DPT_TRIANGLESTRIP) ? (prim_count + 2) : (prim_count * 3);
-    Platform_DrawVulkanVertices(pVertexStreamZeroData, vertexCount, stride ? stride : 32);
+    uint32_t vertexCount = (type == D3DPT_TRIANGLELIST) ? (prim_count * 3) : (prim_count + 2);
+    // An explicit stride that disagrees with the FVF means the caller is feeding the pipeline bytes
+    // it did not describe, so the decode cannot be trusted.
+    VKVertexLayout layout;
+    if (VKLayout_From_FVF(m_fvf, layout) && stride && stride != layout.stride) return 0;
+    draw_canonical(this, (const unsigned char *)pVertexStreamZeroData, vertexCount, nullptr, 0);
   }
 #endif
   return 0;

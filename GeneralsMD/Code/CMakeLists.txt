@@ -408,6 +408,7 @@ set(WW3D2_SOURCES
   ${WW}/WW3D2/vertmaterial.cpp ${WW}/WW3D2/visrasterizer.cpp ${WW}/WW3D2/w3d_dep.cpp 
   ${WW}/WW3D2/w3d_util.cpp ${WW}/WW3D2/w3dexclusionlist.cpp ${WW}/WW3D2/ww3d.cpp 
   ${WW}/WW3D2/ww3dformat.cpp
+  ${WW}/WW3D2/vkvertexformat.cpp
 )
 
 if(MSVC)
@@ -1132,6 +1133,17 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
   target_compile_options(test_ww3d2 PRIVATE -ffunction-sections -fdata-sections)
   target_link_options(test_ww3d2 PRIVATE -Wl,--gc-sections)
   target_link_libraries(test_ww3d2 PRIVATE -Wl,--start-group ww3d2 wwsaveload debuglib ffshader wwdebug wwlib wwmath -Wl,--end-group pthread dl rt m)
+endif()
+
+# The decode is what the Vulkan pipeline reads. A wrong offset reads the normal as the colour, which
+# paints the model green; reading a packed colour as a float paints it black. This gate drives the
+# decode itself, so a change to it cannot hide behind the game-engine API.
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  add_lib_test(test_vkvertexformat wwlib)
+  target_sources(test_vkvertexformat PRIVATE ${WW}/WW3D2/vkvertexformat.cpp)
+  target_include_directories(test_vkvertexformat PRIVATE
+    ${WW}/WW3D2 ${WW}/WWLib ${CMAKE_CURRENT_SOURCE_DIR}/Platform)
+  set_tests_properties(test_vkvertexformat PROPERTIES LABELS "linux;vulkan" TIMEOUT 10)
 endif()
 
 if(MSVC)
