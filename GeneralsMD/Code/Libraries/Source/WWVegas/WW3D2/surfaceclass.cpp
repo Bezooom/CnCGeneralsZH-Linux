@@ -887,6 +887,14 @@ void SurfaceClass::Draw_Pixel(const unsigned int x, const unsigned int y, const 
 	case 2:
 		*(unsigned short *)(row + x * 2) = (unsigned short)(color & 0xFFFF);
 		break;
+	case 3:
+		{
+			unsigned char *pixel = row + x * 3;
+			pixel[0] = (unsigned char)(color & 0xFF);
+			pixel[1] = (unsigned char)((color >> 8) & 0xFF);
+			pixel[2] = (unsigned char)((color >> 16) & 0xFF);
+		}
+		break;
 	case 4:
 		*(unsigned int *)(row + x * 4) = color;
 		break;

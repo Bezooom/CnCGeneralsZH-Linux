@@ -2242,8 +2242,15 @@ struct IDirect3D9 {
     return 0;
   }
   HRESULT CheckDeviceType(UINT, D3DDEVTYPE, D3DFORMAT, D3DFORMAT, BOOL) { return 0; }
-  HRESULT CheckDeviceFormat(UINT, D3DDEVTYPE, D3DFORMAT, DWORD usage, D3DRESOURCETYPE, D3DFORMAT) {
+  HRESULT CheckDeviceFormat(UINT, D3DDEVTYPE, D3DFORMAT, DWORD usage, D3DRESOURCETYPE, D3DFORMAT format) {
     if (usage & D3DUSAGE_RENDERTARGET) {
+      return D3DERR_NOTAVAILABLE;
+    }
+    // Every other format reports available, which is what the engine's format pickers expect from
+    // a device.  R8G8B8 is the exception: nothing in this device uploads 24-bit texels, so a
+    // picker that chose it would get a texture that never receives pixels - the radar did exactly
+    // that and stayed black.
+    if (format == D3DFMT_R8G8B8) {
       return D3DERR_NOTAVAILABLE;
     }
     return 0;
