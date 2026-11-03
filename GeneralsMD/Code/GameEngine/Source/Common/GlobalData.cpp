@@ -658,7 +658,10 @@ GlobalData::GlobalData()
 	m_useCloudMap = FALSE;
 	m_use3WayTerrainBlends = 1;
 	m_useLightMap = FALSE;
-	m_bilinearTerrainTex = FALSE;
+	// Bilinear terrain filtering is the default: with point sampling the tile atlas shows each
+	// terrain cell as a hard-edged square at tile-class boundaries, which reads as blocky ground.
+	// The option is INI-only (no menu row), so a fresh Options.ini would otherwise keep it off.
+	m_bilinearTerrainTex = TRUE;
 	m_trilinearTerrainTex = FALSE;
 	m_multiPassTerrain = FALSE;
 	m_adjustCliffTextures = FALSE;
