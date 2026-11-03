@@ -881,6 +881,8 @@ void TextureClass::Init()
 	// If the texture has already been initialised we should exit now
 	if (Initialized) return;
 
+
+
 	WWPROFILE("TextureClass::Init");
 
 	// If the texture has recently been inactivated, increase the inactivation time (this texture obviously

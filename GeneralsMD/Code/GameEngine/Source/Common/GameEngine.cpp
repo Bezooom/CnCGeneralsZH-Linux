@@ -28,6 +28,10 @@
 
 #include "PreRTS.h"	// This must go first in EVERY cpp file in the GameEngine
 
+#if defined(PLATFORM_LINUX) || defined(__linux__)
+#include <unistd.h>	// usleep: the loop's idle pacing
+#endif
+
 #include "Common/ActionManager.h"
 #include "Common/AudioAffect.h"
 #include "Common/BuildAssistant.h"
@@ -2428,6 +2432,19 @@ void GameEngine::execute( void )
 				// its own stepping off the wall clock, so the window animations keep the cadence
 				// they were tuned for however fast the loop runs.
 				prevLoopTime = timeGetTime();
+
+		#if defined(PLATFORM_LINUX) || defined(__linux__)
+				// A release build on Linux never slept here: the loop spun a full core while the
+				// GPU had nothing queued, which is most of the "slow machine" feel on a box that
+				// is otherwise idle. Pace to the configured frame rate, the way the loop did
+				// before it was made uncapped.
+				if (m_maxFPS > 0 && thisFrameMS >= 0.0f) {
+					const Real frameBudgetMS = 1000.0f / (Real)m_maxFPS;
+					if (thisFrameMS < frameBudgetMS) {
+						usleep((useconds_t)((frameBudgetMS - thisFrameMS) * 1000.0f));
+					}
+				}
+		#endif
 
 		#if defined(_DEBUG) || defined(_INTERNAL)
 				// I'm disabling this in internal because many people need alt-tab capability.  If you happen to be

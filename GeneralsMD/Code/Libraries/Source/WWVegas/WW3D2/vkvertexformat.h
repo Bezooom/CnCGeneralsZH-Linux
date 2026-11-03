@@ -3,8 +3,9 @@
 **
 ** The engine writes its vertices by hand through the structs in dx8fvf.h, so the bytes do not
 ** change. What changes is that Vulkan has no notion of an FVF: it is told, per attribute, which
-** bytes to read and as what type. The pipeline therefore reads exactly one layout - position, one
-** texture coordinate set, one colour - and every FVF the engine uses is decoded into it.
+** bytes to read and as what type. The pipeline therefore reads exactly one layout - position, two
+** texture coordinate sets, one colour, and two projected coordinates the host fills in for
+** camera-space texture stages - and every FVF the engine uses is decoded into it.
 **
 ** Two things here are worth testing rather than eyeballing.
 **
@@ -34,23 +35,31 @@
 struct VKVertexLayout {
 	unsigned stride;
 	unsigned uvFloatCount;
+	unsigned uv1FloatCount;
 	int positionOffset;
 	int uvOffset;
+	int uv1Offset;
+	int normalOffset; // Source-only: the lighting pass consumes it before upload.
 	int colorOffset;
 };
 
-// Position, one texture coordinate set, one colour as four normalised floats.
+// Position, texture coordinate set 0, one colour as four normalised floats, texture coordinate
+// set 1, and the two projected coordinates. 60 bytes; the pipeline's attribute offsets are 0, 12,
+// 20, 36, 44 and 52, in this order.
 struct VKCanonicalVertex {
 	float position[3];
 	float uv[2];
 	float color[4];
+	float uv1[2];
+	float projected0[2];
+	float projected1[2];
 };
 
 // Canonical stride, shared with Platform/PAL_Vulkan.h so the pipeline's attribute offsets and the
 // decoder agree.
-const unsigned VK_CANONICAL_VERTEX_STRIDE = 36;
+const unsigned VK_CANONICAL_VERTEX_STRIDE = 60;
 
-bool VKLayout_From_FVF(unsigned fvf, VKVertexLayout &layout);
+bool VKLayout_From_FVF(unsigned fvf, VKVertexLayout &layout, unsigned texCoordIndex = 0);
 void VKDecodeVertex(const unsigned char *source, const VKVertexLayout &layout, VKCanonicalVertex &out);
 
 #endif // VKVERTEXFORMAT_H

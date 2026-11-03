@@ -1610,6 +1610,10 @@ void GameLogic::startNewGame( Bool loadingSaveGame )
 				Int count = ScriptList::getReadScripts(scripts);
 				if (count)
 				{
+					SidesInfo *probeSide = TheSidesList->getSideInfo(0);
+					DEBUG_LOG(("MPSCRIPTS probe: sides=%d side0=%p scriptList=%p\n",
+						TheSidesList->getNumSides(), (void*)probeSide,
+						probeSide ? (void*)probeSide->getScriptList() : (void*)0));
 					ScriptList *pSL = TheSidesList->getSideInfo(0)->getScriptList();
 					Script *next = scripts[0]->getScript();
 					while (next)

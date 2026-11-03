@@ -1250,6 +1250,9 @@ bool DX8Wrapper::Set_Render_Device(int dev, int width, int height, int bits, int
 	
 	// Initialize Render2DClass Screen Resolution
 	Render2DClass::Set_Screen_Resolution( RectClass( 0, 0, ResolutionWidth, ResolutionHeight ) );
+#if defined(PLATFORM_LINUX) || defined(__linux__) || defined(_UNIX)
+	Platform_SetGameResolution(ResolutionWidth, ResolutionHeight);
+#endif
 
 	if (bits != -1)		BitDepth = bits;
 	if (windowed != -1)	IsWindowed = (windowed != 0);
@@ -1296,6 +1299,10 @@ bool DX8Wrapper::Set_Render_Device(int dev, int width, int height, int bits, int
 								 rect.bottom-rect.top,
 								 SWP_NOZORDER | SWP_NOMOVE);
 		}
+	}
+#elif defined(PLATFORM_LINUX) || defined(__linux__) || defined(_UNIX)
+	if (resize_window && IsWindowed) {
+		Platform_ResizeWindow(ResolutionWidth, ResolutionHeight);
 	}
 #endif
 	//must be either resetting existing device or creating a new one.
@@ -2079,6 +2086,13 @@ void DX8Wrapper::Begin_Scene(void)
 #endif
 	
 	DX8CALL(BeginScene());
+#if defined(PLATFORM_LINUX) || defined(__linux__) || defined(_UNIX)
+	// The Vulkan path renders straight into the swapchain image, and any pass that left an
+	// offscreen target bound would make every following 2D draw look like a render-to-texture
+	// draw - which the shim skips. Re-binding the default target here is what a real device's
+	// BeginScene does implicitly: the frame starts on the back buffer.
+	DX8CALL(SetRenderTarget(0, nullptr));
+#endif
 	Direct3D11_Begin_Scene();
 
 	DX8WebBrowser::Update();
@@ -3057,19 +3071,24 @@ IDirect3DTexture9 * DX8Wrapper::_Create_DX8_Texture
 {
 	DX8_THREAD_ASSERT();
 	DX8_Assert();
+
+#if defined(PLATFORM_LINUX) || defined(__linux__) || defined(_UNIX)
+	IDirect3DSurface9 *surface = TextureLoader::Load_Surface_Immediate(filename, WW3D_FORMAT_UNKNOWN, true);
+	if (!surface) {
+		return MissingTexture::_Get_Missing_Texture();
+	}
+	IDirect3DTexture9 *texture = _Create_DX8_Texture(surface, mip_level_count);
+	surface->Release();
+	return texture ? texture : MissingTexture::_Get_Missing_Texture();
+#else
 	IDirect3DTexture9 *texture = NULL;
 
-	// NOTE: If the original image format is not supported as a texture format, it will
-	// automatically be converted to an appropriate format.
-	// NOTE: It is possible to get the size and format of the original image file from this
-	// function as well, so if we later want to second-guess D3DX's format conversion decisions
-	// we can do so after this function is called..
 	unsigned result = D3DXCreateTextureFromFileExA(
 		_Get_D3D_Device(),
 		filename,
 		D3DX_DEFAULT,
 		D3DX_DEFAULT,
-		mip_level_count,//create_mipmaps ? 0 : 1,
+		mip_level_count,
 		0,
 		D3DFMT_UNKNOWN,
 		D3DPOOL_MANAGED,
@@ -3084,7 +3103,6 @@ IDirect3DTexture9 * DX8Wrapper::_Create_DX8_Texture
 		return MissingTexture::_Get_Missing_Texture();
 	}
 
-	// Make sure texture wasn't paletted!
 	D3DSURFACE_DESC desc;
 	texture->GetLevelDesc(0,&desc);
 	if (desc.Format==D3DFMT_P8) {
@@ -3092,6 +3110,7 @@ IDirect3DTexture9 * DX8Wrapper::_Create_DX8_Texture
 		return MissingTexture::_Get_Missing_Texture();
 	}
 	return texture;
+#endif
 }
 
 IDirect3DTexture9 * DX8Wrapper::_Create_DX8_Texture

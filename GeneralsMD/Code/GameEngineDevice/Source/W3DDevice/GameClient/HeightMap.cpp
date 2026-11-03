@@ -2258,6 +2258,7 @@ void HeightMapRenderObjClass::renderTerrainPass(CameraClass *pCamera)
 blended together.  Used primarily for corner cases where 3 different textures meet.*/
 void HeightMapRenderObjClass::renderExtraBlendTiles(void)
 {
+	if (getenv("ZH_NO_EXTRA_BLEND")) return;
 	Int vertexCount = 0;
 	Int indexCount = 0;
 	Int xExtent = m_map->getXExtent();

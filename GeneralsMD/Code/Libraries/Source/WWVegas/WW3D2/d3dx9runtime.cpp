@@ -253,7 +253,11 @@ static HRESULT WINAPI Linux_D3DXLoadSurfaceFromSurface(LPDIRECT3DSURFACE9 pDestS
 	LPDIRECT3DSURFACE9 pSrcSurface, const PALETTEENTRY * pSrcPalette,
 	const RECT * pSrcRect, DWORD Filter, D3DCOLOR ColorKey)
 {
-	return 0;
+	(void)pDestPalette;
+	(void)pSrcPalette;
+	(void)Filter;
+	(void)ColorKey;
+	return D3D_Copy_Surface_Rects(pDestSurface, pDestRect, pSrcSurface, pSrcRect);
 }
 static HRESULT WINAPI Linux_D3DXAssembleShader(LPCSTR source, UINT source_length,
 	const D3DXMACRO * defines, LPD3DXINCLUDE include, DWORD flags,

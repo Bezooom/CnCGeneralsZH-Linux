@@ -1,4 +1,5 @@
 #include "PAL_Window.h"
+#include "PAL_Icon.h"
 extern void Platform_AddKeyEvent(unsigned char scanCode, bool isDown);
 extern void Platform_ResetKeys(void);
 #define Drawable X11_Drawable
@@ -8,6 +9,7 @@ extern void Platform_ResetKeys(void);
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
 #include <X11/keysym.h>
+#include <X11/Xatom.h>
 #undef Drawable
 #undef Status
 #undef None
@@ -21,7 +23,7 @@ extern Win32Mouse *TheWin32Mouse;
 #include <cstdio>
 
 static PlatformWindowInfo s_info = {
-    nullptr, 0, 800, 600, true, true, false
+    nullptr, 0, 800, 600, 800, 600, true, true, false
 };
 
 static Atom s_wmDeleteMessage = 0;
@@ -111,6 +113,16 @@ bool Platform_CreateWindow(const char *title, int width, int height, bool window
     }
 
     XStoreName(display, window, title ? title : "Command and Conquer Generals");
+    XClassHint classHint;
+    char resName[] = "generals";
+    char className[] = "generals";
+    classHint.res_name = resName;
+    classHint.res_class = className;
+    XSetClassHint(display, window, &classHint);
+    Atom netWmIcon = XInternAtom(display, "_NET_WM_ICON", False);
+    XChangeProperty(display, window, netWmIcon, XA_CARDINAL, 32, PropModeReplace,
+                    (const unsigned char *)kWindowIconData, kWindowIconDataCount);
+
 
     s_wmDeleteMessage = XInternAtom(display, "WM_DELETE_WINDOW", False);
     XSetWMProtocols(display, window, &s_wmDeleteMessage, 1);
@@ -120,17 +132,34 @@ bool Platform_CreateWindow(const char *title, int width, int height, bool window
                      FocusChangeMask | StructureNotifyMask;
     XSelectInput(display, window, eventMask);
 
+    if (!windowed) {
+        Atom wmState = XInternAtom(display, "_NET_WM_STATE", False);
+        Atom wmFullscreen = XInternAtom(display, "_NET_WM_STATE_FULLSCREEN", False);
+        XChangeProperty(display, window, wmState, XA_ATOM, 32, PropModeReplace,
+                        (unsigned char *)&wmFullscreen, 1);
+    }
+
     XMapWindow(display, window);
+    // Raise it above whatever the launcher left on screen. A window the compositor considers
+    // occluded is not composited at all, and a present that waits for the compositor (every
+    // blocking present mode does) then stalls until the driver times out.
+    XRaiseWindow(display, window);
     XFlush(display);
 
     s_info.x11Display = display;
     s_info.x11Window = window;
     s_info.width = width;
     s_info.height = height;
+    s_info.gameWidth = width;
+    s_info.gameHeight = height;
     s_info.isWindowed = windowed;
     s_info.isActive = true;
     s_info.shouldQuit = false;
 
+
+    if (!windowed) {
+        Platform_SetFullscreen(true);
+    }
     ApplicationHWnd = (HWND)(uintptr_t)window;
 
     return true;
@@ -178,6 +207,12 @@ void Platform_PumpEvents(void)
             case MotionNotify: {
                 int x = ev.xmotion.x;
                 int y = ev.xmotion.y;
+                if (s_info.gameWidth > 0 && s_info.width > 0 && s_info.width != s_info.gameWidth) {
+                    x = (int)((long long)x * s_info.gameWidth / s_info.width);
+                }
+                if (s_info.gameHeight > 0 && s_info.height > 0 && s_info.height != s_info.gameHeight) {
+                    y = (int)((long long)y * s_info.gameHeight / s_info.height);
+                }
                 LPARAM lParam = (LPARAM)(((y & 0xFFFF) << 16) | (x & 0xFFFF));
                 DWORD time = (DWORD)ev.xmotion.time;
                 if (TheWin32Mouse) {
@@ -191,6 +226,12 @@ void Platform_PumpEvents(void)
                 bool isDown = (ev.type == ButtonPress);
                 int x = ev.xbutton.x;
                 int y = ev.xbutton.y;
+                if (s_info.gameWidth > 0 && s_info.width > 0 && s_info.width != s_info.gameWidth) {
+                    x = (int)((long long)x * s_info.gameWidth / s_info.width);
+                }
+                if (s_info.gameHeight > 0 && s_info.height > 0 && s_info.height != s_info.gameHeight) {
+                    y = (int)((long long)y * s_info.gameHeight / s_info.height);
+                }
                 LPARAM lParam = (LPARAM)(((y & 0xFFFF) << 16) | (x & 0xFFFF));
                 DWORD time = (DWORD)ev.xbutton.time;
 
@@ -270,4 +311,48 @@ PlatformWindowInfo *Platform_GetWindowInfo(void)
 bool Platform_IsWindowCreated(void)
 {
     return s_info.x11Display != nullptr || s_info.isActive;
+}
+
+void Platform_SetFullscreen(bool fullscreen)
+{
+    if (!s_info.x11Display || !s_info.x11Window) return;
+    Display *display = (Display *)s_info.x11Display;
+    Window window = (Window)s_info.x11Window;
+    Window root = RootWindow(display, DefaultScreen(display));
+
+    Atom wmState = XInternAtom(display, "_NET_WM_STATE", False);
+    Atom wmFullscreen = XInternAtom(display, "_NET_WM_STATE_FULLSCREEN", False);
+
+    XEvent xev = {};
+    xev.type = ClientMessage;
+    xev.xclient.window = window;
+    xev.xclient.message_type = wmState;
+    xev.xclient.format = 32;
+    xev.xclient.data.l[0] = fullscreen ? 1 : 0; // 1 = _NET_WM_STATE_ADD, 0 = _NET_WM_STATE_REMOVE
+    xev.xclient.data.l[1] = wmFullscreen;
+    xev.xclient.data.l[2] = 0;
+    xev.xclient.data.l[3] = 1;
+
+    XSendEvent(display, root, False, SubstructureRedirectMask | SubstructureNotifyMask, &xev);
+    XFlush(display);
+    s_info.isWindowed = !fullscreen;
+}
+
+void Platform_ResizeWindow(int width, int height)
+{
+    if (!s_info.x11Display || !s_info.x11Window || width <= 0 || height <= 0) return;
+    Display *display = (Display *)s_info.x11Display;
+    Window window = (Window)s_info.x11Window;
+    XResizeWindow(display, window, (unsigned int)width, (unsigned int)height);
+    XFlush(display);
+    s_info.width = width;
+    s_info.height = height;
+    s_info.gameWidth = width;
+    s_info.gameHeight = height;
+}
+
+void Platform_SetGameResolution(int width, int height)
+{
+    if (width > 0) s_info.gameWidth = width;
+    if (height > 0) s_info.gameHeight = height;
 }

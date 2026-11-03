@@ -76,6 +76,7 @@ DDSFileClass::DDSFileClass(const char* name,unsigned reduction_factor)
 	char header[4];
 
 	unsigned read_bytes=file->Read(header,4);
+
 	if (!read_bytes)
 	{
 		WWASSERT("File loading failed trying to read header\n");
@@ -83,6 +84,7 @@ DDSFileClass::DDSFileClass(const char* name,unsigned reduction_factor)
 	}
 	// Now, we read DDSURFACEDESC2 defining the compressed data
 	read_bytes=file->Read(&SurfaceDesc,sizeof(LegacyDDSURFACEDESC2));
+
 	// Verify the structure size matches the read size
 	if (read_bytes==0 || read_bytes!=SurfaceDesc.Size) 
 	{

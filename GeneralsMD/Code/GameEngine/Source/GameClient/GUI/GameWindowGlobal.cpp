@@ -89,7 +89,7 @@ void GameWindowManager::winFillRect( Color color, Real width,
 																		 Int startX, Int startY, 
 																		 Int endX, Int endY )
 {
-
+	if (getenv("ZH_UI_LOG")) fprintf(stderr, "WIN_FILL color=%08x rect=%d,%d..%d,%d\n", (unsigned)color, startX, startY, endX, endY);
 	TheDisplay->drawFillRect( startX, startY, 
 														endX - startX, endY - startY, 
 														color );

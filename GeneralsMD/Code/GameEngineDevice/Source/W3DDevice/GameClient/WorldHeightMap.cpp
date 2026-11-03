@@ -33,6 +33,7 @@
 #endif
 #include "stdlib.h"
 #include <string.h>
+#include <stdio.h>
 #include "Common/STLTypedefs.h"
 
 #include "Common/DataChunk.h"
@@ -529,7 +530,6 @@ WorldHeightMap::WorldHeightMap(ChunkInputStream *pStrm, Bool logicalDataOnly):
 		file.registerParser( AsciiString("GlobalLighting"), AsciiString::TheEmptyString, ParseLightingDataChunk );
 	}
 	if (!file.parse(this)) {
-    
 		throw(ERROR_CORRUPT_FILE_FORMAT);
 	}
 	// patch bad maps. 
@@ -1054,7 +1054,7 @@ void WorldHeightMap::readTexClass(TXTextureClass *texClass, TileData **tileData)
 		InputStream *pStr = &theStream;
 		Int numTiles = WorldHeightMap::countTiles(pStr);
 		theFile->seek(0, File::START);
-		if (numTiles >= texClass->numTiles) { 
+		if (numTiles >= texClass->numTiles) {
 			numTiles = texClass->numTiles;
 			Int width;
 			for (width = 10; width >= 1; width--) {
@@ -1063,7 +1063,7 @@ void WorldHeightMap::readTexClass(TXTextureClass *texClass, TileData **tileData)
 					break;
 				}
 			}
-			WorldHeightMap::readTiles(pStr, tileData+texClass->firstTile, width);						
+			WorldHeightMap::readTiles(pStr, tileData+texClass->firstTile, width);
 		}
 		theFile->close();
 	}

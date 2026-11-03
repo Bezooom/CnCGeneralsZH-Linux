@@ -651,6 +651,8 @@ static const Image *plateImage( const ControlBarPlate *plate )
 
 	Image *image = newInstance( Image );
 	image->setName( name );
+	// The file name stays bare: GameFileClass::Set_Name prefixes Art/Textures/ for image files,
+	// and prefixes it again if the path is already there.
 	image->setFilename( name );
 
 	//

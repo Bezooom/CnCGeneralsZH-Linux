@@ -51,6 +51,8 @@
 #include "GameClient/LanguageFilter.h"
 #include "Common/Debug.h"
 #include "Common/UnicodeString.h"
+#include <cstdint>
+#include <vector>
 #include "Common/AsciiString.h"
 #include "Common/GlobalData.h"
 #include "Common/file.h"
@@ -1053,27 +1055,37 @@ Bool GameTextManager::parseCSF( const Char *filename )
 
 			if ( len )
 			{
-				file->read ( m_tbuffer, len*sizeof(WideChar) );
-			}
-
-			if ( num == 0 )
-			{
-				// only use the first string found
-				m_tbuffer[len] = 0;
-				
+				std::vector<uint16_t> heapBuf;
+				uint16_t *raw16;
+				if ( (size_t)len <= sizeof(m_buffer2) / sizeof(uint16_t) )
 				{
-					WideChar *ptr;
-				
-					ptr = m_tbuffer;
-				
-					while ( *ptr )
-					{
-						*ptr = ~*ptr;
-						ptr++;
-					}
+					raw16 = (uint16_t *)m_buffer2;
 				}
-				
-				stripSpaces ( m_tbuffer );
+				else
+				{
+					heapBuf.resize( len );
+					raw16 = heapBuf.data();
+				}
+
+				file->read ( raw16, len * sizeof(uint16_t) );
+
+				if ( num == 0 )
+				{
+					Int copyLen = len < (MAX_UITEXT_LENGTH * 2 - 1) ? len : (MAX_UITEXT_LENGTH * 2 - 1);
+					for ( Int i = 0; i < copyLen; ++i )
+					{
+						uint16_t c = (uint16_t)(~raw16[i]);
+						m_tbuffer[i] = (WideChar)c;
+					}
+					m_tbuffer[copyLen] = 0;
+
+					stripSpaces ( m_tbuffer );
+					m_stringInfo[listCount].text = m_tbuffer;
+				}
+			}
+			else if ( num == 0 )
+			{
+				m_tbuffer[0] = 0;
 				m_stringInfo[listCount].text = m_tbuffer;
 			}
 

@@ -32,11 +32,13 @@ TEST(vklayout_offsets_follow_the_field_order_d3d9_packs)
 
     CHECK(VKLayout_From_FVF(FVF_XYZ, layout));
     CHECK_EQ(layout.positionOffset, 0);
+    CHECK_EQ(layout.normalOffset, -1);
     CHECK_EQ(layout.colorOffset, -1);
     CHECK_EQ(layout.uvOffset, -1);
     CHECK_EQ(layout.stride, 12u);
 
     CHECK(VKLayout_From_FVF(FVF_XYZN, layout));
+    CHECK_EQ(layout.normalOffset, 12);
     CHECK_EQ(layout.stride, 24u);
 
     CHECK(VKLayout_From_FVF(FVF_XYZDUV1, layout));
@@ -46,9 +48,14 @@ TEST(vklayout_offsets_follow_the_field_order_d3d9_packs)
     CHECK_EQ(layout.stride, 24u);
 
     CHECK(VKLayout_From_FVF(FVF_XYZNDUV2, layout));
+    CHECK_EQ(layout.normalOffset, 12);
     CHECK_EQ(layout.colorOffset, 24);
     CHECK_EQ(layout.uvOffset, 28);
     CHECK_EQ(layout.stride, 44u);   // 12 + 12 + 4 + 8 + 8: both sets, not only the one the pipeline reads
+    CHECK(VKLayout_From_FVF(FVF_XYZNDUV2, layout, 1));
+    CHECK_EQ(layout.colorOffset, 24);
+    CHECK_EQ(layout.uvOffset, 36);   // set 1 starts after set 0 (28 + 8)
+    CHECK_EQ(layout.stride, 44u);
 
     // Screen-space vertices carry a w, so the fields after position start four bytes later.
     CHECK(VKLayout_From_FVF(FVF_XYZRHW_DU, layout));
@@ -190,8 +197,34 @@ TEST(vkdecode_fills_missing_fields_with_the_disabled_stage_values)
 
 static PlatformVulkanPushConstants g_capturedPushConstants;
 static std::vector<VKCanonicalVertex> g_capturedVertices;
+static int g_capturedBlendMode = -1;
+static void *g_capturedBoundTexture = nullptr;
+static void *g_capturedStageTextures[4] = { nullptr, nullptr, nullptr, nullptr };
+static uint32_t g_capturedSamplerKeys[4] = { 0, 0, 0, 0 };
 
 extern "C" {
+void Platform_BindVulkanTexture(void *tex)
+{
+    g_capturedBoundTexture = tex;
+}
+
+void Platform_BindVulkanTextures(void *const textures[4], const uint32_t *samplerKeys)
+{
+    for (int stage = 0; stage < 4; ++stage) {
+        g_capturedStageTextures[stage] = textures ? textures[stage] : nullptr;
+        g_capturedSamplerKeys[stage] = samplerKeys ? samplerKeys[stage] : 0;
+    }
+}
+
+uint32_t Platform_MakeSamplerKey(uint32_t addressU, uint32_t addressV, uint32_t minFilter,
+                                 uint32_t magFilter, uint32_t mipFilter, int mipsReady)
+{
+    uint32_t key = (addressU & 0x7u) | ((addressV & 0x7u) << 3) | ((minFilter & 0x7u) << 6) |
+                   ((magFilter & 0x7u) << 9) | ((mipFilter & 0x7u) << 12);
+    if (mipsReady) key |= PLATFORM_SAMPLER_MIPS_READY;
+    return key;
+}
+
 void Platform_SetVulkanPushConstants(const PlatformVulkanPushConstants *pc)
 {
     g_capturedPushConstants = *pc;
@@ -204,12 +237,17 @@ bool Platform_DrawVulkanCanonical(const float *canonicalVertices, uint32_t verte
     g_capturedVertices.assign(decoded, decoded + vertexCount);
     return true;
 }
+PlatformVulkanContext *Platform_GetVulkanContext(void) { static PlatformVulkanContext ctx = {}; ctx.width = 800; ctx.height = 600; return &ctx; }
+void Platform_SetVulkanBlendState(int mode) { g_capturedBlendMode = mode; }
+void Platform_SetVulkanDepthState(int, int, int) {}
 }
+
 
 TEST(draw_canonical_hands_the_pipeline_the_decoded_vertex_and_the_transposed_matrix)
 {
     IDirect3DDevice9 device;
     device.SetFVF(FVF_XYZNDUV2);
+    device.SetRenderState(D3DRS_LIGHTING, FALSE);
 
     D3DMATRIX identity = { { { 1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1 } } };
     device.SetTransform(D3DTS_WORLD, &identity);
@@ -245,6 +283,164 @@ TEST(draw_canonical_hands_the_pipeline_the_decoded_vertex_and_the_transposed_mat
     CHECK_NEAR(g_capturedPushConstants.mvp[5], -1.0f, 1e-6f);
     CHECK_NEAR(g_capturedPushConstants.mvp[1], 0.0f, 1e-6f);
     CHECK_NEAR(g_capturedPushConstants.materialColor[0], 1.0f, 1e-6f);
+
+    // The default stage configuration has to reach the shader: stage 0 modulates the texture by
+    // the diffuse colour, stages 1..3 are disabled, and no stage projects.
+    uint32_t stage0 = 0;
+    memcpy(&stage0, &g_capturedPushConstants.stageConfig[0], sizeof(stage0));
+    CHECK_EQ(stage0 & 0xFFu, (uint32_t)D3DTOP_MODULATE);
+    CHECK_EQ((stage0 >> 8) & 0xFFu, (uint32_t)D3DTA_TEXTURE);
+    CHECK_EQ((stage0 >> 16) & 0xFFu, (uint32_t)D3DTA_CURRENT);
+    CHECK_EQ((stage0 >> 24) & 0x3u, (uint32_t)PLATFORM_UV_SOURCE_UV0);
+    for (int stage = 1; stage < 4; ++stage) {
+        uint32_t packed = 0;
+        memcpy(&packed, &g_capturedPushConstants.stageConfig[stage], sizeof(packed));
+        CHECK_EQ(packed & 0xFFu, (uint32_t)D3DTOP_DISABLE);
+    }
+    uint32_t alpha = 0;
+    memcpy(&alpha, &g_capturedPushConstants.alphaConfig, sizeof(alpha));
+    CHECK_EQ(alpha & 1u, 0u);   // alpha test off by default
+}
+
+TEST(draw_canonical_selects_multiply_for_the_shroud_blend)
+{
+    IDirect3DDevice9 device;
+    device.SetFVF(FVF_XYZNDUV2);
+    device.SetRenderState(D3DRS_LIGHTING, FALSE);
+    D3DMATRIX identity = { { { 1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1 } } };
+    device.SetTransform(D3DTS_WORLD, &identity);
+    device.SetTransform(D3DTS_VIEW, &identity);
+    device.SetTransform(D3DTS_PROJECTION, &identity);
+    D3DMATERIAL9 material = { {1,1,1,1}, {0,0,0,0}, {0,0,0,0}, {0,0,0,0}, 0 };
+    device.SetMaterial(&material);
+
+    unsigned char triangle[3 * 44] = {};
+    device.SetRenderState(D3DRS_ALPHABLENDENABLE, TRUE);
+
+    // The shroud pass multiplies the terrain by the shroud texel: dest = src * dest, spelled
+    // SRCBLEND=ZERO, DESTBLEND=SRCCOLOR. Selecting alpha blending here replaces the ground with
+    // the shroud colour instead, which is what turned every map flat grey.
+    device.SetRenderState(D3DRS_SRCBLEND, D3DBLEND_ZERO);
+    device.SetRenderState(D3DRS_DESTBLEND, D3DBLEND_SRCCOLOR);
+    g_capturedBlendMode = -1;
+    device.DrawPrimitiveUP(D3DPT_TRIANGLELIST, 1, triangle, 44);
+    CHECK_EQ(g_capturedBlendMode, 2);
+
+    // The water mirror spells the same multiply the other way round.
+    device.SetRenderState(D3DRS_SRCBLEND, D3DBLEND_DESTCOLOR);
+    device.SetRenderState(D3DRS_DESTBLEND, D3DBLEND_ZERO);
+    g_capturedBlendMode = -1;
+    device.DrawPrimitiveUP(D3DPT_TRIANGLELIST, 1, triangle, 44);
+    CHECK_EQ(g_capturedBlendMode, 2);
+
+    // Plain alpha blending must stay alpha blending.
+    device.SetRenderState(D3DRS_SRCBLEND, D3DBLEND_SRCALPHA);
+    device.SetRenderState(D3DRS_DESTBLEND, D3DBLEND_INVSRCALPHA);
+    g_capturedBlendMode = -1;
+    device.DrawPrimitiveUP(D3DPT_TRIANGLELIST, 1, triangle, 44);
+    CHECK_EQ(g_capturedBlendMode, 1);
+}
+
+TEST(draw_canonical_lights_a_zero_diffuse_vertex_from_material_and_directional_light)
+{
+    IDirect3DDevice9 device;
+    device.SetFVF(FVF_XYZNDUV2);
+
+    D3DMATRIX identity = { { { 1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1 } } };
+    device.SetTransform(D3DTS_WORLD, &identity);
+    device.SetTransform(D3DTS_VIEW, &identity);
+    device.SetTransform(D3DTS_PROJECTION, &identity);
+
+    D3DMATERIAL9 material = { {1,1,1,1}, {0,0,0,1}, {0,0,0,0}, {0,0,0,0}, 1.0f };
+    device.SetMaterial(&material);
+    device.SetRenderState(D3DRS_LIGHTING, TRUE);
+    device.SetRenderState(D3DRS_COLORVERTEX, TRUE);
+    device.SetRenderState(D3DRS_DIFFUSEMATERIALSOURCE, D3DMCS_MATERIAL);
+    device.SetRenderState(D3DRS_AMBIENTMATERIALSOURCE, D3DMCS_MATERIAL);
+    device.SetRenderState(D3DRS_EMISSIVEMATERIALSOURCE, D3DMCS_MATERIAL);
+    device.SetRenderState(D3DRS_AMBIENT, 0);
+
+    D3DLIGHT9 light;
+    memset(&light, 0, sizeof(light));
+    light.Type = D3DLIGHT_DIRECTIONAL;
+    light.Direction.z = -1.0f;
+    light.Diffuse.r = 0.5f;
+    light.Diffuse.g = 0.25f;
+    light.Diffuse.b = 0.125f;
+    light.Diffuse.a = 1.0f;
+    device.SetLight(0, &light);
+    device.LightEnable(0, TRUE);
+
+    unsigned char triangle[3 * 44] = {};
+    for (int v = 0; v < 3; ++v) {
+        unsigned char *p = triangle + v * 44;
+        const float position[3] = { (float)v, 0.0f, 0.5f };
+        const float normal[3] = { 0.0f, 0.0f, 1.0f };
+        memcpy(p, position, sizeof(position));
+        memcpy(p + 12, normal, sizeof(normal));
+        p[27] = 0; // Zero vertex diffuse; D3DMCS_MATERIAL supplies the lit diffuse instead.
+    }
+
+    g_capturedVertices.clear();
+    device.DrawPrimitiveUP(D3DPT_TRIANGLELIST, 1, triangle, 44);
+
+    CHECK_EQ(g_capturedVertices.size(), (size_t)3);
+    CHECK_NEAR(g_capturedVertices[0].color[0], 0.5f, 1e-4f);
+    CHECK_NEAR(g_capturedVertices[0].color[1], 0.25f, 1e-4f);
+    CHECK_NEAR(g_capturedVertices[0].color[2], 0.125f, 1e-4f);
+    CHECK_NEAR(g_capturedVertices[0].color[3], 1.0f, 1e-6f);
+    device.SetRenderState(D3DRS_LIGHTING, FALSE);
+    g_capturedVertices.clear();
+    device.DrawPrimitiveUP(D3DPT_TRIANGLELIST, 1, triangle, 44);
+    CHECK_EQ(g_capturedVertices.size(), (size_t)3);
+    CHECK_NEAR(g_capturedVertices[0].color[0], 0.0f, 1e-6f);
+    CHECK_NEAR(g_capturedVertices[0].color[1], 0.0f, 1e-6f);
+    CHECK_NEAR(g_capturedVertices[0].color[2], 0.0f, 1e-6f);
+}
+
+TEST(draw_canonical_projects_a_camera_space_stage_through_its_texture_matrix)
+{
+    IDirect3DDevice9 device;
+    device.SetFVF(FVF_XYZNDUV2);
+
+    // View and world are the identity, so camera space is the vertex position. The texture matrix
+    // scales and offsets it, exactly as the shroud and cloud passes set one up.
+    D3DMATRIX identity = { { { 1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1 } } };
+    device.SetTransform(D3DTS_WORLD, &identity);
+    device.SetTransform(D3DTS_VIEW, &identity);
+    device.SetTransform(D3DTS_PROJECTION, &identity);
+
+    D3DMATRIX textureMatrix = { { { 0.5f,0,0,0, 0,0.25f,0,0, 0,0,1,0, 0.125f,0.5f,0,1 } } };
+    device.SetTransform(D3DTS_TEXTURE0, &textureMatrix);
+
+    device.SetTextureStageState(0, D3DTSS_TEXCOORDINDEX, D3DTSS_TCI_CAMERASPACEPOSITION);
+    device.SetTextureStageState(0, D3DTSS_TEXTURETRANSFORMFLAGS, D3DTTFF_COUNT2);
+
+    unsigned char triangle[3 * 44] = {};
+    for (int v = 0; v < 3; ++v) {
+        unsigned char *p = triangle + v * 44;
+        float position[3] = { (float)v * 4.0f, 2.0f, 0.0f };
+        memcpy(p, position, sizeof(position));
+    }
+
+    g_capturedVertices.clear();
+    device.DrawPrimitiveUP(D3DPT_TRIANGLELIST, 1, triangle, 44);
+
+    CHECK_EQ(g_capturedVertices.size(), (size_t)3);
+    // x = 0, 4, 8 through scale 0.5 and offset 0.125: 0.125, 2.125, 4.125.
+    CHECK_NEAR(g_capturedVertices[0].projected0[0], 0.125f, 1e-5f);
+    CHECK_NEAR(g_capturedVertices[1].projected0[0], 2.125f, 1e-5f);
+    CHECK_NEAR(g_capturedVertices[2].projected0[0], 4.125f, 1e-5f);
+    // y = 2 through scale 0.25 and offset 0.5.
+    CHECK_NEAR(g_capturedVertices[0].projected0[1], 1.0f, 1e-5f);
+
+    uint32_t stage0 = 0;
+    memcpy(&stage0, &g_capturedPushConstants.stageConfig[0], sizeof(stage0));
+    CHECK_EQ((stage0 >> 24) & 0x3u, (uint32_t)PLATFORM_UV_SOURCE_PROJECTED0);
+
+    // Leave the stage state as the next test expects to find it.
+    device.SetTextureStageState(0, D3DTSS_TEXCOORDINDEX, 0);
+    device.SetTextureStageState(0, D3DTSS_TEXTURETRANSFORMFLAGS, D3DTTFF_DISABLE);
 }
 
 TEST(draw_canonical_refuses_a_stride_the_fvf_does_not_describe)

@@ -1359,8 +1359,11 @@ bool Targa::File_Open_Read(const char* name)
 {
 #ifdef TGA_USES_WWLIB_FILE_CLASSES
 	TGAFile = _TheFileFactory->Get_File(name);
+
 	if (TGAFile && TGAFile->Is_Available()) {
-		return (TGAFile->Open(FileClass::READ) != 0);
+		bool ok = (TGAFile->Open(FileClass::READ) != 0);
+
+		return ok;
 	} else {
 		return false;
 	}

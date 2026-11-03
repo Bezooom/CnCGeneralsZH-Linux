@@ -1711,6 +1711,29 @@ TEST(fontchars_returns_its_glyph_buffers_to_the_pool)
 	CHECK_EQ(theW3DPoolBadFrees, 0);
 }
 
+TEST(fontchars_rasterizes_glyphs_with_freetype)
+{
+	FontCharsClass *font = W3DNEW FontCharsClass;
+	font->Initialize_GDI_Font("Arial", 14, false);
+	CHECK(font->Get_Char_Height() > 0);
+	CHECK(font->Get_Char_Width(L'M') > 0);
+
+	uint16 dest[64 * 64];
+	memset(dest, 0, sizeof(dest));
+	font->Blit_Char(L'M', dest, 64, 0, 0);
+
+	bool hasVisiblePixels = false;
+	for (int i = 0; i < 64 * 64; ++i) {
+		if ((dest[i] >> 12) > 0) {
+			hasVisiblePixels = true;
+			break;
+		}
+	}
+	CHECK(hasVisiblePixels);
+
+	font->Release_Ref();
+}
+
 // ---------------------------------------------------------------------------------------------
 // SurfaceClass::DrawPixel takes a Get_Description, a one-pixel LockRect and an UnlockRect for
 // every call.  Draw_Pixel writes the same byte, with the same truncation, into a buffer the
@@ -1809,9 +1832,19 @@ bool Platform_CreateVulkanPipeline(void) { return true; }
 void Platform_SetVulkanPushConstants(const PlatformVulkanPushConstants *) {}
 bool Platform_DrawVulkanCanonical(const float *, uint32_t, const uint16_t *, uint32_t) { return true; }
 void *Platform_CreateVulkanTexture(uint32_t, uint32_t, const void*, uint32_t) { return (void*)1; }
+void *Platform_CreateVulkanTextureEx(uint32_t, uint32_t, uint32_t, const void*, uint32_t) { return (void*)1; }
+bool Platform_UpdateVulkanTexture(void*, int, int, int, int, const void*) { return true; }
+bool Platform_UpdateVulkanTextureLevel(void*, uint32_t, int, int, int, int, const void*) { return true; }
+void Platform_BindVulkanTextures(void *const*, const uint32_t*) {}
+uint32_t Platform_MakeSamplerKey(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, int) { return 0; }
+void Platform_SetVulkanDepthState(int, int, int) {}
+void Platform_SetVulkanBlendState(int) {}
 void Platform_BindVulkanTexture(void*) {}
 void Platform_DestroyVulkanTexture(void*) {}
 PlatformWindowInfo *Platform_GetWindowInfo(void) { static PlatformWindowInfo win; return &win; }
 void Platform_PumpEvents(void) {}
+void Platform_SetFullscreen(bool) {}
+void Platform_ResizeWindow(int, int) {}
+void Platform_SetGameResolution(int, int) {}
 }
 #endif

@@ -186,6 +186,8 @@ Bool LocalFile::open( const Char *filename, Int access )
 		resolvedPath = caseResolved;
 	}
 	const char *openFilename = resolvedPath.c_str();
+	if (getenv("ZH_UI_LOG") && filename && strstr(filename, "reforged"))
+		fprintf(stderr, "LOCAL_OPEN name=%s resolved=%s access=%d\n", filename, openFilename, ::access(openFilename, R_OK));
 #else
 	const char *openFilename = filename;
 #endif

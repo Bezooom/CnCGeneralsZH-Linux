@@ -17,3 +17,16 @@
 !stub/miles.c
 # Windows export definitions and cleanup remain supplied externally.
 # Linux builds do not consume the Windows .def file.
+# The Linux OpenAL backend and its vendored dependencies must survive a
+# clean checkout (minimp3: public-domain MP3 decoder; openal/include: headers
+# matching the libopenal.so.1 runtime, used when no distro dev package exists).
+!stub/miles_al.cpp
+!stub/minimp3/
+!stub/minimp3/minimp3.h
+!stub/minimp3/minimp3_ex.h
+!stub/openal/
+!stub/openal/include/
+!stub/openal/include/AL/
+!stub/openal/include/AL/al.h
+!stub/openal/include/AL/alc.h
+!stub/openal/include/AL/alext.h

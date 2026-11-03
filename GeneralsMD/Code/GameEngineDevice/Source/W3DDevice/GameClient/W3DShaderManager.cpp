@@ -2206,6 +2206,14 @@ Int TerrainShaderPixelShader::init( void )
 #ifdef DISABLE_PIXEL_SHADERS
 	return false;
 #endif
+#if defined(PLATFORM_LINUX) || defined(__linux__) || defined(_UNIX)
+	// The terrain pixel shaders are D3D8 bytecode translated for D3D9 and bound with SetPixelShader.
+	// The Linux device never executes a bound pixel shader - SetPixelShader is a no-op - and
+	// TerrainShaderPixelShader::set() does not set the combiner operations, so the fixed-function
+	// stages keep whatever the previous draw left behind and the ground renders too dark.  Fall back
+	// to the 2-stage shader, which sets the combiner stages itself.
+	return FALSE;
+#endif
 	//this shader will also use the 2Stage shader for some of the passes so initialize it too.
 	if (terrainShader2Stage.init() && (res=W3DShaderManager::getChipset()) >= DC_GENERIC_PIXEL_SHADER_1_1)
 	{

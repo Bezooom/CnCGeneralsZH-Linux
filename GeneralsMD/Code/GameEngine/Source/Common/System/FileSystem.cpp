@@ -209,11 +209,13 @@ File*		FileSystem::openFile( const Char *filename, Int access )
 	if ( TheLocalFileSystem != NULL )
 	{
 		file = TheLocalFileSystem->openFile( filename, access );
+
 	}
 
 	if ( (TheArchiveFileSystem != NULL) && (file == NULL) )
 	{
 		file = TheArchiveFileSystem->openFile( filename );
+
 	}
 
 	return file;

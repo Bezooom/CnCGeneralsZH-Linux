@@ -240,6 +240,60 @@ char const * GameFileClass::Set_Name( char const *filename )
 		m_fileExists = TheFileSystem->doesFileExist( m_filePath );
 	}
 
+	// If a .dds was requested but not found, try .tga in both localized and standard paths
+	if( m_fileExists == FALSE && fileType == FILE_TYPE_DDS )
+	{
+		char altFilename[_MAX_PATH];
+		strlcpy(altFilename, filename, ARRAY_SIZE(altFilename));
+		int altLen = strlen(altFilename);
+		if (altLen >= 4 && stricmp(&altFilename[altLen - 4], ".dds") == 0) {
+			altFilename[altLen - 3] = 't';
+			altFilename[altLen - 2] = 'g';
+			altFilename[altLen - 1] = 'a';
+
+			static const char *localizedPathFormat = "Data/%s/Art/Textures/";
+			snprintf(m_filePath, ARRAY_SIZE(m_filePath), localizedPathFormat, GetRegistryLanguage().str());
+			strlcat(m_filePath, altFilename, ARRAY_SIZE(m_filePath));
+			m_fileExists = TheFileSystem->doesFileExist(m_filePath);
+
+			if (!m_fileExists) {
+				strlcpy(m_filePath, TGA_DIR_PATH, ARRAY_SIZE(m_filePath));
+				strlcat(m_filePath, altFilename, ARRAY_SIZE(m_filePath));
+				m_fileExists = TheFileSystem->doesFileExist(m_filePath);
+			}
+
+			if (m_fileExists) {
+				strlcpy(m_filename, altFilename, ARRAY_SIZE(m_filename));
+			}
+		}
+	}
+	else if( m_fileExists == FALSE && fileType == FILE_TYPE_TGA )
+	{
+		char altFilename[_MAX_PATH];
+		strlcpy(altFilename, filename, ARRAY_SIZE(altFilename));
+		int altLen = strlen(altFilename);
+		if (altLen >= 4 && stricmp(&altFilename[altLen - 4], ".tga") == 0) {
+			altFilename[altLen - 3] = 'd';
+			altFilename[altLen - 2] = 'd';
+			altFilename[altLen - 1] = 's';
+
+			static const char *localizedPathFormat = "Data/%s/Art/Textures/";
+			snprintf(m_filePath, ARRAY_SIZE(m_filePath), localizedPathFormat, GetRegistryLanguage().str());
+			strlcat(m_filePath, altFilename, ARRAY_SIZE(m_filePath));
+			m_fileExists = TheFileSystem->doesFileExist(m_filePath);
+
+			if (!m_fileExists) {
+				strlcpy(m_filePath, TGA_DIR_PATH, ARRAY_SIZE(m_filePath));
+				strlcat(m_filePath, altFilename, ARRAY_SIZE(m_filePath));
+				m_fileExists = TheFileSystem->doesFileExist(m_filePath);
+			}
+
+			if (m_fileExists) {
+				strlcpy(m_filename, altFilename, ARRAY_SIZE(m_filename));
+			}
+		}
+	}
+
 
 
 	// maintain legacy compatibility directories for now
@@ -335,6 +389,8 @@ char const * GameFileClass::Set_Name( char const *filename )
 		m_fileExists = TheFileSystem->doesFileExist( m_filePath );
 
 	}  // end if
+	if( m_fileExists == FALSE && isImageFileType(fileType) )
+		DEBUG_LOG(("GameFileClass texture miss '%s' last path '%s'\n", filename, m_filePath));
 
 	return m_filename;
 
@@ -383,6 +439,7 @@ int  GameFileClass::Open(int rights)
 
 	// just open up the file in m_filePath
 	m_theFile = TheFileSystem->openFile( m_filePath, File::READ | File::BINARY );
+
 
 	return (m_theFile != NULL);
 

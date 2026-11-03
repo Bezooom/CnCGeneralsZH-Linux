@@ -59,10 +59,12 @@ int main(void)
     CHECK(version[0] == '\0' && version[1] == 'n');
 
     AIL_shutdown(); /* Cleanup is safe even before startup. */
-    CHECK(AIL_startup() == 0);
-    CHECK(AIL_quick_startup(1, 1, 44100, 16, 2) == 0);
+    /* Linux builds link the real OpenAL backend: startup must succeed and
+     * hands must be issued (non-NULL dig driver). */
+    CHECK(AIL_startup() == 1);
+    CHECK(AIL_quick_startup(1, 1, 44100, 16, 2) == 1);
     AIL_quick_handles(&dig, &mdi, &dls);
-    CHECK(dig == NULL && mdi == NULL && dls == NULL);
+    CHECK(dig != NULL && mdi == NULL && dls == NULL);
     AIL_quick_handles(NULL, NULL, NULL);
     CHECK(AIL_set_redist_directory(NULL) == NULL);
     CHECK(AIL_set_redist_directory(".") == NULL);
@@ -82,6 +84,13 @@ int main(void)
     CHECK(AIL_open_3D_provider(99) != 0);
     AIL_set_3D_speaker_type(0, AIL_3D_2_SPEAKER);
     AIL_close_3D_provider(0);
+    CHECK(AIL_enumerate_3D_providers(&next, &provider, &name) == 1);
+    CHECK(next == 1 && provider != 0 && name != NULL);
+    CHECK(strcmp(name, "Miles Fast 2D Positional Audio") == 0);
+    CHECK(AIL_open_3D_provider(provider) == 0);
+    CHECK(AIL_open_3D_listener(provider) != NULL);
+    CHECK(AIL_allocate_sample_handle(dig) != NULL);
+    CHECK(AIL_allocate_3D_sample_handle(provider) != NULL);
     CHECK(AIL_set_sample_processor(NULL, DP_ASI_DECODER, 0) == 0);
     AIL_set_filter_sample_preference(NULL, "unavailable", NULL);
 

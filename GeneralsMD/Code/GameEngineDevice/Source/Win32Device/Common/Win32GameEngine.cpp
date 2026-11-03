@@ -37,6 +37,7 @@
 #endif
 #include "Win32Device/Common/Win32GameEngine.h"
 #include "Common/PerfTimer.h"
+#include "Common/MessageStream.h"
 
 #include "GameNetwork/LANAPICallbacks.h"
 
@@ -139,6 +140,12 @@ void Win32GameEngine::serviceWindowsOS( void )
 {
 #ifdef PLATFORM_LINUX
 	Platform_PumpEvents();
+	if (Platform_GetWindowInfo()->shouldQuit) {
+		if (TheMessageStream) {
+			TheMessageStream->appendMessage(GameMessage::MSG_META_DEMO_INSTANT_QUIT);
+		}
+		setQuitting(true);
+	}
 #endif
 	MSG msg;
   Int returnValue;

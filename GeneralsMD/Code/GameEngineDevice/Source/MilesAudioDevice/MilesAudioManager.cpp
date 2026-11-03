@@ -1002,12 +1002,6 @@ void MilesAudioManager::stopAudioEvent( AudioHandle handle )
 			// found it
 			// Ask it to stop; the next processPlayingList sweep does the Miles side and the free.
 			InterlockedCompareExchange( (volatile MilesAtomicWord *)&audio->m_status, PS_Stopping, PS_Playing );
-#if defined(LINUX)
-			// The legacy completion interface cannot carry native Linux handles.
-			errno = ENOTSUP;
-#else
-			notifyOfAudioCompletion((UnsignedInt)(audio->m_stream), PAT_Stream);
-#endif
 			break;
 		}
 	}
@@ -1726,11 +1720,6 @@ void MilesAudioManager::notifyOfAudioCompletion( UnsignedInt audioCompleted, Uns
 //-------------------------------------------------------------------------------------------------
 PlayingAudio *MilesAudioManager::findPlayingAudioFrom( UnsignedInt audioCompleted, UnsignedInt flags )
 {
-#if defined(LINUX)
-	// No native handle can be recovered from the legacy completion identifier.
-	errno = ENOTSUP;
-	return NULL;
-#else
 	// Miles calls in here from its own timer thread when a sample finishes, so every walk of these
 	// lists is guarded against the main thread taking an element out from under it.
 	std::list<PlayingAudio *>::iterator it;
@@ -1782,7 +1771,6 @@ PlayingAudio *MilesAudioManager::findPlayingAudioFrom( UnsignedInt audioComplete
 	}
 
 	return NULL;
-#endif
 }
 
 
@@ -1875,10 +1863,6 @@ void MilesAudioManager::selectProvider( UnsignedInt providerNdx )
 		}
 	}
 
-#else
-	// No native Miles/DirectSound provider exists on Linux.
-	m_selectedProvider = PROVIDER_ERROR;
-	return;
 #endif
 
 	Bool success = FALSE;
@@ -3194,45 +3178,31 @@ void MilesAudioManager::friend_forcePlayAudioEventRTS(const AudioEventRTS* event
 //-------------------------------------------------------------------------------------------------
 void AILCALLBACK setSampleCompleted( HSAMPLE sampleCompleted )
 {
-#if defined(LINUX)
-	// The legacy callback ABI cannot represent native Linux pointers.
-	errno = ENOTSUP;
-#else
-	TheAudio->notifyOfAudioCompletion((UnsignedInt) sampleCompleted, PAT_Sample);
-#endif
+	TheAudio->notifyOfAudioCompletion((UnsignedInt)(uintptr_t)sampleCompleted, PAT_Sample);
 }
 
 //-------------------------------------------------------------------------------------------------
 void AILCALLBACK set3DSampleCompleted( H3DSAMPLE sample3DCompleted )
 {
-#if defined(LINUX)
-	errno = ENOTSUP;
-#else
-	TheAudio->notifyOfAudioCompletion((UnsignedInt) sample3DCompleted, PAT_3DSample);
-#endif
+	TheAudio->notifyOfAudioCompletion((UnsignedInt)(uintptr_t)sample3DCompleted, PAT_3DSample);
 }
 
 //-------------------------------------------------------------------------------------------------
 void AILCALLBACK setStreamCompleted( HSTREAM streamCompleted )
 {
-#if defined(LINUX)
-	errno = ENOTSUP;
-#else
-	TheAudio->notifyOfAudioCompletion((UnsignedInt) streamCompleted, PAT_Stream);
-#endif
+	TheAudio->notifyOfAudioCompletion((UnsignedInt)(uintptr_t)streamCompleted, PAT_Stream);
 }
+
+/* Linux only: the U32 file-handle ABI cannot carry File* on x86-64, so the
+ * streaming callbacks exchange small slot ids for table entries instead. */
+static const U32 MAX_STREAMING_FILE_SLOTS = 16;
+static File *s_streamingFiles[MAX_STREAMING_FILE_SLOTS] = { 0 };
+static CriticalSectionClass s_streamingFileCS;
 
 //-------------------------------------------------------------------------------------------------
 U32 AILCALLBACK streamingFileOpen(char const *fileName, U32 *file_handle)
 {
-#if defined(LINUX)
-	// No File is opened: the U32 callback ABI cannot carry its native pointer.
-	if (file_handle) {
-		*file_handle = 0;
-	}
-	errno = file_handle ? ENOTSUP : EINVAL;
-	return 0;
-#else
+#if defined(_WIN32)
 #if defined(_DEBUG) || defined(_INTERNAL)
 	if (sizeof(U32) != sizeof(File*)) {
 		RELEASE_CRASH(("streamingFileOpen - This function requires work in order to compile on non 32-bit platforms.\n"));
@@ -3241,38 +3211,72 @@ U32 AILCALLBACK streamingFileOpen(char const *fileName, U32 *file_handle)
 
 	(*file_handle) = (U32) TheFileSystem->openFile(fileName, File::READ | File::STREAMING);
 	return ((*file_handle) != 0);
+#else
+	/* Linux x86-64: File* does not fit the U32 callback ABI, so hand out slot
+	 * ids and resolve them in the sibling callbacks. The Miles shim treats the
+	 * id as opaque and just routes it back into these functions. */
+	CriticalSectionClass::LockClass lock(s_streamingFileCS);
+	(*file_handle) = 0;
+	File *file = TheFileSystem->openFile(fileName, File::READ | File::STREAMING);
+	if (!file) {
+		return 0;
+	}
+	for (U32 i = 0; i < MAX_STREAMING_FILE_SLOTS; ++i) {
+		if (!s_streamingFiles[i]) {
+			s_streamingFiles[i] = file;
+			(*file_handle) = i + 1;
+			return 1;
+		}
+	}
+	file->close();
+	return 0;
 #endif
 }
 
 //-------------------------------------------------------------------------------------------------
 void AILCALLBACK streamingFileClose(U32 fileHandle)
 {
-#if defined(LINUX)
-	errno = ENOTSUP;
-#else
+#if defined(_WIN32)
 	((File*) fileHandle)->close();
+#else
+	CriticalSectionClass::LockClass lock(s_streamingFileCS);
+	if (fileHandle >= 1 && fileHandle <= MAX_STREAMING_FILE_SLOTS) {
+		File *file = s_streamingFiles[fileHandle - 1];
+		s_streamingFiles[fileHandle - 1] = NULL;
+		if (file) {
+			file->close();
+		}
+	}
 #endif
 }
 
 //-------------------------------------------------------------------------------------------------
 S32 AILCALLBACK streamingFileSeek(U32 fileHandle, S32 offset, U32 type)
 {
-#if defined(LINUX)
-	errno = ENOTSUP;
-	return -1;
-#else
+#if defined(_WIN32)
 	return ((File*) fileHandle)->seek(offset, (File::seekMode) type);
+#else
+	CriticalSectionClass::LockClass lock(s_streamingFileCS);
+	if (fileHandle < 1 || fileHandle > MAX_STREAMING_FILE_SLOTS) {
+		return -1;
+	}
+	File *file = s_streamingFiles[fileHandle - 1];
+	return file ? file->seek(offset, (File::seekMode) type) : -1;
 #endif
 }
 
 //-------------------------------------------------------------------------------------------------
 U32 AILCALLBACK streamingFileRead(U32 file_handle, void *buffer, U32 bytes)
 {
-#if defined(LINUX)
-	errno = ENOTSUP;
-	return 0;
-#else
+#if defined(_WIN32)
 	return ((File*) file_handle)->read(buffer, bytes);
+#else
+	CriticalSectionClass::LockClass lock(s_streamingFileCS);
+	if (file_handle < 1 || file_handle > MAX_STREAMING_FILE_SLOTS) {
+		return 0;
+	}
+	File *file = s_streamingFiles[file_handle - 1];
+	return file ? file->read(buffer, bytes) : 0;
 #endif
 }
 

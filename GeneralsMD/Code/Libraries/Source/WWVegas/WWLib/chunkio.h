@@ -109,6 +109,7 @@ struct ChunkHeader
 	uint32 ChunkType;
 	uint32 ChunkSize;
 };
+static_assert(sizeof(ChunkHeader) == 8, "ChunkHeader must match the 8-byte on-disk W3D/chunk layout");
 
 struct MicroChunkHeader
 {

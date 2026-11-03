@@ -62,9 +62,10 @@
 	* the old call is still the fallback. The GUID is spelled out here rather than taken from
 	* KnownFolders.h so that nothing has to link another lib for one constant. */
 #if !defined(_MSC_VER)
-// Linux twin: ~/Documents when it exists, else $HOME. (XDG user-dirs
-// parsing is Phase-6 polish; this matches what the engine falls back to
-// when the folder is missing.)
+// Linux twin: the folder xdg-user-dirs assigned to Documents, which on a localized
+// install is not called Documents at all (~/Документы on a Russian desktop). Reading
+// user-dirs.dirs is what the file manager and every other program does; ~/Documents
+// then $HOME remain the fallbacks for installs with no xdg-user-dirs at all.
 inline bool findDocumentsFolderA( char *out, size_t outSize )
 {
 	if (out == NULL || outSize == 0)
@@ -75,10 +76,56 @@ inline bool findDocumentsFolderA( char *out, size_t outSize )
 	if (home == NULL || *home == 0)
 		return false;
 
-	char probe[MAX_PATH];
-	snprintf( probe, sizeof( probe ), "%s/Documents", home );
+	char docs[MAX_PATH];
+	docs[0] = 0;
+
+	// XDG_CONFIG_HOME defaults to ~/.config; the entry is of the form
+	//   XDG_DOCUMENTS_DIR="$HOME/Документы"
+	const char *configHome = getenv( "XDG_CONFIG_HOME" );
+	char configPath[MAX_PATH];
+	if (configHome != NULL && *configHome != 0)
+		snprintf( configPath, sizeof( configPath ), "%s/user-dirs.dirs", configHome );
+	else
+		snprintf( configPath, sizeof( configPath ), "%s/.config/user-dirs.dirs", home );
+
+	FILE *dirs = fopen( configPath, "rb" );
+	if (dirs != NULL)
+	{
+		char line[8 * MAX_PATH];
+		while (fgets( line, sizeof( line ), dirs ) != NULL)
+		{
+			if (strncmp( line, "XDG_DOCUMENTS_DIR=", 16 ) != 0)
+				continue;
+			char *value = line + 16;
+			if (*value == '"')
+			{
+				++value;
+				char *end = strchr( value, '"' );
+				if (end != NULL)
+					*end = 0;
+			}
+			char *nl = strpbrk( value, "\r\n" );
+			if (nl != NULL)
+				*nl = 0;
+			// Only the $HOME expansion the file is written with is understood; a
+			// path on some other volume is rare enough to fall through on.
+			if (value[0] == '$' && value[1] == 'H' && value[2] == 'O' && value[3] == 'M' && value[4] == 'E')
+				snprintf( docs, sizeof( docs ), "%s%s", home, value + 5 );
+			else if (value[0] == '/')
+				snprintf( docs, sizeof( docs ), "%s", value );
+			break;
+		}
+		fclose( dirs );
+	}
+
 	struct stat st;
-	const char *docs = (stat( probe, &st ) == 0 && S_ISDIR( st.st_mode )) ? probe : home;
+	if (docs[0] != 0 && stat( docs, &st ) != 0)
+		docs[0] = 0;
+
+	if (docs[0] == 0)
+		snprintf( docs, sizeof( docs ), "%s/Documents", home );
+	if (stat( docs, &st ) != 0 || !S_ISDIR( st.st_mode ))
+		snprintf( docs, sizeof( docs ), "%s", home );
 
 	if (strlen( docs ) + 1 > outSize)
 		return false;

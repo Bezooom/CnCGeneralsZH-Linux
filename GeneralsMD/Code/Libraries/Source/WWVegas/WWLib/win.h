@@ -250,10 +250,21 @@ typedef struct tagTEXTMETRICA {
   BYTE tmPitchAndFamily;
   BYTE tmCharSet;
 } TEXTMETRIC, TEXTMETRICA;
-static inline BOOL DeleteDC(HDC) { return TRUE; }
-static inline BOOL DeleteObject(HGDIOBJ) { return TRUE; }
-static inline HGDIOBJ SelectObject(HDC, HGDIOBJ) { return nullptr; }
-static inline BOOL GetTextMetricsA(HDC, TEXTMETRICA* tm) { if (tm) memset(tm, 0, sizeof(*tm)); return TRUE; }
+#ifdef __cplusplus
+extern "C" {
+#endif
+BOOL PAL_DeleteDC(HDC);
+BOOL PAL_DeleteObject(HGDIOBJ);
+HGDIOBJ PAL_SelectObject(HDC, HGDIOBJ);
+BOOL PAL_GetTextMetrics(HDC, TEXTMETRICA*);
+#ifdef __cplusplus
+}
+#endif
+
+static inline BOOL DeleteDC(HDC hdc) { return PAL_DeleteDC(hdc); }
+static inline BOOL DeleteObject(HGDIOBJ obj) { return PAL_DeleteObject(obj); }
+static inline HGDIOBJ SelectObject(HDC hdc, HGDIOBJ obj) { return PAL_SelectObject(hdc, obj); }
+static inline BOOL GetTextMetricsA(HDC hdc, TEXTMETRICA* tm) { return PAL_GetTextMetrics(hdc, tm); }
 #define GetTextMetrics GetTextMetricsA
 static inline COLORREF SetTextColor(HDC, COLORREF) { return 0; }
 static inline COLORREF SetBkColor(HDC, COLORREF) { return 0; }
@@ -759,22 +770,6 @@ typedef struct tagBITMAPINFO {
 #define VARIABLE_PITCH      2
 
 typedef struct HFONT__ *HFONT;
-static inline HFONT CreateFontA(int, int, int, int, int, DWORD, DWORD, DWORD, DWORD, DWORD, DWORD, DWORD, DWORD, LPCSTR) { return nullptr; }
-#ifndef CreateFont
-#define CreateFont CreateFontA
-#endif
-
-static inline HBITMAP CreateDIBSection(HDC, const BITMAPINFO* pbmi, UINT, void** ppvBits, HANDLE, DWORD) {
-	int w = (pbmi && pbmi->bmiHeader.biWidth > 0) ? pbmi->bmiHeader.biWidth : 256;
-	int h = (pbmi && pbmi->bmiHeader.biHeight > 0) ? pbmi->bmiHeader.biHeight : 256;
-	int stride = (((w * 3) + 3) & ~3);
-	void* bits = calloc(1, stride * h + 1024);
-	if (ppvBits) {
-		*ppvBits = bits;
-	}
-	return (HBITMAP)bits;
-}
-static inline HDC CreateCompatibleDC(HDC) { return nullptr; }
 
 #ifndef _RECT_DEFINED
 #define _RECT_DEFINED
@@ -811,6 +806,7 @@ static inline bool operator==(const _GUID& a, const _GUID& b) {
 static inline bool operator!=(const _GUID& a, const _GUID& b) {
   return !(a == b);
 }
+
 #endif
 #endif
 
@@ -818,11 +814,39 @@ typedef struct tagSIZE {
   LONG cx;
   LONG cy;
 } SIZE, *PSIZE, *LPSIZE;
+#ifdef __cplusplus
+extern "C" {
+#endif
+HFONT PAL_CreateFont(int, int, int, int, int, DWORD, DWORD, DWORD, DWORD, DWORD, DWORD, DWORD, DWORD, LPCSTR);
+HBITMAP PAL_CreateDIBSection(HDC, const BITMAPINFO*, UINT, void**, HANDLE, DWORD);
+HDC PAL_CreateCompatibleDC(HDC);
+BOOL PAL_GetTextExtentPoint32W(HDC, const wchar_t*, int, SIZE*);
+BOOL PAL_ExtTextOutW(HDC, int, int, UINT, const RECT*, const wchar_t*, UINT, const int*);
+#ifdef __cplusplus
+}
+#endif
+static inline HFONT CreateFontA(int h, int w, int e, int o, int wt, DWORD it, DWORD u, DWORD s, DWORD cs, DWORD op, DWORD cp, DWORD q, DWORD pf, LPCSTR f) {
+	return PAL_CreateFont(h, w, e, o, wt, it, u, s, cs, op, cp, q, pf, f);
+}
+#ifndef CreateFont
+#define CreateFont CreateFontA
+#endif
+
+static inline HBITMAP CreateDIBSection(HDC dc, const BITMAPINFO* pbmi, UINT usage, void** ppvBits, HANDLE hSection, DWORD offset) {
+	return PAL_CreateDIBSection(dc, pbmi, usage, ppvBits, hSection, offset);
+}
+static inline HDC CreateCompatibleDC(HDC hdc) { return PAL_CreateCompatibleDC(hdc); }
+
+
 
 #define ETO_OPAQUE 0x0002
 
-static inline BOOL ExtTextOutW(HDC, int, int, UINT, const RECT*, const wchar_t*, UINT, const int*) { return TRUE; }
-static inline BOOL GetTextExtentPoint32W(HDC, const wchar_t*, int, SIZE* psz) { if (psz) { psz->cx = 8; psz->cy = 16; } return TRUE; }
+static inline BOOL ExtTextOutW(HDC hdc, int x, int y, UINT options, const RECT* lprc, const wchar_t* lpString, UINT c, const int* lpDx) {
+	return PAL_ExtTextOutW(hdc, x, y, options, lprc, lpString, c, lpDx);
+}
+static inline BOOL GetTextExtentPoint32W(HDC hdc, const wchar_t* lpString, int c, SIZE* psz) {
+	return PAL_GetTextExtentPoint32W(hdc, lpString, c, psz);
+}
 static inline HDC GetDC(HWND) { return nullptr; }
 static inline int ReleaseDC(HWND, HDC) { return 1; }
 static inline HWND GetDesktopWindow() { return nullptr; }
@@ -1354,9 +1378,30 @@ static inline int GetTimeFormat(unsigned int Locale, unsigned int dwFlags,
 #define _isnan isnan
 #endif
 
-// _access -> access (POSIX)
+// Engine code builds paths with Windows separators, and every raw syscall below has
+// to take them as separators too - otherwise access/mkdir/fopen see one flat name
+// with backslashes in it instead of walking directories, and a save file or a map
+// cache sits in the home directory wearing its whole path as a filename.
+static inline void WinNormalizePathCopy(char *dst, size_t cap, const char *src)
+{
+  if (cap == 0)
+    return;
+  size_t i = 0;
+  for (; src != NULL && i + 1 < cap && *src != 0; ++i, ++src)
+    dst[i] = (*src == '\\') ? '/' : *src;
+  dst[i] = 0;
+}
+
+// _access -> access (POSIX), with separator normalization
 #ifndef _access
-#define _access access
+static inline int win_access(const char *path, int mode)
+{
+  if (!path) return -1;
+  char buf[MAX_PATH * 2];
+  WinNormalizePathCopy(buf, sizeof(buf), path);
+  return access(buf, mode);
+}
+#define _access win_access
 #endif
 
 // itoa -> snprintf (POSIX doesn't have itoa)
@@ -1424,7 +1469,11 @@ static inline BOOL CreateDirectoryA(LPCSTR lpPathName, void* lpSecurityAttribute
 {
   (void)lpSecurityAttributes;
   if (!lpPathName) return FALSE;
-  return mkdir(lpPathName, 0755) == 0 || errno == EEXIST;
+  char buf[MAX_PATH * 2];
+  WinNormalizePathCopy(buf, sizeof(buf), lpPathName);
+  size_t len = strlen(buf);
+  while (len > 1 && buf[len - 1] == '/') buf[--len] = 0;
+  return mkdir(buf, 0755) == 0 || errno == EEXIST;
 }
 #define CreateDirectory CreateDirectoryA
 #endif

@@ -35,12 +35,15 @@ static unsigned texture_coordinate_float_count(DWORD fvf, unsigned set)
 	}
 }
 
-bool VKLayout_From_FVF(DWORD fvf, VKVertexLayout &layout)
+bool VKLayout_From_FVF(DWORD fvf, VKVertexLayout &layout, unsigned texCoordIndex)
 {
 	layout.positionOffset = -1;
 	layout.uvOffset = -1;
+	layout.uv1Offset = -1;
+	layout.normalOffset = -1;
 	layout.colorOffset = -1;
 	layout.uvFloatCount = 0;
+	layout.uv1FloatCount = 0;
 
 	unsigned offset = 0;
 
@@ -58,6 +61,7 @@ bool VKLayout_From_FVF(DWORD fvf, VKVertexLayout &layout)
 	}
 
 	if ((fvf & D3DFVF_NORMAL) != 0) {
+		layout.normalOffset = (int)offset;
 		offset += 12;
 	}
 	if ((fvf & D3DFVF_PSIZE) != 0) {
@@ -71,15 +75,28 @@ bool VKLayout_From_FVF(DWORD fvf, VKVertexLayout &layout)
 		offset += 4;
 	}
 
+	// Two sets are decoded, because a fixed-function stage can sample either one and the water
+	// pass samples both. The requested index lands in uvOffset - the stage 0 slot - and the other
+	// set in uv1Offset, so a caller that asked for set 1 gets it where it asked for it.
 	const unsigned set_count = (fvf & D3DFVF_TEXCOUNT_MASK) >> D3DFVF_TEXCOUNT_SHIFT;
 	if (set_count > 0) {
-		layout.uvOffset = (int)offset;
-		layout.uvFloatCount = texture_coordinate_float_count(fvf, 0);
-		// The engine writes every set, so the stride has to cover them all even though only set 0
-		// reaches the pipeline. A stride that stops at set 0 reads the next vertex from the wrong
-		// bytes.
-		for (unsigned set = 0; set < set_count; ++set)
-			offset += texture_coordinate_float_count(fvf, set) * 4;
+		if (texCoordIndex >= set_count) {
+			texCoordIndex = 0;
+		}
+		unsigned setOffsets[8] = { 0 };
+		unsigned setFloats[8] = { 0 };
+		for (unsigned set = 0; set < set_count && set < 8; ++set) {
+			setOffsets[set] = offset;
+			setFloats[set] = texture_coordinate_float_count(fvf, set);
+			offset += setFloats[set] * 4;
+		}
+		layout.uvOffset = (int)setOffsets[texCoordIndex];
+		layout.uvFloatCount = setFloats[texCoordIndex];
+		const unsigned other = texCoordIndex == 0 ? 1u : 0u;
+		if (other < set_count) {
+			layout.uv1Offset = (int)setOffsets[other];
+			layout.uv1FloatCount = setFloats[other];
+		}
 	}
 
 	if (offset == 0) {
@@ -94,6 +111,11 @@ void VKDecodeVertex(const unsigned char *source, const VKVertexLayout &layout, V
 	for (int i = 0; i < 3; ++i) out.position[i] = 0.0f;
 	for (int i = 0; i < 2; ++i) out.uv[i] = 0.0f;
 	for (int i = 0; i < 4; ++i) out.color[i] = 1.0f;
+	for (int i = 0; i < 2; ++i) out.uv1[i] = 0.0f;
+	// The projected coordinates are filled by the draw path, which owns the matrices; a decode on
+	// its own leaves them zero.
+	out.projected0[0] = out.projected0[1] = 0.0f;
+	out.projected1[0] = out.projected1[1] = 0.0f;
 
 	if (layout.positionOffset >= 0) {
 		const float *position = (const float *)(source + layout.positionOffset);
@@ -106,6 +128,12 @@ void VKDecodeVertex(const unsigned char *source, const VKVertexLayout &layout, V
 		const float *uv = (const float *)(source + layout.uvOffset);
 		out.uv[0] = uv[0];
 		out.uv[1] = layout.uvFloatCount >= 2 ? uv[1] : 0.0f;
+	}
+
+	if (layout.uv1Offset >= 0) {
+		const float *uv1 = (const float *)(source + layout.uv1Offset);
+		out.uv1[0] = uv1[0];
+		out.uv1[1] = layout.uv1FloatCount >= 2 ? uv1[1] : 0.0f;
 	}
 
 	if (layout.colorOffset >= 0) {

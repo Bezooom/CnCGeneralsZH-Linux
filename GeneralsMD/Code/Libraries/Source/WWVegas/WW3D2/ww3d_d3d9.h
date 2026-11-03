@@ -8,7 +8,11 @@
 #else
 #include "win.h"
 #include "ffshader_d3d.h"
+#include <execinfo.h>
+#include <map>
+#include <cstdio>
 #include <vector>
+#include <cmath>
 #if defined(PLATFORM_LINUX) || defined(__linux__) || defined(_UNIX)
 #include "PAL_Window.h"
 #include "PAL_Vulkan.h"
@@ -407,11 +411,60 @@ struct IDirect3DDevice9 {
   // Fixed-function state the Vulkan path has to reproduce. The engine sets these once per mesh and
   // then draws, so a draw cannot know what to read without them.
   DWORD m_fvf = 0;
+  // The four texture stages the Vulkan pipeline can evaluate. Direct3D 9 has eight; the engine uses
+  // more than four only in the terrain's eight-stage driver workaround, whose extra stages compute
+  // lighting from the diffuse colour rather than sampling a texture.
+  static const int kStages = 4;
+  IDirect3DBaseTexture9* m_stageTex[kStages] = { nullptr, nullptr, nullptr, nullptr };
+  DWORD m_stageColorOp[kStages] = { D3DTOP_MODULATE, D3DTOP_DISABLE, D3DTOP_DISABLE, D3DTOP_DISABLE };
+  DWORD m_stageColorArg0[kStages] = { D3DTA_CURRENT, D3DTA_CURRENT, D3DTA_CURRENT, D3DTA_CURRENT };
+  DWORD m_stageColorArg1[kStages] = { D3DTA_TEXTURE, D3DTA_TEXTURE, D3DTA_TEXTURE, D3DTA_TEXTURE };
+  DWORD m_stageColorArg2[kStages] = { D3DTA_CURRENT, D3DTA_CURRENT, D3DTA_CURRENT, D3DTA_CURRENT };
+  DWORD m_stageAlphaOp[kStages] = { D3DTOP_MODULATE, D3DTOP_DISABLE, D3DTOP_DISABLE, D3DTOP_DISABLE };
+  DWORD m_stageAlphaArg1[kStages] = { D3DTA_TEXTURE, D3DTA_TEXTURE, D3DTA_TEXTURE, D3DTA_TEXTURE };
+  DWORD m_stageAlphaArg2[kStages] = { D3DTA_CURRENT, D3DTA_CURRENT, D3DTA_CURRENT, D3DTA_CURRENT };
+  // TEXCOORDINDEX keeps its high bits: TCI_CAMERASPACEPOSITION is what makes a fog, cloud or noise
+  // stage sample a projected coordinate instead of a vertex attribute.
+  DWORD m_stageTexCoordIndex[kStages] = { 0, 1, 2, 3 };
+  DWORD m_stageTransformFlags[kStages] = { 0, 0, 0, 0 };
+  D3DMATRIX m_textureTransform[kStages] = {
+    { { { 1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1 } } },
+    { { { 1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1 } } },
+    { { { 1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1 } } },
+    { { { 1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1 } } }
+  };
+  // Per-stage sampler state, recorded for the descriptor's sampler. D3DTADDRESS_WRAP and
+  // D3DTEXF_LINEAR are what an unset stage uses.
+  DWORD m_stageAddressU[kStages] = { 1, 1, 1, 1 };
+  DWORD m_stageAddressV[kStages] = { 1, 1, 1, 1 };
+  DWORD m_stageMinFilter[kStages] = { 2, 2, 2, 2 };
+  DWORD m_stageMagFilter[kStages] = { 2, 2, 2, 2 };
+  DWORD m_stageMipFilter[kStages] = { 2, 2, 2, 2 };
+  DWORD m_alphaTestEnable = 0;
+  DWORD m_alphaRef = 0;
+  DWORD m_alphaFunc = 4;          // D3DCMP_LESSEQUAL
+  DWORD m_textureFactor = 0xFFFFFFFFu;
+  DWORD m_zEnable = 1;
+  DWORD m_zFunc = 4;
+  DWORD m_zWrite = 1;
+  DWORD m_alphaBlendEnable = 0;
+  DWORD m_colorWriteEnable = 0x0000000f;
+  DWORD m_srcBlend = 2;
+  DWORD m_destBlend = 1;
+  IDirect3DSurface9 *m_currentRenderTarget = nullptr;
   D3DMATRIX m_world = { { { 1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1 } } };
   D3DMATRIX m_view = { { { 1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1 } } };
   D3DMATRIX m_projection = { { { 1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1 } } };
   D3DMATERIAL9 m_material = { {1,1,1,1}, {0,0,0,0}, {0,0,0,0}, {0,0,0,0}, 0 };
-
+  DWORD m_lighting = 1;
+  DWORD m_colorVertex = 1;
+  DWORD m_diffuseMaterialSource = D3DMCS_MATERIAL;
+  DWORD m_ambientMaterialSource = D3DMCS_MATERIAL;
+  DWORD m_emissiveMaterialSource = D3DMCS_MATERIAL;
+  DWORD m_globalAmbient = 0;
+  D3DLIGHT9 m_lights[4] = {};
+  bool m_lightEnabled[4] = {};
+  void sync_vulkan_texture();
   HRESULT CreateIndexBuffer(UINT, DWORD, D3DFORMAT, D3DPOOL, IDirect3DIndexBuffer9**, HANDLE);
   HRESULT CreateVertexBuffer(UINT, DWORD, DWORD, D3DPOOL, IDirect3DVertexBuffer9**, HANDLE);
   HRESULT CreateTexture(UINT, UINT, UINT, DWORD, D3DFORMAT, D3DPOOL, IDirect3DTexture9**, HANDLE*);
@@ -424,6 +477,11 @@ struct IDirect3DDevice9 {
     if (which == D3DTS_WORLD) m_world = *m;
     else if (which == D3DTS_VIEW) m_view = *m;
     else if (which == D3DTS_PROJECTION) m_projection = *m;
+    else if (which >= D3DTS_TEXTURE0 && which <= D3DTS_TEXTURE3) {
+      // The stage's texture matrix: the fog, cloud and noise passes multiply camera-space position
+      // by one of these to get their coordinates.
+      m_textureTransform[(unsigned)which - (unsigned)D3DTS_TEXTURE0] = *m;
+    }
     return 0;
   }
   HRESULT GetTransform(D3DTRANSFORMSTATETYPE which, D3DMATRIX *out) {
@@ -443,15 +501,86 @@ struct IDirect3DDevice9 {
   }
   HRESULT DrawIndexedPrimitive(D3DPRIMITIVETYPE, int, int, UINT, UINT, UINT);
   HRESULT SetMaterial(const D3DMATERIAL9 *mat) { if (mat) m_material = *mat; return 0; }
-  HRESULT SetLight(DWORD, const D3DLIGHT9*) { return 0; }
-  HRESULT LightEnable(DWORD, BOOL) { return 0; }
+  HRESULT SetLight(DWORD index, const D3DLIGHT9 *light) {
+    if (index < 4 && light) m_lights[index] = *light;
+    return 0;
+  }
+  HRESULT LightEnable(DWORD index, BOOL enable) {
+    if (index < 4) m_lightEnabled[index] = enable != 0;
+    return 0;
+  }
   HRESULT SetClipPlane(DWORD, const float*) { return 0; }
-  HRESULT SetRenderState(D3DRENDERSTATETYPE, DWORD) { return 0; }
-  HRESULT SetTextureStageState(UINT, D3DTEXTURESTAGESTATETYPE, DWORD) { return 0; }
-  HRESULT SetSamplerState(DWORD, D3DSAMPLERSTATETYPE, DWORD) { return 0; }
+  HRESULT SetRenderState(D3DRENDERSTATETYPE state, DWORD value) {
+#if defined(PLATFORM_LINUX) || defined(__linux__) || defined(_UNIX)
+    if (state == D3DRS_LIGHTING) { m_lighting = value; return 0; }
+    if (state == D3DRS_COLORVERTEX) { m_colorVertex = value; return 0; }
+    if (state == D3DRS_DIFFUSEMATERIALSOURCE) { m_diffuseMaterialSource = value; return 0; }
+    if (state == D3DRS_AMBIENTMATERIALSOURCE) { m_ambientMaterialSource = value; return 0; }
+    if (state == D3DRS_EMISSIVEMATERIALSOURCE) { m_emissiveMaterialSource = value; return 0; }
+    if (state == D3DRS_AMBIENT) { m_globalAmbient = value; return 0; }
+    if (state == D3DRS_ZENABLE) m_zEnable = value;
+    else if (state == D3DRS_ZWRITEENABLE) m_zWrite = value;
+    else if (state == D3DRS_ZFUNC) m_zFunc = value;
+    else if (state == D3DRS_ALPHABLENDENABLE) {
+      m_alphaBlendEnable = value;
+      return 0;
+    } else if (state == D3DRS_SRCBLEND) {
+      m_srcBlend = value;
+      return 0;
+    } else if (state == D3DRS_DESTBLEND) {
+      m_destBlend = value;
+      return 0;
+    } else if (state == D3DRS_COLORWRITEENABLE) {
+      m_colorWriteEnable = value;
+      return 0;
+    } else if (state == D3DRS_ALPHATESTENABLE) {
+      m_alphaTestEnable = value;
+      return 0;
+    } else if (state == D3DRS_ALPHAREF) {
+      m_alphaRef = value;
+      return 0;
+    } else if (state == D3DRS_ALPHAFUNC) {
+      m_alphaFunc = value;
+      return 0;
+    } else if (state == D3DRS_TEXTUREFACTOR) {
+      m_textureFactor = value;
+      return 0;
+    }
+    Platform_SetVulkanDepthState(m_zEnable != 0, m_zWrite != 0, (int)m_zFunc);
+#else
+    (void)state;
+    (void)value;
+#endif
+    return 0;
+  }
+  HRESULT SetTextureStageState(UINT, D3DTEXTURESTAGESTATETYPE, DWORD);
+  HRESULT SetSamplerState(DWORD stage, D3DSAMPLERSTATETYPE type, DWORD value) {
+#if defined(PLATFORM_LINUX) || defined(__linux__) || defined(_UNIX)
+    if (stage < (DWORD)kStages) {
+      switch (type) {
+      case D3DSAMP_ADDRESSU: m_stageAddressU[stage] = value; break;
+      case D3DSAMP_ADDRESSV: m_stageAddressV[stage] = value; break;
+      case D3DSAMP_MINFILTER: m_stageMinFilter[stage] = value; break;
+      case D3DSAMP_MAGFILTER: m_stageMagFilter[stage] = value; break;
+      case D3DSAMP_MIPFILTER: m_stageMipFilter[stage] = value; break;
+      default: break;
+      }
+    }
+#endif
+    return 0;
+  }
   HRESULT TestCooperativeLevel() { return 0; }
   HRESULT SetFVF(DWORD fvf) { m_fvf = fvf; return 0; }
-  HRESULT GetRenderState(D3DRENDERSTATETYPE, DWORD*) { return 0; }
+  HRESULT GetRenderState(D3DRENDERSTATETYPE state, DWORD *val) {
+    if (!val) return 0;
+    if (state == D3DRS_COLORWRITEENABLE) *val = m_colorWriteEnable;
+    else if (state == D3DRS_ALPHABLENDENABLE) *val = m_alphaBlendEnable;
+    else if (state == D3DRS_ZENABLE) *val = m_zEnable;
+    else if (state == D3DRS_ZWRITEENABLE) *val = m_zWrite;
+    else if (state == D3DRS_ZFUNC) *val = m_zFunc;
+    else *val = 0;
+    return 0;
+  }
   HRESULT GetRenderTarget(UINT, IDirect3DSurface9**);
   HRESULT GetDepthStencilSurface(IDirect3DSurface9**);
   HRESULT SetPixelShaderConstantF(UINT, const float*, UINT) { return 0; }
@@ -493,6 +622,7 @@ struct IDirect3DDevice9 {
   HRESULT EndScene() { return 0; }
   HRESULT Present(const RECT*, const RECT*, HWND, const void*) {
 #if defined(PLATFORM_LINUX) || defined(__linux__) || defined(_UNIX)
+
     if (m_inScene) {
       Platform_EndVulkanFrame(m_currentImageIndex);
       m_inScene = false;
@@ -514,9 +644,9 @@ struct IDirect3DDevice9 {
   HRESULT SetRenderTarget(DWORD, IDirect3DSurface9*);
   HRESULT SetDepthStencilSurface(IDirect3DSurface9*);
   HRESULT DrawPrimitiveUP(D3DPRIMITIVETYPE, UINT, const void*, UINT);
-  HRESULT UpdateSurface(IDirect3DSurface9*, const RECT*, IDirect3DSurface9*, const POINT*) { return 0; }
-  HRESULT StretchRect(IDirect3DSurface9*, const RECT*, IDirect3DSurface9*, const RECT*, D3DTEXTUREFILTERTYPE) { return 0; }
-  HRESULT UpdateTexture(IDirect3DBaseTexture9*, IDirect3DBaseTexture9*) { return 0; }
+  HRESULT UpdateSurface(IDirect3DSurface9*, const RECT*, IDirect3DSurface9*, const POINT*);
+  HRESULT StretchRect(IDirect3DSurface9*, const RECT*, IDirect3DSurface9*, const RECT*, D3DTEXTUREFILTERTYPE);
+  HRESULT UpdateTexture(IDirect3DBaseTexture9*, IDirect3DBaseTexture9*);
   HRESULT GetDisplayMode(UINT, D3DDISPLAYMODE*) { return 0; }
   HRESULT GetFrontBufferData(UINT, IDirect3DSurface9*) { return 0; }
   HRESULT GetBackBuffer(UINT, UINT, D3DBACKBUFFER_TYPE, IDirect3DSurface9**);
@@ -563,23 +693,157 @@ static inline uint8_t* Get_Dummy_D3D_Scratch() {
   return s_scratch;
 }
 
+static inline uint32_t d3d_format_bpp(D3DFORMAT fmt) {
+  if (fmt == D3DFMT_A4R4G4B4 || fmt == D3DFMT_R5G6B5 || fmt == D3DFMT_A1R5G5B5 ||
+      fmt == D3DFMT_X1R5G5B5 || fmt == D3DFMT_X4R4G4B4 || fmt == D3DFMT_A8L8 || fmt == D3DFMT_V8U8) {
+    return 2;
+  }
+  if (fmt == D3DFMT_R8G8B8) return 3;
+  if (fmt == D3DFMT_A8 || fmt == D3DFMT_L8 || fmt == D3DFMT_P8) return 1;
+  return 4;
+}
+static inline size_t d3d_calc_surface_size(uint32_t w, uint32_t h, D3DFORMAT fmt) {
+  if (!w) w = 1;
+  if (!h) h = 1;
+  if (fmt == D3DFMT_DXT1) {
+    return (size_t)((w + 3) / 4) * ((h + 3) / 4) * 8;
+  } else if (fmt == D3DFMT_DXT2 || fmt == D3DFMT_DXT3 || fmt == D3DFMT_DXT4 || fmt == D3DFMT_DXT5) {
+    return (size_t)((w + 3) / 4) * ((h + 3) / 4) * 16;
+  }
+  return (size_t)w * h * d3d_format_bpp(fmt);
+}
+static inline UINT d3d_calc_surface_pitch(uint32_t w, D3DFORMAT fmt) {
+  if (!w) w = 1;
+  if (fmt == D3DFMT_DXT1) {
+    return ((w + 3) / 4) * 8;
+  } else if (fmt == D3DFMT_DXT2 || fmt == D3DFMT_DXT3 || fmt == D3DFMT_DXT4 || fmt == D3DFMT_DXT5) {
+    return ((w + 3) / 4) * 16;
+  }
+  return w * d3d_format_bpp(fmt);
+}
+static inline size_t d3d_calc_rect_offset(const RECT* pRect, UINT pitch, D3DFORMAT fmt) {
+  if (!pRect) return 0;
+  int x = pRect->left > 0 ? pRect->left : 0;
+  int y = pRect->top > 0 ? pRect->top : 0;
+  if (fmt == D3DFMT_DXT1) {
+    return (size_t)(y / 4) * pitch + (size_t)(x / 4) * 8;
+  } else if (fmt == D3DFMT_DXT2 || fmt == D3DFMT_DXT3 || fmt == D3DFMT_DXT4 || fmt == D3DFMT_DXT5) {
+    return (size_t)(y / 4) * pitch + (size_t)(x / 4) * 16;
+  }
+  return (size_t)y * pitch + (size_t)x * d3d_format_bpp(fmt);
+}
+static inline void d3d_read_pixel_bgra(const uint8_t* p, D3DFORMAT fmt, uint8_t& b, uint8_t& g, uint8_t& r, uint8_t& a) {
+  switch (fmt) {
+  case D3DFMT_A8R8G8B8:
+    b = p[0]; g = p[1]; r = p[2]; a = p[3]; break;
+  case D3DFMT_X8R8G8B8:
+    b = p[0]; g = p[1]; r = p[2]; a = 255; break;
+  case D3DFMT_R8G8B8:
+    b = p[0]; g = p[1]; r = p[2]; a = 255; break;
+  case D3DFMT_A4R4G4B4: {
+    uint16_t v = *(const uint16_t*)p;
+    a = ((v >> 12) & 0xF) * 17; r = ((v >> 8) & 0xF) * 17; g = ((v >> 4) & 0xF) * 17; b = (v & 0xF) * 17;
+    break;
+  }
+  case D3DFMT_X4R4G4B4: {
+    uint16_t v = *(const uint16_t*)p;
+    a = 255; r = ((v >> 8) & 0xF) * 17; g = ((v >> 4) & 0xF) * 17; b = (v & 0xF) * 17;
+    break;
+  }
+  case D3DFMT_R5G6B5: {
+    uint16_t v = *(const uint16_t*)p;
+    a = 255; r = ((v >> 11) & 0x1F) * 255 / 31; g = ((v >> 5) & 0x3F) * 255 / 63; b = (v & 0x1F) * 255 / 31;
+    break;
+  }
+  case D3DFMT_A1R5G5B5:
+  case D3DFMT_X1R5G5B5: {
+    uint16_t v = *(const uint16_t*)p;
+    a = (fmt == D3DFMT_X1R5G5B5 || (v & 0x8000)) ? 255 : 0;
+    r = ((v >> 10) & 0x1F) * 255 / 31; g = ((v >> 5) & 0x1F) * 255 / 31; b = (v & 0x1F) * 255 / 31;
+    break;
+  }
+  case D3DFMT_L8:
+    b = g = r = p[0]; a = 255; break;
+  case D3DFMT_A8:
+    b = g = r = 255; a = p[0]; break;
+  default:
+    b = p[0]; g = p[1]; r = p[2]; a = p[3]; break;
+  }
+}
+static inline void d3d_write_pixel_bgra(uint8_t* p, D3DFORMAT fmt, uint8_t b, uint8_t g, uint8_t r, uint8_t a) {
+  switch (fmt) {
+  case D3DFMT_A8R8G8B8:
+    p[0] = b; p[1] = g; p[2] = r; p[3] = a; break;
+  case D3DFMT_X8R8G8B8:
+    p[0] = b; p[1] = g; p[2] = r; p[3] = 255; break;
+  case D3DFMT_R8G8B8:
+    p[0] = b; p[1] = g; p[2] = r; break;
+  case D3DFMT_A4R4G4B4:
+  case D3DFMT_X4R4G4B4:
+    *(uint16_t*)p = (uint16_t)(((a >> 4) << 12) | ((r >> 4) << 8) | ((g >> 4) << 4) | (b >> 4));
+    break;
+  case D3DFMT_R5G6B5:
+    *(uint16_t*)p = (uint16_t)(((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3));
+    break;
+  case D3DFMT_A1R5G5B5:
+  case D3DFMT_X1R5G5B5:
+    *(uint16_t*)p = (uint16_t)((a ? 0x8000 : 0) | ((r >> 3) << 10) | ((g >> 3) << 5) | (b >> 3));
+    break;
+  case D3DFMT_L8:
+    p[0] = (uint8_t)((r * 77 + g * 150 + b * 29) >> 8); break;
+  case D3DFMT_A8:
+    p[0] = a; break;
+  default:
+    p[0] = b; p[1] = g; p[2] = r; p[3] = a; break;
+  }
+}
+
 struct IDirect3DBaseTexture9 {
+  uint32_t m_refCount = 1;
+  bool m_heapAllocated = false;
+  virtual ~IDirect3DBaseTexture9() {}
   DWORD SetLOD(DWORD) { return 0; }
-  DWORD GetLevelCount() { return 1; }
+  // Virtual because the loader asks a texture for its chain before it locks every level: reporting
+  // one level made it load only the top one, which is why minified ground shimmered.
+  virtual DWORD GetLevelCount() { return 1; }
   DWORD SetPriority(DWORD) { return 0; }
   DWORD GetPriority() { return 0; }
   D3DRESOURCETYPE GetType() { return D3DRTYPE_TEXTURE; }
-  ULONG AddRef() { return 1; }
-  ULONG Release() { return 0; }
+  virtual ULONG AddRef() { return ++m_refCount; }
+  virtual ULONG Release() {
+    if (m_refCount > 0) --m_refCount;
+    if (m_refCount == 0 && m_heapAllocated) {
+      delete this;
+      return 0;
+    }
+    return m_refCount;
+  }
 };
 struct IDirect3DTexture9 : IDirect3DBaseTexture9 {
   void *m_vulkanTex = nullptr;
   uint32_t m_width = 256;
   uint32_t m_height = 256;
+  D3DFORMAT m_format = D3DFMT_A8R8G8B8;
+  D3DPOOL m_pool = D3DPOOL_MANAGED;
   std::vector<uint8_t> m_buffer;
+  // One scratch per mip level: the loader locks every level before it unlocks any of them, so a
+  // single shared scratch would alias them all onto the same bytes.
+  std::vector<std::vector<uint8_t>> m_mipLevels;
+  uint32_t m_levels = 1;
+  uint32_t m_unlockedLevels = 0;
+  // Level-0 write tracking for the in-place upload: LockRect accumulates the touched rectangle,
+  // UnlockRect ships exactly that to the GPU.
+  RECT m_dirtyRect = { 0, 0, 0, 0 };
+  bool m_hasDirtyRect = false;
 
-  IDirect3DTexture9() : m_vulkanTex(nullptr), m_width(256), m_height(256) {}
-  ~IDirect3DTexture9() {
+  IDirect3DTexture9() : m_vulkanTex(nullptr), m_width(256), m_height(256), m_format(D3DFMT_A8R8G8B8) {}
+
+  DWORD GetLevelCount() override { return m_levels ? m_levels : 1; }
+
+  // The mip chain is usable for filtering only once every level has reached the image.
+  bool Mips_Ready() const { return m_levels > 1 && m_unlockedLevels >= m_levels; }
+
+  ~IDirect3DTexture9() override {
 #if defined(PLATFORM_LINUX) || defined(__linux__) || defined(_UNIX)
     if (m_vulkanTex) {
       Platform_DestroyVulkanTexture(m_vulkanTex);
@@ -588,77 +852,321 @@ struct IDirect3DTexture9 : IDirect3DBaseTexture9 {
 #endif
   }
 
+  size_t calc_size() const {
+    return d3d_calc_surface_size(m_width, m_height, m_format);
+  }
+
+  UINT calc_pitch() const {
+    return d3d_calc_surface_pitch(m_width, m_format);
+  }
+
   HRESULT GetSurfaceLevel(UINT, IDirect3DSurface9**);
-  HRESULT GetLevelDesc(UINT, D3DSURFACE_DESC* desc) {
+  HRESULT GetLevelDesc(UINT level, D3DSURFACE_DESC* desc) {
     if (desc) {
-      desc->Width = m_width;
-      desc->Height = m_height;
-      desc->Format = D3DFMT_A8R8G8B8;
+      uint32_t lw = m_width >> level;
+      uint32_t lh = m_height >> level;
+      desc->Width = lw ? lw : 1;
+      desc->Height = lh ? lh : 1;
+      desc->Format = m_format;
+      desc->Pool = m_pool;
+      desc->Type = D3DRTYPE_SURFACE;
     }
     return 0;
   }
-  HRESULT LockRect(UINT, D3DLOCKED_RECT* rect, const RECT*, DWORD) {
-    size_t sz = m_width * m_height * 4;
-    if (m_buffer.size() < sz) m_buffer.resize(sz);
-    if (rect) {
-      rect->Pitch = m_width * 4;
-      rect->pBits = m_buffer.data();
-    }
-    return 0;
-  }
-  HRESULT UnlockRect(UINT) {
-#if defined(PLATFORM_LINUX) || defined(__linux__) || defined(_UNIX)
-    if (m_buffer.size() > 0) {
-      if (m_vulkanTex) {
-        Platform_DestroyVulkanTexture(m_vulkanTex);
+  HRESULT LockRect(UINT level, D3DLOCKED_RECT* rect, const RECT* pRect, DWORD) {
+    if (level == 0) {
+      size_t sz = calc_size();
+      if (m_buffer.size() < sz) m_buffer.resize(sz);
+      if (rect) {
+        UINT pitch = calc_pitch();
+        size_t off = d3d_calc_rect_offset(pRect, pitch, m_format);
+        if (off >= m_buffer.size()) off = 0;
+        rect->Pitch = pitch;
+        rect->pBits = m_buffer.data() + off;
       }
-      m_vulkanTex = Platform_CreateVulkanTexture(m_width, m_height, m_buffer.data(), D3DFMT_A8R8G8B8);
+      if (pRect) {
+        // Remember which part the engine touched: the fog/shroud path locks one small rect per
+        // call, and the upload must cover exactly that, not the whole 512x512 texture.
+        if (m_hasDirtyRect) {
+          m_dirtyRect.left = std::min(m_dirtyRect.left, pRect->left);
+          m_dirtyRect.top = std::min(m_dirtyRect.top, pRect->top);
+          m_dirtyRect.right = std::max(m_dirtyRect.right, pRect->right);
+          m_dirtyRect.bottom = std::max(m_dirtyRect.bottom, pRect->bottom);
+        } else {
+          m_dirtyRect = *pRect;
+          m_hasDirtyRect = true;
+        }
+      } else {
+        m_hasDirtyRect = true;
+        m_dirtyRect = RECT{ 0, 0, (int)m_width, (int)m_height };
+      }
+    } else {
+      uint32_t lw = m_width >> level; if (!lw) lw = 1;
+      uint32_t lh = m_height >> level; if (!lh) lh = 1;
+      size_t sz = d3d_calc_surface_size(lw, lh, m_format);
+      if (m_mipLevels.size() < m_levels) m_mipLevels.resize(m_levels);
+      std::vector<uint8_t> &storage = m_mipLevels[level];
+      if (storage.size() < sz) storage.resize(sz);
+      if (rect) {
+        rect->Pitch = d3d_calc_surface_pitch(lw, m_format);
+        rect->pBits = storage.data();
+      }
+    }
+    return 0;
+  }
+  HRESULT UnlockRect(UINT level) {
+#if defined(PLATFORM_LINUX) || defined(__linux__) || defined(_UNIX)
+    if (level == 0 && m_buffer.size() > 0) {
+      // Vulkan holds these as they are. A1R5G5B5 / X1R5G5B5 are deliberately not here: their one
+      // alpha bit is the terrain's blend mask, and the conversion path below reproduces what the
+      // device does with it.
+      const bool native = (m_format == D3DFMT_DXT1 || m_format == D3DFMT_DXT2 ||
+                           m_format == D3DFMT_DXT3 || m_format == D3DFMT_DXT4 ||
+                           m_format == D3DFMT_DXT5 || m_format == D3DFMT_A8R8G8B8 ||
+                           m_format == D3DFMT_R5G6B5);
+      // The Vulkan image is created once per texture, not once per upload. The fog/shroud path
+      // used to destroy and recreate a whole device-local texture on every UnlockRect, with a
+      // device-wide wait at both ends of every lock - the single biggest per-frame stall when
+      // panning the camera. Creation is lazy but exactly once; uploads go through
+      // Platform_UpdateVulkanTexture, which never waits on the queue.
+      if (!m_vulkanTex) {
+        m_vulkanTex = Platform_CreateVulkanTextureEx(m_width, m_height, m_levels, nullptr,
+            native ? (uint32_t)m_format : (uint32_t)D3DFMT_A8R8G8B8);
+      }
+      if (!m_vulkanTex) return 0;
+
+      RECT r = m_hasDirtyRect ? m_dirtyRect : RECT{ 0, 0, (int)m_width, (int)m_height };
+      m_hasDirtyRect = false;
+      if (r.left < 0) r.left = 0;
+      if (r.top < 0) r.top = 0;
+      if (r.right > (int)m_width) r.right = (int)m_width;
+      if (r.bottom > (int)m_height) r.bottom = (int)m_height;
+      const int rw = r.right - r.left, rh = r.bottom - r.top;
+      if (rw <= 0 || rh <= 0) return 0;
+
+      const UINT pitch = calc_pitch();
+      uint32_t bw = (uint32_t)rw, bh = (uint32_t)rh, rowBytes = (uint32_t)rw * d3d_format_bpp(m_format);
+      if (m_format == D3DFMT_DXT1) { bw = (rw + 3) / 4; bh = (rh + 3) / 4; rowBytes = bw * 8; }
+      else if (m_format == D3DFMT_DXT2 || m_format == D3DFMT_DXT3 ||
+               m_format == D3DFMT_DXT4 || m_format == D3DFMT_DXT5) { bw = (rw + 3) / 4; bh = (rh + 3) / 4; rowBytes = bw * 16; }
+      const uint8_t *srcBase = m_buffer.data() + d3d_calc_rect_offset(&r, pitch, m_format);
+
+      if (native && rw == (int)m_width && rh == (int)m_height) {
+        // Whole-texture upload of an already-native format: the rows are contiguous, hand the
+        // buffer straight over.
+        Platform_UpdateVulkanTexture(m_vulkanTex, r.left, r.top, rw, rh, m_buffer.data());
+      } else if (native) {
+        std::vector<uint8_t> packed((size_t)rowBytes * bh);
+        uint8_t *dst = packed.data();
+        for (uint32_t row = 0; row < bh; ++row) {
+          memcpy(dst + (size_t)row * rowBytes, srcBase + (size_t)row * pitch, rowBytes);
+        }
+        Platform_UpdateVulkanTexture(m_vulkanTex, r.left, r.top, rw, rh, packed.data());
+      } else {
+        // Everything else (555/444/L8/A8/X8...) becomes BGRA here, the format the image was made
+        // with, so odd D3D formats cost one conversion but no texture object churn.
+        const uint32_t bpp = d3d_format_bpp(m_format);
+        std::vector<uint8_t> packed((size_t)rw * rh * 4);
+        for (int y = 0; y < rh; ++y) {
+          const uint8_t *srcRow = srcBase + (size_t)y * pitch;
+          uint8_t *dstRow = packed.data() + (size_t)y * rw * 4;
+          for (int x = 0; x < rw; ++x) {
+            uint8_t b, g, rr, a;
+            d3d_read_pixel_bgra(srcRow + (size_t)x * bpp, m_format, b, g, rr, a);
+            dstRow[(size_t)x * 4 + 0] = b;
+            dstRow[(size_t)x * 4 + 1] = g;
+            dstRow[(size_t)x * 4 + 2] = rr;
+            dstRow[(size_t)x * 4 + 3] = a;
+          }
+        }
+        Platform_UpdateVulkanTexture(m_vulkanTex, r.left, r.top, rw, rh, packed.data());
+      }
+      ++m_unlockedLevels;
+    } else if (level > 0 && level < m_levels && level < m_mipLevels.size() &&
+               m_mipLevels[level].size() > 0) {
+      // The loader locks every level of the chain and unlocks them in turn; each one becomes a
+      // copy into its own level of the image, so minification can filter across the chain instead
+      // of aliasing the top level.
+      // Vulkan holds these as they are. A1R5G5B5 / X1R5G5B5 are deliberately not here: their one
+      // alpha bit is the terrain's blend mask, and the conversion path below reproduces what the
+      // device does with it.
+      const bool native = (m_format == D3DFMT_DXT1 || m_format == D3DFMT_DXT2 ||
+                           m_format == D3DFMT_DXT3 || m_format == D3DFMT_DXT4 ||
+                           m_format == D3DFMT_DXT5 || m_format == D3DFMT_A8R8G8B8 ||
+                           m_format == D3DFMT_R5G6B5);
+      if (!m_vulkanTex) {
+        m_vulkanTex = Platform_CreateVulkanTextureEx(m_width, m_height, m_levels, nullptr,
+            native ? (uint32_t)m_format : (uint32_t)D3DFMT_A8R8G8B8);
+      }
+      if (!m_vulkanTex) return 0;
+      uint32_t lw = m_width >> level; if (!lw) lw = 1;
+      uint32_t lh = m_height >> level; if (!lh) lh = 1;
+      const std::vector<uint8_t> &source = m_mipLevels[level];
+      if (native) {
+        Platform_UpdateVulkanTextureLevel(m_vulkanTex, level, 0, 0, (int)lw, (int)lh, source.data());
+      } else {
+        const uint32_t bpp = d3d_format_bpp(m_format);
+        const UINT pitch = d3d_calc_surface_pitch(lw, m_format);
+        std::vector<uint8_t> packed((size_t)lw * lh * 4);
+        for (uint32_t y = 0; y < lh; ++y) {
+          const uint8_t *srcRow = source.data() + (size_t)y * pitch;
+          uint8_t *dstRow = packed.data() + (size_t)y * lw * 4;
+          for (uint32_t x = 0; x < lw; ++x) {
+            uint8_t b, g, rr, a;
+            d3d_read_pixel_bgra(srcRow + (size_t)x * bpp, m_format, b, g, rr, a);
+            dstRow[(size_t)x * 4 + 0] = b;
+            dstRow[(size_t)x * 4 + 1] = g;
+            dstRow[(size_t)x * 4 + 2] = rr;
+            dstRow[(size_t)x * 4 + 3] = a;
+          }
+        }
+        Platform_UpdateVulkanTextureLevel(m_vulkanTex, level, 0, 0, (int)lw, (int)lh, packed.data());
+      }
+      ++m_unlockedLevels;
     }
 #endif
     return 0;
   }
   HRESULT AddDirtyRect(const RECT*) { return 0; }
-  ULONG AddRef() { return 1; }
-  ULONG Release() { delete this; return 0; }
 };
 struct IDirect3DCubeTexture9 : IDirect3DBaseTexture9 {
   HRESULT GetCubeMapSurface(D3DCUBEMAP_FACES, UINT, IDirect3DSurface9**) { return 0; }
   HRESULT GetLevelDesc(UINT, D3DSURFACE_DESC*) { return 0; }
   HRESULT LockRect(D3DCUBEMAP_FACES, UINT, D3DLOCKED_RECT*, const RECT*, DWORD) { return 0; }
   HRESULT UnlockRect(D3DCUBEMAP_FACES, UINT) { return 0; }
-  ULONG AddRef() { return 1; }
-  ULONG Release() { return 0; }
 };
 struct IDirect3DVolumeTexture9 : IDirect3DBaseTexture9 {
   HRESULT GetLevelDesc(UINT, D3DVOLUME_DESC*) { return 0; }
   HRESULT LockBox(UINT, D3DLOCKED_BOX*, const D3DBOX*, DWORD) { return 0; }
   HRESULT UnlockBox(UINT) { return 0; }
-  ULONG AddRef() { return 1; }
-  ULONG Release() { return 0; }
 };
 struct IDirect3DSurface9 {
+  IDirect3DTexture9 *m_ownerTex = nullptr;
+  UINT m_level = 0;
+  uint32_t m_width = 1280;
+  uint32_t m_height = 720;
+  D3DFORMAT m_format = D3DFMT_X8R8G8B8;
+  D3DPOOL m_pool = D3DPOOL_DEFAULT;
+  std::vector<uint8_t> m_buffer;
+  uint32_t m_refCount = 1;
+  bool m_heapAllocated = false;
+
   HRESULT GetDesc(D3DSURFACE_DESC* desc) {
+    if (m_ownerTex) return m_ownerTex->GetLevelDesc(m_level, desc);
     if (desc) {
-      desc->Width = 1280;
-      desc->Height = 720;
-      desc->Format = D3DFMT_X8R8G8B8;
+      desc->Width = m_width;
+      desc->Height = m_height;
+      desc->Format = m_format;
+      desc->Pool = m_pool;
+      desc->Type = D3DRTYPE_SURFACE;
     }
     return 0;
   }
-  HRESULT LockRect(D3DLOCKED_RECT* rect, const RECT*, DWORD) {
+  HRESULT LockRect(D3DLOCKED_RECT* rect, const RECT* pRect, DWORD flags) {
+    if (m_ownerTex) return m_ownerTex->LockRect(m_level, rect, pRect, flags);
+    size_t sz = d3d_calc_surface_size(m_width, m_height, m_format);
+    if (m_buffer.size() < sz) m_buffer.resize(sz);
     if (rect) {
-      rect->Pitch = 1280 * 4;
-      rect->pBits = Get_Dummy_D3D_Scratch();
+      UINT pitch = d3d_calc_surface_pitch(m_width, m_format);
+      size_t off = d3d_calc_rect_offset(pRect, pitch, m_format);
+      if (off >= m_buffer.size()) off = 0;
+      rect->Pitch = pitch;
+      rect->pBits = m_buffer.data() + off;
     }
     return 0;
   }
-  HRESULT UnlockRect() { return 0; }
-  HRESULT GetContainer(const GUID&, void**) { return 0; }
-  ULONG AddRef() { return 1; }
-  ULONG Release() { return 0; }
+  HRESULT UnlockRect() {
+    if (m_ownerTex) return m_ownerTex->UnlockRect(m_level);
+    return 0;
+  }
+  HRESULT GetContainer(const GUID&, void** ppContainer) {
+    if (!ppContainer) return D3DERR_INVALIDCALL;
+    if (m_ownerTex) {
+      m_ownerTex->AddRef();
+      *ppContainer = m_ownerTex;
+      return 0;
+    }
+    *ppContainer = nullptr;
+    return D3DERR_INVALIDCALL;
+  }
+  ULONG AddRef() { return ++m_refCount; }
+  ULONG Release() {
+    if (!m_heapAllocated) return 1;
+    if (m_refCount > 0) --m_refCount;
+    if (m_refCount == 0) {
+      if (m_ownerTex) m_ownerTex->Release();
+      delete this;
+      return 0;
+    }
+    return m_refCount;
+  }
 };
+static inline HRESULT D3D_Copy_Surface_Rects(IDirect3DSurface9* dst, const RECT* dstRect, IDirect3DSurface9* src, const RECT* srcRect) {
+  if (!dst || !src) return D3DERR_INVALIDCALL;
+  D3DSURFACE_DESC srcDesc = {}, dstDesc = {};
+  src->GetDesc(&srcDesc);
+  dst->GetDesc(&dstDesc);
+  if (!srcDesc.Width || !srcDesc.Height || !dstDesc.Width || !dstDesc.Height) return 0;
+  D3DLOCKED_RECT srcLock = {}, dstLock = {};
+  src->LockRect(&srcLock, nullptr, D3DLOCK_READONLY);
+  dst->LockRect(&dstLock, nullptr, 0);
+  if (!srcLock.pBits || !dstLock.pBits) return D3DERR_INVALIDCALL;
+
+  if (srcDesc.Format == D3DFMT_DXT1 || srcDesc.Format == D3DFMT_DXT2 || srcDesc.Format == D3DFMT_DXT3 ||
+      srcDesc.Format == D3DFMT_DXT4 || srcDesc.Format == D3DFMT_DXT5) {
+    if (srcDesc.Format == dstDesc.Format) {
+      size_t sz = std::min(d3d_calc_surface_size(srcDesc.Width, srcDesc.Height, srcDesc.Format),
+                           d3d_calc_surface_size(dstDesc.Width, dstDesc.Height, dstDesc.Format));
+      memcpy(dstLock.pBits, srcLock.pBits, sz);
+    }
+    src->UnlockRect();
+    dst->UnlockRect();
+    return 0;
+  }
+
+  int sx0 = srcRect ? std::max<int>(0, srcRect->left) : 0;
+  int sy0 = srcRect ? std::max<int>(0, srcRect->top) : 0;
+  int sx1 = srcRect ? std::min<int>((int)srcDesc.Width, srcRect->right) : (int)srcDesc.Width;
+  int sy1 = srcRect ? std::min<int>((int)srcDesc.Height, srcRect->bottom) : (int)srcDesc.Height;
+  int dx0 = dstRect ? std::max<int>(0, dstRect->left) : 0;
+  int dy0 = dstRect ? std::max<int>(0, dstRect->top) : 0;
+  int dx1 = dstRect ? std::min<int>((int)dstDesc.Width, dstRect->right) : (int)dstDesc.Width;
+  int dy1 = dstRect ? std::min<int>((int)dstDesc.Height, dstRect->bottom) : (int)dstDesc.Height;
+  int sw = sx1 - sx0, sh = sy1 - sy0;
+  int dw = dx1 - dx0, dh = dy1 - dy0;
+
+  if (sw > 0 && sh > 0 && dw > 0 && dh > 0) {
+    uint32_t srcBpp = d3d_format_bpp(srcDesc.Format);
+    uint32_t dstBpp = d3d_format_bpp(dstDesc.Format);
+    const uint8_t* srcBase = (const uint8_t*)srcLock.pBits;
+    uint8_t* dstBase = (uint8_t*)dstLock.pBits;
+    if (srcDesc.Format == dstDesc.Format && sw == dw && sh == dh) {
+      for (int y = 0; y < dh; ++y) {
+        memcpy(dstBase + (size_t)(dy0 + y) * dstLock.Pitch + (size_t)dx0 * dstBpp,
+               srcBase + (size_t)(sy0 + y) * srcLock.Pitch + (size_t)sx0 * srcBpp,
+               (size_t)dw * dstBpp);
+      }
+    } else {
+      for (int y = 0; y < dh; ++y) {
+        int sy = sy0 + (y * sh) / dh;
+        const uint8_t* srcRow = srcBase + (size_t)sy * srcLock.Pitch;
+        uint8_t* dstRow = dstBase + (size_t)(dy0 + y) * dstLock.Pitch;
+        for (int x = 0; x < dw; ++x) {
+          int sx = sx0 + (x * sw) / dw;
+          uint8_t b, g, r, a;
+          d3d_read_pixel_bgra(srcRow + (size_t)sx * srcBpp, srcDesc.Format, b, g, r, a);
+          d3d_write_pixel_bgra(dstRow + (size_t)(dx0 + x) * dstBpp, dstDesc.Format, b, g, r, a);
+        }
+      }
+    }
+  }
+  src->UnlockRect();
+  dst->UnlockRect();
+  return 0;
+}
 struct IDirect3DVertexBuffer9 {
   std::vector<uint8_t> m_buffer;
+  uint32_t m_refCount = 1;
   HRESULT Lock(UINT offset, UINT size, void** ppbData, DWORD) {
     size_t needed = offset + (size ? size : 65536);
     if (m_buffer.size() < needed) m_buffer.resize(needed);
@@ -666,10 +1174,16 @@ struct IDirect3DVertexBuffer9 {
     return 0;
   }
   HRESULT Unlock() { return 0; }
-  ULONG Release() { delete this; return 0; }
+  ULONG AddRef() { return ++m_refCount; }
+  ULONG Release() {
+    if (m_refCount > 0) --m_refCount;
+    if (m_refCount == 0) { delete this; return 0; }
+    return m_refCount;
+  }
 };
 struct IDirect3DIndexBuffer9 {
   std::vector<uint8_t> m_buffer;
+  uint32_t m_refCount = 1;
   HRESULT Lock(UINT offset, UINT size, void** ppbData, DWORD) {
     size_t needed = offset + (size ? size : 65536);
     if (m_buffer.size() < needed) m_buffer.resize(needed);
@@ -677,7 +1191,12 @@ struct IDirect3DIndexBuffer9 {
     return 0;
   }
   HRESULT Unlock() { return 0; }
-  ULONG Release() { delete this; return 0; }
+  ULONG AddRef() { return ++m_refCount; }
+  ULONG Release() {
+    if (m_refCount > 0) --m_refCount;
+    if (m_refCount == 0) { delete this; return 0; }
+    return m_refCount;
+  }
 };
 struct IDirect3DVertexShader9 {
   ULONG Release() { return 0; }
@@ -688,9 +1207,15 @@ struct IDirect3DVertexDeclaration9 {
 struct IDirect3DPixelShader9 {
   ULONG Release() { return 0; }
 };
-inline HRESULT IDirect3DTexture9::GetSurfaceLevel(UINT, IDirect3DSurface9** ppSurface) {
-  static IDirect3DSurface9 s_surface;
-  if (ppSurface) *ppSurface = &s_surface;
+inline HRESULT IDirect3DTexture9::GetSurfaceLevel(UINT level, IDirect3DSurface9** ppSurface) {
+  if (ppSurface) {
+    auto surf = new IDirect3DSurface9();
+    surf->m_heapAllocated = true;
+    surf->m_ownerTex = this;
+    surf->m_level = level;
+    this->AddRef();
+    *ppSurface = surf;
+  }
   return 0;
 }
 inline HRESULT IDirect3DDevice9::CreateIndexBuffer(UINT size, DWORD, D3DFORMAT, D3DPOOL, IDirect3DIndexBuffer9** pp, HANDLE) {
@@ -709,11 +1234,26 @@ inline HRESULT IDirect3DDevice9::CreateVertexBuffer(UINT size, DWORD, DWORD, D3D
   }
   return 0;
 }
-inline HRESULT IDirect3DDevice9::CreateTexture(UINT width, UINT height, UINT, DWORD, D3DFORMAT, D3DPOOL, IDirect3DTexture9** pp, HANDLE*) {
+inline HRESULT IDirect3DDevice9::CreateTexture(UINT width, UINT height, UINT levels, DWORD usage, D3DFORMAT format, D3DPOOL pool, IDirect3DTexture9** pp, HANDLE*) {
+  if (usage & D3DUSAGE_RENDERTARGET) {
+    if (pp) *pp = nullptr;
+    return D3DERR_NOTAVAILABLE;
+  }
   if (pp) {
     auto tex = new IDirect3DTexture9();
+    tex->m_heapAllocated = true;
     tex->m_width = width ? width : 256;
     tex->m_height = height ? height : 256;
+    tex->m_format = (format != D3DFMT_UNKNOWN) ? format : D3DFMT_A8R8G8B8;
+    tex->m_pool = pool;
+    // MIP_LEVELS_ALL arrives as 0: "as many as the size allows". A real chain is what lets the
+    // sampler filter instead of aliasing, so the count has to survive into the image.
+    uint32_t count = levels;
+    if (count == 0) {
+      count = 1;
+      for (uint32_t extent = width > height ? width : height; extent > 1; extent >>= 1) ++count;
+    }
+    tex->m_levels = count ? count : 1;
     *pp = tex;
   }
   return 0;
@@ -733,9 +1273,16 @@ inline HRESULT IDirect3DDevice9::CreateVertexDeclaration(const D3DVERTEXELEMENT9
   if (pp) *pp = &s_vd;
   return 0;
 }
-inline HRESULT IDirect3DDevice9::CreateOffscreenPlainSurface(UINT, UINT, D3DFORMAT, D3DPOOL, IDirect3DSurface9** pp, HANDLE*) {
-  static IDirect3DSurface9 s_surf;
-  if (pp) *pp = &s_surf;
+inline HRESULT IDirect3DDevice9::CreateOffscreenPlainSurface(UINT width, UINT height, D3DFORMAT format, D3DPOOL pool, IDirect3DSurface9** pp, HANDLE*) {
+  if (pp) {
+    auto surf = new IDirect3DSurface9();
+    surf->m_heapAllocated = true;
+    surf->m_width = width ? width : 256;
+    surf->m_height = height ? height : 256;
+    surf->m_format = (format != D3DFMT_UNKNOWN) ? format : D3DFMT_A8R8G8B8;
+    surf->m_pool = pool;
+    *pp = surf;
+  }
   return 0;
 }
 inline HRESULT IDirect3DDevice9::CreateDepthStencilSurface(UINT, UINT, D3DFORMAT, D3DMULTISAMPLE_TYPE, DWORD, BOOL, IDirect3DSurface9** pp, HANDLE*) {
@@ -743,9 +1290,12 @@ inline HRESULT IDirect3DDevice9::CreateDepthStencilSurface(UINT, UINT, D3DFORMAT
   if (pp) *pp = &s_surf;
   return 0;
 }
+static IDirect3DSurface9 s_defaultRenderTarget;
 inline HRESULT IDirect3DDevice9::GetRenderTarget(UINT, IDirect3DSurface9** pp) {
-  static IDirect3DSurface9 s_surf;
-  if (pp) *pp = &s_surf;
+  if (pp) {
+    s_defaultRenderTarget.AddRef();
+    *pp = &s_defaultRenderTarget;
+  }
   return 0;
 }
 inline HRESULT IDirect3DDevice9::GetDepthStencilSurface(IDirect3DSurface9** pp) {
@@ -754,29 +1304,99 @@ inline HRESULT IDirect3DDevice9::GetDepthStencilSurface(IDirect3DSurface9** pp) 
   return 0;
 }
 inline HRESULT IDirect3DDevice9::GetBackBuffer(UINT, UINT, D3DBACKBUFFER_TYPE, IDirect3DSurface9** pp) {
-  static IDirect3DSurface9 s_surf;
-  if (pp) *pp = &s_surf;
+  // The back buffer is the swapchain image this frame draws into, which the Vulkan path renders
+  // directly - there is no separate surface object for it. Handing back the default render target
+  // is what keeps a Begin_Scene after an offscreen pass drawing to the screen again: a distinct
+  // surface object here made every later 2D draw look like a render-to-texture draw and vanish,
+  // which is why the in-game HUD and control bar never appeared.
+  if (pp) *pp = &s_defaultRenderTarget;
   return 0;
 }
 inline HRESULT IDirect3DDevice9::GetRenderTargetData(IDirect3DSurface9*, IDirect3DSurface9*) { return 0; }
-inline HRESULT IDirect3DDevice9::SetRenderTarget(DWORD, IDirect3DSurface9*) { return 0; }
+inline HRESULT IDirect3DDevice9::SetRenderTarget(DWORD, IDirect3DSurface9* surf) {
+  m_currentRenderTarget = surf ? surf : &s_defaultRenderTarget;
+  return 0;
+}
 inline HRESULT IDirect3DDevice9::SetDepthStencilSurface(IDirect3DSurface9*) { return 0; }
-inline HRESULT IDirect3DDevice9::SetTexture(DWORD, IDirect3DBaseTexture9* tex) {
+inline HRESULT IDirect3DDevice9::UpdateSurface(IDirect3DSurface9* src, const RECT* srcRect, IDirect3DSurface9* dst, const POINT* dstPoint) {
+  if (!src || !dst) return D3DERR_INVALIDCALL;
+  if (dstPoint) {
+    D3DSURFACE_DESC srcDesc = {};
+    src->GetDesc(&srcDesc);
+    int w = srcRect ? (srcRect->right - srcRect->left) : (int)srcDesc.Width;
+    int h = srcRect ? (srcRect->bottom - srcRect->top) : (int)srcDesc.Height;
+    RECT dstRect = { dstPoint->x, dstPoint->y, dstPoint->x + w, dstPoint->y + h };
+    return D3D_Copy_Surface_Rects(dst, &dstRect, src, srcRect);
+  }
+  return D3D_Copy_Surface_Rects(dst, nullptr, src, srcRect);
+}
+inline HRESULT IDirect3DDevice9::StretchRect(IDirect3DSurface9* src, const RECT* srcRect, IDirect3DSurface9* dst, const RECT* dstRect, D3DTEXTUREFILTERTYPE) {
+  return D3D_Copy_Surface_Rects(dst, dstRect, src, srcRect);
+}
+inline HRESULT IDirect3DDevice9::UpdateTexture(IDirect3DBaseTexture9* srcBase, IDirect3DBaseTexture9* dstBase) {
+  if (!srcBase || !dstBase) return D3DERR_INVALIDCALL;
+  IDirect3DSurface9 *srcSurf = nullptr, *dstSurf = nullptr;
+  ((IDirect3DTexture9*)srcBase)->GetSurfaceLevel(0, &srcSurf);
+  ((IDirect3DTexture9*)dstBase)->GetSurfaceLevel(0, &dstSurf);
+  HRESULT hr = D3D_Copy_Surface_Rects(dstSurf, nullptr, srcSurf, nullptr);
+  if (srcSurf) srcSurf->Release();
+  if (dstSurf) dstSurf->Release();
+  return hr;
+}
+inline void IDirect3DDevice9::sync_vulkan_texture() {
 #if defined(PLATFORM_LINUX) || defined(__linux__) || defined(_UNIX)
-  if (tex) {
-    IDirect3DTexture9 *t = (IDirect3DTexture9*)tex;
-    if (t->m_vulkanTex) {
-      Platform_BindVulkanTexture(t->m_vulkanTex);
+  // Four stages in one bind, each with the sampler state its stage was last given. A stage with no
+  // texture samples the white dummy, which is what the fixed-function pipeline did with the stage
+  // off, so the combiner arithmetic stays the same either way.
+  void *textures[kStages] = { nullptr, nullptr, nullptr, nullptr };
+  uint32_t keys[kStages] = { 0, 0, 0, 0 };
+  for (int stage = 0; stage < kStages; ++stage) {
+    IDirect3DTexture9 *texture = (IDirect3DTexture9 *)m_stageTex[stage];
+    if (!texture) continue;
+    textures[stage] = texture->m_vulkanTex;
+    keys[stage] = Platform_MakeSamplerKey(m_stageAddressU[stage], m_stageAddressV[stage],
+                                          m_stageMinFilter[stage], m_stageMagFilter[stage],
+                                          m_stageMipFilter[stage], texture->Mips_Ready() ? 1 : 0);
+  }
+  Platform_BindVulkanTextures(textures, keys);
+#endif
+}
+inline HRESULT IDirect3DDevice9::SetTextureStageState(UINT stage, D3DTEXTURESTAGESTATETYPE type, DWORD value) {
+#if defined(PLATFORM_LINUX) || defined(__linux__) || defined(_UNIX)
+  if (stage < (UINT)kStages) {
+    switch (type) {
+    case D3DTSS_COLOROP: m_stageColorOp[stage] = value; break;
+    case D3DTSS_COLORARG0: m_stageColorArg0[stage] = value; break;
+    case D3DTSS_COLORARG1: m_stageColorArg1[stage] = value; break;
+    case D3DTSS_COLORARG2: m_stageColorArg2[stage] = value; break;
+    case D3DTSS_ALPHAOP: m_stageAlphaOp[stage] = value; break;
+    case D3DTSS_ALPHAARG1: m_stageAlphaArg1[stage] = value; break;
+    case D3DTSS_ALPHAARG2: m_stageAlphaArg2[stage] = value; break;
+    case D3DTSS_TEXCOORDINDEX:
+      // The whole word: the high bits name the coordinate source, and masking them off is what
+      // made every fog and cloud stage sample a vertex attribute instead of a projected position.
+      m_stageTexCoordIndex[stage] = value;
+      break;
+    case D3DTSS_TEXTURETRANSFORMFLAGS: m_stageTransformFlags[stage] = value; break;
+    default: break;
     }
   }
 #endif
   return 0;
 }
+inline HRESULT IDirect3DDevice9::SetTexture(DWORD stage, IDirect3DBaseTexture9* tex) {
 #if defined(PLATFORM_LINUX) || defined(__linux__) || defined(_UNIX)
-// A row-major D3D9 matrix multiplies a row vector from the left; the shader multiplies the matrix
-// by a column vector, so the push constant is the transpose. The y row is negated on the way in:
-// Vulkan puts NDC y=+1 at the top of the image where Direct3D 9 puts it at the bottom, so without
-// the flip the whole frame is mirrored vertically.
+  if (stage < (DWORD)kStages) {
+    m_stageTex[stage] = tex;
+    sync_vulkan_texture();
+  }
+#endif
+  return 0;
+}
+#if defined(PLATFORM_LINUX) || defined(__linux__) || defined(_UNIX)
+// A row-major D3D9 matrix multiplies a row vector from the left; the shader does mvp * vec4
+// on a column-major mat4, so source row i is written into column i. Destination row 1
+// (source column j) is negated: Vulkan's NDC y is up, Direct3D 9's is down.
 static void build_vulkan_push_constants(const IDirect3DDevice9 *device, PlatformVulkanPushConstants &pc)
 {
   const float (*world)[4] = device->m_world.m;
@@ -803,63 +1423,518 @@ static void build_vulkan_push_constants(const IDirect3DDevice9 *device, Platform
 
   for (int i = 0; i < 4; ++i)
     for (int j = 0; j < 4; ++j)
-      pc.mvp[j * 4 + i] = (i == 1) ? -mvp[i][j] : mvp[i][j];
+      pc.mvp[i * 4 + j] = (j == 1) ? -mvp[i][j] : mvp[i][j];
 
   // With lighting off, Direct3D 9 multiplies the vertex colour by the material diffuse. A material
   // that is black in both places would paint the model black, so a preset carrying no colour falls
   // back to white.
+  if (device->m_lighting) {
+    for (int i = 0; i < 4; ++i) pc.materialColor[i] = 1.0f;
+    return;
+  }
   const D3DMATERIAL9 &mat = device->m_material;
-  float color[4] = {
-    mat.Ambient.r + mat.Diffuse.r,
-    mat.Ambient.g + mat.Diffuse.g,
-    mat.Ambient.b + mat.Diffuse.b,
-    mat.Ambient.a + mat.Diffuse.a
-  };
-  bool black = true;
-  for (int i = 0; i < 4; ++i) if (color[i] > 0.0f) { black = false; break; }
-  if (black) { color[0] = color[1] = color[2] = color[3] = 1.0f; }
+  float color[4];
+  if (mat.Diffuse.r > 0.0f || mat.Diffuse.g > 0.0f || mat.Diffuse.b > 0.0f) {
+    color[0] = std::min(1.0f, mat.Diffuse.r);
+    color[1] = std::min(1.0f, mat.Diffuse.g);
+    color[2] = std::min(1.0f, mat.Diffuse.b);
+    color[3] = std::min(1.0f, mat.Diffuse.a > 0.0f ? mat.Diffuse.a : 1.0f);
+  } else if (mat.Ambient.r > 0.0f || mat.Ambient.g > 0.0f || mat.Ambient.b > 0.0f) {
+    color[0] = std::min(1.0f, mat.Ambient.r);
+    color[1] = std::min(1.0f, mat.Ambient.g);
+    color[2] = std::min(1.0f, mat.Ambient.b);
+    color[3] = std::min(1.0f, mat.Ambient.a > 0.0f ? mat.Ambient.a : 1.0f);
+  } else {
+    color[0] = color[1] = color[2] = color[3] = 1.0f;
+  }
   for (int i = 0; i < 4; ++i) pc.materialColor[i] = color[i];
 }
 
 static std::vector<VKCanonicalVertex> s_canonicalVertices;
 
+// Row-major D3D9 matrix times a row vector: out[j] = sum over i of v[i] * m[i][j]. Direct3D applies
+// a texture transform to a camera-space position the same way, which is how the fog, cloud and
+// noise stages get their coordinates.
+static inline void transform_row_vector(const float v[4], const float m[4][4], float out[4])
+{
+  for (int j = 0; j < 4; ++j)
+    out[j] = v[0] * m[0][j] + v[1] * m[1][j] + v[2] * m[2][j] + v[3] * m[3][j];
+}
+
+static inline void vk_build_normal_transform(const float source[4][4], float result[4][4])
+{
+  for (int row = 0; row < 4; ++row)
+    for (int column = 0; column < 4; ++column)
+      result[row][column] = row == column ? 1.0f : 0.0f;
+  const float a = source[0][0], b = source[0][1], c = source[0][2];
+  const float d = source[1][0], e = source[1][1], f = source[1][2];
+  const float g = source[2][0], h = source[2][1], i = source[2][2];
+  const float determinant = a * (e * i - f * h) - b * (d * i - f * g) + c * (d * h - e * g);
+  if (determinant == 0.0f) return;
+  const float scale = 1.0f / determinant;
+  result[0][0] = (e * i - f * h) * scale;
+  result[0][1] = (f * g - d * i) * scale;
+  result[0][2] = (d * h - e * g) * scale;
+  result[1][0] = (c * h - b * i) * scale;
+  result[1][1] = (a * i - c * g) * scale;
+  result[1][2] = (b * g - a * h) * scale;
+  result[2][0] = (b * f - c * e) * scale;
+  result[2][1] = (c * d - a * f) * scale;
+  result[2][2] = (a * e - b * d) * scale;
+}
+
+struct VKFixedFunctionLightState {
+  DWORD type;
+  float position[4];
+  float direction[4];
+  float diffuse[4];
+  float attenuation[4];
+  float spot[4];
+};
+
+struct VKFixedFunctionLightingState {
+  bool colorVertex;
+  DWORD diffuseSource;
+  DWORD ambientSource;
+  DWORD emissiveSource;
+  float globalAmbient[4];
+  float materialDiffuse[4];
+  float materialAmbient[4];
+  float materialEmissive[4];
+  unsigned lightCount;
+  VKFixedFunctionLightState lights[4];
+};
+
+static inline float vk_saturate(float value)
+{
+  return value < 0.0f ? 0.0f : (value > 1.0f ? 1.0f : value);
+}
+
+static inline void vk_normalize3(float value[3])
+{
+  const float length = std::sqrt(value[0] * value[0] + value[1] * value[1] + value[2] * value[2]);
+  if (length > 1.0e-20f) {
+    const float inverseLength = 1.0f / length;
+    value[0] *= inverseLength;
+    value[1] *= inverseLength;
+    value[2] *= inverseLength;
+  } else {
+    value[0] = value[1] = value[2] = 0.0f;
+  }
+}
+
+
+static inline void vk_build_lighting_state(const IDirect3DDevice9 *device,
+                                            VKFixedFunctionLightingState &state)
+{
+  state = {};
+  state.colorVertex = device->m_colorVertex != 0;
+  state.diffuseSource = device->m_diffuseMaterialSource;
+  state.ambientSource = device->m_ambientMaterialSource;
+  state.emissiveSource = device->m_emissiveMaterialSource;
+  memcpy(state.materialDiffuse, &device->m_material.Diffuse, sizeof(state.materialDiffuse));
+  memcpy(state.materialAmbient, &device->m_material.Ambient, sizeof(state.materialAmbient));
+  memcpy(state.materialEmissive, &device->m_material.Emissive, sizeof(state.materialEmissive));
+
+  const DWORD ambient = device->m_globalAmbient;
+  state.globalAmbient[0] = ((ambient >> 16) & 0xffu) / 255.0f;
+  state.globalAmbient[1] = ((ambient >> 8) & 0xffu) / 255.0f;
+  state.globalAmbient[2] = (ambient & 0xffu) / 255.0f;
+  state.globalAmbient[3] = ((ambient >> 24) & 0xffu) / 255.0f;
+
+  for (unsigned index = 0; index < 4; ++index) {
+    if (!device->m_lightEnabled[index]) continue;
+    const D3DLIGHT9 &source = device->m_lights[index];
+    VKFixedFunctionLightState &light = state.lights[state.lightCount++];
+    light.type = source.Type;
+    const float position[4] = { source.Position.x, source.Position.y, source.Position.z, 1.0f };
+    const float direction[4] = { source.Direction.x, source.Direction.y, source.Direction.z, 0.0f };
+    transform_row_vector(position, device->m_view.m, light.position);
+    transform_row_vector(direction, device->m_view.m, light.direction);
+    memcpy(light.diffuse, &source.Diffuse, sizeof(light.diffuse));
+    light.attenuation[0] = source.Attenuation0;
+    light.attenuation[1] = source.Attenuation1;
+    light.attenuation[2] = source.Attenuation2;
+    light.attenuation[3] = source.Range;
+    light.spot[0] = std::cos(source.Theta * 0.5f);
+    light.spot[1] = std::cos(source.Phi * 0.5f);
+    light.spot[2] = source.Falloff;
+    light.spot[3] = 0.0f;
+  }
+}
+
+static inline const float *vk_material_source(DWORD source, const float material[4],
+                                               const float vertex[4], bool hasDiffuse,
+                                               bool colorVertex)
+{
+  return source == D3DMCS_COLOR1 && hasDiffuse && colorVertex ? vertex : material;
+}
+
+static inline void vk_light_vertex(const VKFixedFunctionLightingState &state,
+                                   const float viewPosition[4], const float viewNormal[4],
+                                   bool hasDiffuse, const float vertexDiffuse[4],
+                                   float output[4])
+{
+  const float *diffuseMaterial = vk_material_source(state.diffuseSource, state.materialDiffuse,
+                                                     vertexDiffuse, hasDiffuse, state.colorVertex);
+  const float *ambientMaterial = vk_material_source(state.ambientSource, state.materialAmbient,
+                                                     vertexDiffuse, hasDiffuse, state.colorVertex);
+  const float *emissiveMaterial = vk_material_source(state.emissiveSource, state.materialEmissive,
+                                                      vertexDiffuse, hasDiffuse, state.colorVertex);
+  float normal[3] = { viewNormal[0], viewNormal[1], viewNormal[2] };
+  vk_normalize3(normal);
+  float diffuseLight[3] = {};
+
+  for (unsigned index = 0; index < state.lightCount; ++index) {
+    const VKFixedFunctionLightState &light = state.lights[index];
+    float toLight[3];
+    float attenuation = 1.0f;
+    if (light.type == D3DLIGHT_DIRECTIONAL) {
+      toLight[0] = -light.direction[0];
+      toLight[1] = -light.direction[1];
+      toLight[2] = -light.direction[2];
+      vk_normalize3(toLight);
+    } else if (light.type == D3DLIGHT_POINT || light.type == D3DLIGHT_SPOT) {
+      const float offset[3] = { light.position[0] - viewPosition[0],
+                                light.position[1] - viewPosition[1],
+                                light.position[2] - viewPosition[2] };
+      const float distance = std::sqrt(offset[0] * offset[0] + offset[1] * offset[1] +
+                                       offset[2] * offset[2]);
+      const float inverseDistance = 1.0f / (distance > 0.0001f ? distance : 0.0001f);
+      toLight[0] = offset[0] * inverseDistance;
+      toLight[1] = offset[1] * inverseDistance;
+      toLight[2] = offset[2] * inverseDistance;
+      const float denominator = light.attenuation[0] + light.attenuation[1] * distance +
+                                light.attenuation[2] * distance * distance;
+      attenuation = 1.0f / (denominator > 0.0001f ? denominator : 0.0001f);
+      if (distance > light.attenuation[3]) attenuation = 0.0f;
+      if (light.type == D3DLIGHT_SPOT) {
+        float direction[3] = { light.direction[0], light.direction[1], light.direction[2] };
+        vk_normalize3(direction);
+        const float spotCosine = -(toLight[0] * direction[0] + toLight[1] * direction[1] +
+                                   toLight[2] * direction[2]);
+        float spot = (spotCosine - light.spot[1]) /
+                     (light.spot[0] - light.spot[1] > 0.0001f ?
+                      light.spot[0] - light.spot[1] : 0.0001f);
+        spot = vk_saturate(spot);
+        attenuation *= std::pow(spot, light.spot[2]);
+      }
+    } else {
+      continue;
+    }
+
+    float lambert = normal[0] * toLight[0] + normal[1] * toLight[1] + normal[2] * toLight[2];
+    if (lambert < 0.0f) lambert = 0.0f;
+    for (int channel = 0; channel < 3; ++channel)
+      diffuseLight[channel] += light.diffuse[channel] * lambert * attenuation;
+  }
+
+  for (int channel = 0; channel < 3; ++channel)
+    output[channel] = vk_saturate(diffuseMaterial[channel] * diffuseLight[channel] +
+                                  ambientMaterial[channel] * state.globalAmbient[channel] +
+                                  emissiveMaterial[channel]);
+  output[3] = diffuseMaterial[3];
+}
+// The push constants carry packed stage state as float bits: a Vulkan float member keeps the
+// block to the 128 bytes every implementation guarantees, and the shader reads it back with
+// floatBitsToUint.
+static inline float dword_as_float(DWORD bits)
+{
+  float value;
+  memcpy(&value, &bits, sizeof(value));
+  return value;
+}
+
 // The engine writes its vertices by hand, so the bytes are the FVF it set. Decode them into the one
-// layout the pipeline reads, then draw.
+// layout the pipeline reads, work out what the four texture stages ask for, then draw.
 static void draw_canonical(const IDirect3DDevice9 *device, const unsigned char *source,
                            uint32_t vertexCount, const uint16_t *indices, uint32_t indexCount)
 {
   VKVertexLayout layout;
-  if (!VKLayout_From_FVF(device->m_fvf, layout)) return;
+  // Always decode set 0 into uv and set 1 into uv1: which one a stage samples is decided below by
+  // its TEXCOORDINDEX. Asking the decoder to swap them as well made a stage that asked for set 1
+  // read the other set, which sampled fog and UI atlas coordinates from the wrong attributes.
+  if (!VKLayout_From_FVF(device->m_fvf, layout, 0)) {
+    return;
+  }
+  if ((device->m_colorWriteEnable & 0x0E) == 0) {
+    return;
+  }
+  if (device->m_currentRenderTarget != nullptr && device->m_currentRenderTarget != &s_defaultRenderTarget) {
+    // Render-to-texture is not implemented on this path; the pass is skipped, and the first skip
+    // says so once so a missing HUD or mirror is diagnosable from the log.
+    static bool s_reportedSkippedTarget = false;
+    if (!s_reportedSkippedTarget) {
+      s_reportedSkippedTarget = true;
+      fprintf(stderr, "RTT draw skipped while target %p bound\n", (void *)device->m_currentRenderTarget);
+    }
+    return;
+  }
   if (vertexCount == 0) return;
+  // ---- what the four texture stages ask for
+  uint32_t stageConfig[4];
+  uint32_t stageAlphaConfig[4];
+  bool projects[4] = { false, false, false, false };
+  for (int stage = 0; stage < 4; ++stage) {
+    const DWORD coordinateIndex = device->m_stageTexCoordIndex[stage];
+    const DWORD transformFlags = device->m_stageTransformFlags[stage];
+    uint32_t uvSource = PLATFORM_UV_SOURCE_UV0;
+    if ((coordinateIndex & 0xFFFF0000u) == (DWORD)D3DTSS_TCI_CAMERASPACEPOSITION && transformFlags != 0) {
+      // Camera-space position through the stage's texture matrix: the shroud, cloud and noise
+      // passes. Sampling the vertex attribute instead is what painted white and dark patches
+      // across the ground.
+      projects[stage] = true;
+      uvSource = (stage == 0) ? PLATFORM_UV_SOURCE_PROJECTED0 : PLATFORM_UV_SOURCE_PROJECTED1;
+    } else if ((coordinateIndex & 0xFu) != 0) {
+      // A stage may name set 1 when the format carries only one set. Sampling an attribute the
+      // vertex has no bytes for reads (0,0) for every vertex, so the whole surface comes out as a
+      // single texel - flat grey ground, black infantry, blue deck plating, all of it the material
+      // colour with a constant texel on top. Clamp to set 0 in that case.
+      uvSource = (layout.uv1Offset >= 0) ? PLATFORM_UV_SOURCE_UV1 : PLATFORM_UV_SOURCE_UV0;
+    }
+
+    stageConfig[stage] = (device->m_stageColorOp[stage] & 0xFFu)
+                       | ((device->m_stageColorArg1[stage] & 0xFFu) << 8)
+                       | ((device->m_stageColorArg2[stage] & 0xFFu) << 16)
+                       | (uvSource << 24);
+    stageAlphaConfig[stage] = (device->m_stageAlphaOp[stage] & 0xFFu)
+                            | ((device->m_stageAlphaArg1[stage] & 0xFFu) << 8)
+                            | ((device->m_stageAlphaArg2[stage] & 0xFFu) << 16)
+                            | ((device->m_stageColorArg0[stage] & 0xFFu) << 24);
+  }
+  const bool projectStage0 = projects[0];
+  int sharedProjectedStage = 1;
+  while (sharedProjectedStage < 4 && !projects[sharedProjectedStage]) ++sharedProjectedStage;
+  const bool projectShared = sharedProjectedStage < 4;
+
+  const bool lightingEnabled = device->m_lighting != 0;
+  float worldView[4][4];
+  if (projectStage0 || projectShared || lightingEnabled) {
+    for (int i = 0; i < 4; ++i) {
+      for (int j = 0; j < 4; ++j) {
+        float sum = 0.0f;
+        for (int k = 0; k < 4; ++k) sum += device->m_world.m[i][k] * device->m_view.m[k][j];
+        worldView[i][j] = sum;
+      }
+    }
+  }
+  float normalTransform[4][4];
+  VKFixedFunctionLightingState lightingState = {};
+  if (lightingEnabled) {
+    vk_build_normal_transform(worldView, normalTransform);
+    vk_build_lighting_state(device, lightingState);
+  }
 
   s_canonicalVertices.resize(vertexCount);
-  for (uint32_t i = 0; i < vertexCount; ++i)
-    VKDecodeVertex(source + i * layout.stride, layout, s_canonicalVertices[i]);
+  for (uint32_t i = 0; i < vertexCount; ++i) {
+    VKCanonicalVertex &out = s_canonicalVertices[i];
+    VKDecodeVertex(source + (size_t)i * layout.stride, layout, out);
+    if (!projectStage0 && !projectShared && !lightingEnabled) continue;
+    const float position[4] = { out.position[0], out.position[1], out.position[2], 1.0f };
+    float camera[4];
+    transform_row_vector(position, worldView, camera);
+    if (projectStage0) {
+      float transformed[4];
+      transform_row_vector(camera, device->m_textureTransform[0].m, transformed);
+      const bool divide = (device->m_stageTransformFlags[0] & D3DTTFF_PROJECTED) != 0 && transformed[3] != 0.0f;
+      const float w = divide ? transformed[3] : 1.0f;
+      out.projected0[0] = transformed[0] / w;
+      out.projected0[1] = transformed[1] / w;
+    }
+    if (projectShared) {
+      float transformed[4];
+      transform_row_vector(camera, device->m_textureTransform[sharedProjectedStage].m, transformed);
+      const bool divide = (device->m_stageTransformFlags[sharedProjectedStage] & D3DTTFF_PROJECTED) != 0 &&
+                          transformed[3] != 0.0f;
+      const float w = divide ? transformed[3] : 1.0f;
+      out.projected1[0] = transformed[0] / w;
+      out.projected1[1] = transformed[1] / w;
+    }
+    if (lightingEnabled) {
+      float objectNormal[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
+      if (layout.normalOffset >= 0) {
+        const float *normal = (const float *)(source + (size_t)i * layout.stride + layout.normalOffset);
+        objectNormal[0] = normal[0];
+        objectNormal[1] = normal[1];
+        objectNormal[2] = normal[2];
+      }
+      float viewNormal[4];
+      transform_row_vector(objectNormal, normalTransform, viewNormal);
+      float vertexDiffuse[4];
+      memcpy(vertexDiffuse, out.color, sizeof(vertexDiffuse));
+      vk_light_vertex(lightingState, camera, viewNormal, layout.colorOffset >= 0,
+                      vertexDiffuse, out.color);
+    }
+  }
 
   PlatformVulkanPushConstants pc = {};
   build_vulkan_push_constants(device, pc);
+  // XYZRHW is already in pixels. Multiplying it by the camera matrix turns a terrain tile into
+  // the giant wedge on the menu. Direct3D skips world/view/projection for this FVF.
+  if ((device->m_fvf & D3DFVF_POSITION_MASK) == D3DFVF_XYZRHW) {
+    Platform_SetVulkanDepthState(0, 0, 8);
+    const PlatformVulkanContext *ctx = Platform_GetVulkanContext();
+    const float width = (ctx && ctx->width > 0) ? (float)ctx->width : 800.0f;
+    const float height = (ctx && ctx->height > 0) ? (float)ctx->height : 600.0f;
+    for (int i = 0; i < 16; ++i) pc.mvp[i] = 0.0f;
+    pc.mvp[0] = 2.0f / width;
+    pc.mvp[5] = -2.0f / height;
+    pc.mvp[10] = 1.0f;
+    pc.mvp[12] = -1.0f;
+    pc.mvp[13] = 1.0f;
+    pc.mvp[15] = 1.0f;
+  } else {
+    Platform_SetVulkanDepthState(device->m_zEnable != 0, device->m_zWrite != 0, (int)device->m_zFunc);
+  }
+  for (int stage = 0; stage < 4; ++stage) {
+    pc.stageConfig[stage] = dword_as_float(stageConfig[stage]);
+    pc.stageAlphaConfig[stage] = dword_as_float(stageAlphaConfig[stage]);
+  }
+  pc.alphaReference = (float)(device->m_alphaRef & 0xFFu) / 255.0f;
+  pc.alphaConfig = dword_as_float((device->m_alphaTestEnable ? 1u : 0u) |
+                                  ((device->m_alphaFunc & 0xFFu) << 8));
+  pc.textureFactor = dword_as_float(device->m_textureFactor);
+
+  const_cast<IDirect3DDevice9*>(device)->sync_vulkan_texture();
+  int blendMode = 0;
+  if (device->m_alphaBlendEnable) {
+    // Two spellings of "destination = source * destination": the shroud pass uses
+    // SRC=ZERO, DEST=SRCCOLOR, while the water mirror uses SRC=DESTCOLOR, DEST=ZERO.
+    // Only the second was recognised, so the shroud fell through to alpha blending and
+    // replaced the terrain with its grey texel instead of multiplying into it.
+    if ((device->m_srcBlend == D3DBLEND_DESTCOLOR && device->m_destBlend == D3DBLEND_ZERO) ||
+        (device->m_srcBlend == D3DBLEND_ZERO && device->m_destBlend == D3DBLEND_SRCCOLOR)) {
+      blendMode = 2;
+    } else if (device->m_destBlend == D3DBLEND_ONE) {
+      blendMode = 3;
+    } else {
+      blendMode = 1;
+    }
+  }
+  Platform_SetVulkanBlendState(blendMode);
   Platform_SetVulkanPushConstants(&pc);
   Platform_DrawVulkanCanonical((const float *)s_canonicalVertices.data(), vertexCount, indices, indexCount);
 }
 #endif
 
-inline HRESULT IDirect3DDevice9::DrawIndexedPrimitive(D3DPRIMITIVETYPE type, int, int, UINT num_vertices, UINT start_index, UINT prim_count) {
+inline HRESULT IDirect3DDevice9::DrawIndexedPrimitive(D3DPRIMITIVETYPE type, int base_vertex_index, int min_vertex_index, UINT num_vertices, UINT start_index, UINT prim_count) {
 #if defined(PLATFORM_LINUX) || defined(__linux__) || defined(_UNIX)
   if (m_currentVB && m_currentIB && prim_count > 0 && m_currentVB->m_buffer.size() > 0 && m_currentIB->m_buffer.size() > 0) {
-    uint32_t indexCount = (type == D3DPT_TRIANGLELIST) ? (prim_count * 3) : (prim_count + 2);
-    const unsigned char *vData = m_currentVB->m_buffer.data() + m_vbOffset;
-    const uint16_t *iData = (const uint16_t *)(m_currentIB->m_buffer.data() + start_index * sizeof(uint16_t));
-    draw_canonical(this, vData, num_vertices, iData, indexCount);
+    uint32_t rawIndexCount = (type == D3DPT_TRIANGLELIST) ? (prim_count * 3) : (prim_count + 2);
+    size_t vOffset = m_vbOffset + (size_t)base_vertex_index * m_vbStride;
+    if (vOffset < m_currentVB->m_buffer.size() && (start_index + rawIndexCount) * sizeof(uint16_t) <= m_currentIB->m_buffer.size()) {
+      size_t avail = (m_currentVB->m_buffer.size() - vOffset) / m_vbStride;
+      if (avail == 0) return 0;
+      const uint16_t *iData = (const uint16_t *)(m_currentIB->m_buffer.data() + start_index * sizeof(uint16_t));
+      uint16_t minIdx, maxIdx;
+      // The D3D9 contract requires every index to lie inside [MinVertexIndex,
+      // MinVertexIndex + NumVertices), and the wrapper above passes values it computed from the
+      // render state itself. When the hint is consistent with the buffer, the per-draw min/max
+      // rescan of the whole index range is dead CPU work - and it ran for every single draw.
+      const bool trusted = (num_vertices > 0 && (size_t)num_vertices <= avail && min_vertex_index >= 0 &&
+                            (size_t)min_vertex_index + (size_t)num_vertices <= avail);
+      if (trusted) {
+        minIdx = (uint16_t)min_vertex_index;
+        maxIdx = (uint16_t)(min_vertex_index + (int)num_vertices - 1);
+      } else {
+        minIdx = 0xFFFF; maxIdx = 0;
+        for (uint32_t i = 0; i < rawIndexCount; ++i) {
+          uint16_t idx = iData[i];
+          if (idx < avail) {
+            if (idx < minIdx) minIdx = idx;
+            if (idx > maxIdx) maxIdx = idx;
+          }
+        }
+        if (minIdx > maxIdx) return 0;
+      }
+      uint32_t sliceVertices = (uint32_t)(maxIdx - minIdx) + 1;
+      const unsigned char *vData = m_currentVB->m_buffer.data() + vOffset + (size_t)minIdx * m_vbStride;
+      static std::vector<uint16_t> s_rebasedIndices;
+      if (type == D3DPT_TRIANGLESTRIP) {
+        s_rebasedIndices.resize(prim_count * 3);
+        uint32_t out = 0;
+        for (UINT p = 0; p < prim_count; ++p) {
+          uint16_t i0 = iData[p] >= minIdx ? (uint16_t)(iData[p] - minIdx) : 0;
+          uint16_t i1 = iData[p + 1] >= minIdx ? (uint16_t)(iData[p + 1] - minIdx) : 0;
+          uint16_t i2 = iData[p + 2] >= minIdx ? (uint16_t)(iData[p + 2] - minIdx) : 0;
+          if (p & 1) {
+            s_rebasedIndices[out++] = i0;
+            s_rebasedIndices[out++] = i2;
+            s_rebasedIndices[out++] = i1;
+          } else {
+            s_rebasedIndices[out++] = i0;
+            s_rebasedIndices[out++] = i1;
+            s_rebasedIndices[out++] = i2;
+          }
+        }
+        draw_canonical(this, vData, sliceVertices, s_rebasedIndices.data(), out);
+      } else if (minIdx == 0 && trusted) {
+        // Trusted hint with min = 0: the contract puts every u16 index below num_vertices, which
+        // is sliceVertices, so the raw index buffer can go to the GPU unwritten. The old
+        // untrusted minIdx == 0 fast path skipped that guarantee and let stale out-of-range
+        // indices through as wild triangles - it is gone.
+        draw_canonical(this, vData, sliceVertices, iData, rawIndexCount);
+      } else {
+        s_rebasedIndices.resize(rawIndexCount);
+        for (uint32_t i = 0; i < rawIndexCount; ++i) {
+          uint16_t idx = iData[i];
+          s_rebasedIndices[i] = (idx >= minIdx && idx <= maxIdx) ? (uint16_t)(idx - minIdx) : 0;
+        }
+        draw_canonical(this, vData, sliceVertices, s_rebasedIndices.data(), rawIndexCount);
+      }
+    }
   }
 #endif
   return 0;
 }
+static void build_strip_or_fan_indices(D3DPRIMITIVETYPE type, UINT prim_count, std::vector<uint16_t> &indices) {
+  indices.resize(prim_count * 3);
+  if (type == D3DPT_POINTLIST) {
+    // The pipeline draws triangles only, so a point becomes a degenerate triangle on its own
+    // vertex. It covers no pixels, which is what a point sprite without point size support did
+    // anyway; the old code expanded a point list to prim_count + 2 vertices and drew whatever
+    // triangle that happened to name.
+    for (UINT p = 0; p < prim_count; ++p) {
+      indices[p * 3 + 0] = (uint16_t)p;
+      indices[p * 3 + 1] = (uint16_t)p;
+      indices[p * 3 + 2] = (uint16_t)p;
+    }
+    return;
+  }
+  if (type == D3DPT_TRIANGLESTRIP) {
+    for (UINT p = 0; p < prim_count; ++p) {
+      indices[p * 3 + 0] = (p % 2 == 0) ? (uint16_t)p : (uint16_t)(p + 1);
+      indices[p * 3 + 1] = (p % 2 == 0) ? (uint16_t)(p + 1) : (uint16_t)p;
+      indices[p * 3 + 2] = (uint16_t)(p + 2);
+    }
+  } else if (type == D3DPT_TRIANGLEFAN) {
+    for (UINT p = 0; p < prim_count; ++p) {
+      indices[p * 3 + 0] = 0;
+      indices[p * 3 + 1] = (uint16_t)(p + 1);
+      indices[p * 3 + 2] = (uint16_t)(p + 2);
+    }
+  }
+}
 inline HRESULT IDirect3DDevice9::DrawPrimitive(D3DPRIMITIVETYPE type, UINT start_vertex, UINT prim_count) {
 #if defined(PLATFORM_LINUX) || defined(__linux__) || defined(_UNIX)
   if (m_currentVB && prim_count > 0 && m_currentVB->m_buffer.size() > 0) {
-    uint32_t vertexCount = (type == D3DPT_TRIANGLELIST) ? (prim_count * 3) : (prim_count + 2);
-    const unsigned char *vData = m_currentVB->m_buffer.data() + m_vbOffset + start_vertex * m_vbStride;
-    draw_canonical(this, vData, vertexCount, nullptr, 0);
+    uint32_t vertexCount;
+    if (type == D3DPT_TRIANGLELIST) vertexCount = prim_count * 3;
+    else if (type == D3DPT_POINTLIST) vertexCount = prim_count;
+    else vertexCount = prim_count + 2;
+    size_t vOffset = m_vbOffset + (size_t)start_vertex * m_vbStride;
+    if (vOffset < m_currentVB->m_buffer.size()) {
+      size_t avail = (m_currentVB->m_buffer.size() - vOffset) / m_vbStride;
+      if (vertexCount > avail) vertexCount = (uint32_t)avail;
+      const unsigned char *vData = m_currentVB->m_buffer.data() + vOffset;
+      if (type == D3DPT_TRIANGLESTRIP || type == D3DPT_TRIANGLEFAN || type == D3DPT_POINTLIST) {
+        static std::vector<uint16_t> s_unindexedIndices;
+        build_strip_or_fan_indices(type, prim_count, s_unindexedIndices);
+        draw_canonical(this, vData, vertexCount, s_unindexedIndices.data(), (uint32_t)s_unindexedIndices.size());
+      } else {
+        draw_canonical(this, vData, vertexCount, nullptr, 0);
+      }
+    }
   }
 #endif
   return 0;
@@ -867,12 +1942,19 @@ inline HRESULT IDirect3DDevice9::DrawPrimitive(D3DPRIMITIVETYPE type, UINT start
 inline HRESULT IDirect3DDevice9::DrawPrimitiveUP(D3DPRIMITIVETYPE type, UINT prim_count, const void* pVertexStreamZeroData, UINT stride) {
 #if defined(PLATFORM_LINUX) || defined(__linux__) || defined(_UNIX)
   if (pVertexStreamZeroData && prim_count > 0) {
-    uint32_t vertexCount = (type == D3DPT_TRIANGLELIST) ? (prim_count * 3) : (prim_count + 2);
-    // An explicit stride that disagrees with the FVF means the caller is feeding the pipeline bytes
-    // it did not describe, so the decode cannot be trusted.
+    uint32_t vertexCount;
+    if (type == D3DPT_TRIANGLELIST) vertexCount = prim_count * 3;
+    else if (type == D3DPT_POINTLIST) vertexCount = prim_count;
+    else vertexCount = prim_count + 2;
     VKVertexLayout layout;
-    if (VKLayout_From_FVF(m_fvf, layout) && stride && stride != layout.stride) return 0;
-    draw_canonical(this, (const unsigned char *)pVertexStreamZeroData, vertexCount, nullptr, 0);
+    if (VKLayout_From_FVF(m_fvf, layout, m_stageTexCoordIndex[0] & 0xFu) && stride && stride != layout.stride) return 0;
+    if (type == D3DPT_TRIANGLESTRIP || type == D3DPT_TRIANGLEFAN || type == D3DPT_POINTLIST) {
+      static std::vector<uint16_t> s_upIndices;
+      build_strip_or_fan_indices(type, prim_count, s_upIndices);
+      draw_canonical(this, (const unsigned char *)pVertexStreamZeroData, vertexCount, s_upIndices.data(), (uint32_t)s_upIndices.size());
+    } else {
+      draw_canonical(this, (const unsigned char *)pVertexStreamZeroData, vertexCount, nullptr, 0);
+    }
   }
 #endif
   return 0;
@@ -1098,6 +2180,7 @@ inline HRESULT IDirect3DDevice9::GetDeviceCaps(D3DCAPS9* caps) {
     caps->DeviceType = D3DDEVTYPE_HAL;
     caps->Caps2 = 0x00020000L;
     caps->DevCaps = 0x00000020L | 0x00000010L;
+    caps->PrimitiveMiscCaps = 0x00000080L;
     caps->PresentationIntervals = 0x80000000L | 0x00000001L;
     caps->MaxTextureWidth = 4096;
     caps->MaxTextureHeight = 4096;
@@ -1159,7 +2242,12 @@ struct IDirect3D9 {
     return 0;
   }
   HRESULT CheckDeviceType(UINT, D3DDEVTYPE, D3DFORMAT, D3DFORMAT, BOOL) { return 0; }
-  HRESULT CheckDeviceFormat(UINT, D3DDEVTYPE, D3DFORMAT, DWORD, D3DRESOURCETYPE, D3DFORMAT) { return 0; }
+  HRESULT CheckDeviceFormat(UINT, D3DDEVTYPE, D3DFORMAT, DWORD usage, D3DRESOURCETYPE, D3DFORMAT) {
+    if (usage & D3DUSAGE_RENDERTARGET) {
+      return D3DERR_NOTAVAILABLE;
+    }
+    return 0;
+  }
   HRESULT CheckDeviceMultiSampleType(UINT, D3DDEVTYPE, D3DFORMAT, BOOL, D3DMULTISAMPLE_TYPE, DWORD*) { return 0; }
   HRESULT CheckDepthStencilMatch(UINT, D3DDEVTYPE, D3DFORMAT, D3DFORMAT, D3DFORMAT) { return 0; }
   HRESULT GetDeviceCaps(UINT, D3DDEVTYPE, D3DCAPS9* caps) {
@@ -1168,6 +2256,7 @@ struct IDirect3D9 {
       caps->DeviceType = D3DDEVTYPE_HAL;
       caps->Caps2 = 0x00020000L;
       caps->DevCaps = 0x00000020L | 0x00000010L;
+      caps->PrimitiveMiscCaps = 0x00000080L;
       caps->PresentationIntervals = 0x80000000L | 0x00000001L;
       caps->MaxTextureWidth = 4096;
       caps->MaxTextureHeight = 4096;

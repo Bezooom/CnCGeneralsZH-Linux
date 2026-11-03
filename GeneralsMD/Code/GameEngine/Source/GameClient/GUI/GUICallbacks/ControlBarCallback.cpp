@@ -564,12 +564,19 @@ void ShowControlBar( Bool immediate )
 			TheControlBar->switchControlBarStage(CONTROL_BAR_STAGE_DEFAULT);
 			// full height: the three panels are drawn over the world, they do not crop it (see InGameUI::init)
 			TheTacticalView->setHeight((Int)(TheDisplay->getHeight()));
-			if (TheControlBar->m_animateWindowManager && !immediate)
+			if (TheControlBar->m_animateWindowManager)
 			{
+				// Reset in both cases. ControlBar::update hides the parent window whenever the
+				// animator reports finished-and-reversed, so an immediate show that left a
+				// finished reverse animation in place was undone one update later - the bar
+				// appeared for a single frame and then hid itself for the rest of the game.
 				TheControlBar->m_animateWindowManager->reset();
-				//TheControlBar->m_animateWindowManager->registerGameWindow(window, WIN_ANIMATION_SLIDE_BOTTOM_TIMED, TRUE, 1000, 0);
-				TheControlBar->m_animateWindowManager->registerGameWindow(window, WIN_ANIMATION_SLIDE_BOTTOM, TRUE, 500, 0);
-				TheControlBar->animateSpecialPowerShortcut(TRUE);
+				if (!immediate)
+				{
+					//TheControlBar->m_animateWindowManager->registerGameWindow(window, WIN_ANIMATION_SLIDE_BOTTOM_TIMED, TRUE, 1000, 0);
+					TheControlBar->m_animateWindowManager->registerGameWindow(window, WIN_ANIMATION_SLIDE_BOTTOM, TRUE, 500, 0);
+					TheControlBar->animateSpecialPowerShortcut(TRUE);
+				}
 			}
 			window->winHide(FALSE);
 		}

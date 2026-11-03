@@ -55,6 +55,8 @@
 #include "targa.h"
 #include "d3dx9runtime.h"
 #include <cstdio>
+#include <cstdlib>
+#include <cstring>
 #include "wwmemlog.h"
 #include "texture.h"
 #include "formconv.h"
@@ -263,8 +265,9 @@ IDirect3DTexture9* Load_Compressed_Texture(
 	// If DDS file isn't available, use TGA file to convert to DDS.
 
 	DDSFileClass dds_file(filename,reduction_factor);
+	if (getenv("ZH_TEX_LOG")) fprintf(stderr, "TEX_DDS name=%s avail=%d\n", filename.Peek_Buffer(), (int)dds_file.Is_Available());
 	if (!dds_file.Is_Available()) return NULL;
-	if (!dds_file.Load()) return NULL;
+	if (!dds_file.Load()) { if (getenv("ZH_TEX_LOG")) fprintf(stderr, "TEX_DDS_LOAD_FAIL name=%s\n", filename.Peek_Buffer()); return NULL; }
 
 	unsigned width=dds_file.Get_Width(0);
 	unsigned height=dds_file.Get_Height(0);
@@ -578,7 +581,9 @@ IDirect3DSurface9* TextureLoader::Load_Surface_Immediate(
 
 	// Make sure the file can be opened. If not, return missing texture.
 	Targa targa;
-	if (TARGA_ERROR_HANDLER(targa.Open(filename, TGA_READMODE),filename)) return MissingTexture::_Create_Missing_Surface();
+	long openError = targa.Open(filename, TGA_READMODE);
+	if (openError && getenv("ZH_TEX_LOG")) fprintf(stderr, "TEX_TGA_FAIL name=%s err=%ld\n", (const char*)filename, openError);
+	if (TARGA_ERROR_HANDLER(openError,filename)) return MissingTexture::_Create_Missing_Surface();
 
 	// DX8 uses image upside down compared to TGA
 	targa.Header.ImageDescriptor ^= TGAIDF_YORIGIN;
@@ -601,7 +606,8 @@ IDirect3DSurface9* TextureLoader::Load_Surface_Immediate(
 	// NOTE: We load the palette but we do not yet support paletted textures!
 	char palette[256*4];
 	targa.SetPalette(palette);
-	if (TARGA_ERROR_HANDLER(targa.Load(filename, TGAF_IMAGE, false),filename)) return MissingTexture::_Create_Missing_Surface();
+	long loadError = targa.Load(filename, TGAF_IMAGE, false);
+	if (TARGA_ERROR_HANDLER(loadError,filename)) return MissingTexture::_Create_Missing_Surface();
 
 	unsigned char* src_surface=(unsigned char*)targa.GetImage();
 
@@ -752,6 +758,8 @@ void TextureLoader::Request_Background_Loading(TextureBaseClass *tc)
 void TextureLoader::Request_Foreground_Loading(TextureBaseClass *tc)
 {
 	WWPROFILE(("TextureLoader::Request_Foreground_Loading()"));
+
+
 
 	//	A run with no render device has nowhere to put a texture, and no missing-texture stand-in to
 	//	fall back on either - that one is built when the device is.  Leaving the texture
@@ -1248,6 +1256,8 @@ bool TextureLoadTaskClass::Begin_Load(void)
 		return false;
 	}
 
+
+
 	bool loaded = false;
 
 	// if allowed, begin a compressed load
@@ -1259,6 +1269,8 @@ bool TextureLoadTaskClass::Begin_Load(void)
 	if (!loaded) {
 		loaded = Begin_Uncompressed_Load();
 	}
+
+
 
 	// if not loaded, abort.
 	if (!loaded) {
@@ -1277,6 +1289,7 @@ bool TextureLoadTaskClass::Begin_Load(void)
 		 reinforcement drop, three frames after the device went.  Failing here instead puts the missing
 		 texture on it, which is what Finish_Load already does for a file that will not load. */
 	if (!D3DTexture) {
+
 		WWDEBUG_SAY(("Texture creation gave nothing back for %s - the device is probably lost\n",
 			Texture ? Texture->Get_Full_Path() : "<no texture>"));
 		return false;
@@ -1334,6 +1347,8 @@ void TextureLoadTaskClass::End_Load(void)
 
 void TextureLoadTaskClass::Finish_Load(void)
 {
+
+
 	//	No device, so no load and no missing-texture substitute either - that one is a D3D texture
 	//	built when the device was created, and without a device it was never built.
 	if (DX8Wrapper::_Get_D3D_Device() == NULL) {
@@ -1363,6 +1378,7 @@ void TextureLoadTaskClass::Finish_Load(void)
 
 void TextureLoadTaskClass::Apply_Missing_Texture(void)
 {
+
 	WWASSERT(TextureLoader::Is_DX8_Thread());
 	WWASSERT(!D3DTexture);
 
@@ -1398,13 +1414,16 @@ static bool	Get_Texture_Information
 	bool compressed
 )
 {
+
 	ThumbnailClass* thumb=ThumbnailManagerClass::Peek_Thumbnail_Instance_From_Any_Manager(filename);
+	if (getenv("ZH_TEX_LOG")) fprintf(stderr, "TEX_INFO name=%s compressed=%d thumb=%d\n", filename, (int)compressed, thumb ? 1 : 0);
 
 	if (!thumb) 
 	{
 		if (compressed) 
 		{
 			DDSFileClass dds_file(filename, 0);
+			if (getenv("ZH_TEX_LOG")) fprintf(stderr, "TEX_INFO_DDS name=%s avail=%d\n", filename, (int)dds_file.Is_Available());
 			if (!dds_file.Is_Available()) return false;
 
 			// Destination size will be the next power of two square from the larger width and height...
@@ -1437,7 +1456,11 @@ static bool	Get_Texture_Information
 		}
 
 		Targa targa;
-		if (TARGA_ERROR_HANDLER(targa.Open(filename, TGA_READMODE), filename)) 
+		int tgaerr = targa.Open(filename, TGA_READMODE);
+		if (tgaerr && getenv("ZH_TEX_LOG")) fprintf(stderr, "TEX_INFO_TGA_FAIL name=%s err=%d\n", filename, tgaerr);
+		TARGA_ERROR_HANDLER(tgaerr, filename);
+
+		if (tgaerr) 
 		{
 			return false;
 		}
@@ -1706,6 +1729,8 @@ bool TextureLoadTaskClass::Begin_Uncompressed_Load(void)
 			reducedMipCount -= Reduction;
 	}
 
+
+
 	D3DTexture = DX8Wrapper::_Create_DX8_Texture
 	(
 		reducedWidth, 
@@ -1718,6 +1743,8 @@ bool TextureLoadTaskClass::Begin_Uncompressed_Load(void)
 		D3DPOOL_SYSTEMMEM
 #endif
 	);
+
+
 
 	return true;
 }
@@ -1800,7 +1827,8 @@ bool TextureLoadTaskClass::Begin_Compressed_Load(void)
 bool TextureLoadTaskClass::Begin_Uncompressed_Load(void)
 {
 	Targa targa;
-	if (TARGA_ERROR_HANDLER(targa.Open(Texture->Get_Full_Path(), TGA_READMODE), Texture->Get_Full_Path())) {
+	long openError = targa.Open(Texture->Get_Full_Path(), TGA_READMODE);
+	if (TARGA_ERROR_HANDLER(openError, Texture->Get_Full_Path())) {
 		return false;
 	}
 
@@ -1898,6 +1926,7 @@ void TextureLoadTaskClass::Lock_Surfaces(void)
 
 void TextureLoadTaskClass::Unlock_Surfaces(void)
 {
+
 	for (unsigned int i = 0; i < MipLevelCount; ++i) 
 	{
 		if (LockedSurfacePtr[i]) 
@@ -1970,7 +1999,8 @@ bool TextureLoadTaskClass::Load_Uncompressed_Mipmap(void)
 	}
 
 	Targa targa;
-	if (TARGA_ERROR_HANDLER(targa.Open(Texture->Get_Full_Path(), TGA_READMODE), Texture->Get_Full_Path())) {
+	long openError = targa.Open(Texture->Get_Full_Path(), TGA_READMODE);
+	if (TARGA_ERROR_HANDLER(openError, Texture->Get_Full_Path())) {
 		return false;
 	}
 
@@ -1994,7 +2024,9 @@ bool TextureLoadTaskClass::Load_Uncompressed_Mipmap(void)
 	unsigned int height		= Get_Height();
 
 	// NOTE: We load the palette but we do not yet support paletted textures!
-	if (TARGA_ERROR_HANDLER(targa.Load(Texture->Get_Full_Path(), TGAF_IMAGE, false), Texture->Get_Full_Path())) {
+	long loadError = targa.Load(Texture->Get_Full_Path(), TGAF_IMAGE, false);
+	if (loadError && getenv("ZH_TEX_LOG")) fprintf(stderr, "TEX_MIP_TGA_FAIL name=%s err=%ld\n", (const char*)Texture->Get_Full_Path(), loadError);
+	if (TARGA_ERROR_HANDLER(loadError, Texture->Get_Full_Path())) {
 		return false;
 	}
 

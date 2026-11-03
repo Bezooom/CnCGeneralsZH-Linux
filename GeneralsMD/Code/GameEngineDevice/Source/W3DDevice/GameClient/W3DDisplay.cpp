@@ -41,6 +41,9 @@ static void drawFramerateBar(void);
 #endif
 #include <io.h>
 #endif
+#if defined(PLATFORM_LINUX) || defined(__linux__) || defined(_UNIX)
+#include "PAL_Window.h"
+#endif
 #include <time.h>
 #include "stringex.h"
 
@@ -829,6 +832,15 @@ static void applyWindowFrame( Int mode )
 	::SetWindowPos( ApplicationHWnd,
 									( mode == WINDOW_MODE_WINDOWED ) ? HWND_TOP : HWND_TOPMOST,
 									0, 0, 0, 0, SWP_NOSIZE | SWP_FRAMECHANGED | move );
+#elif defined(PLATFORM_LINUX)
+	extern HWND ApplicationHWnd;
+	extern Bool ApplicationIsBorderless;
+
+	if( ApplicationHWnd == NULL || ( TheGlobalData && TheGlobalData->m_headless ) )
+		return;
+
+	ApplicationIsBorderless = ( mode == WINDOW_MODE_BORDERLESS );
+	Platform_SetFullscreen( mode == WINDOW_MODE_FULLSCREEN );
 #else
 	(void)mode;
 #endif
@@ -869,6 +881,12 @@ static void sizeWindowToClient( Int mode, Int width, Int height )
 	::SetWindowPos( ApplicationHWnd,
 									( mode == WINDOW_MODE_WINDOWED ) ? HWND_TOP : HWND_TOPMOST,
 									x, y, outerW, outerH, SWP_NOACTIVATE );
+#elif defined(PLATFORM_LINUX) || defined(__linux__) || defined(_UNIX)
+	if( ApplicationHWnd == NULL || ( TheGlobalData && TheGlobalData->m_headless ) )
+		return;
+	if( mode == WINDOW_MODE_FULLSCREEN )
+		return;
+	Platform_ResizeWindow(width, height);
 #else
 	(void)mode; (void)width; (void)height;
 #endif
@@ -2429,6 +2447,13 @@ AGAIN:
 			TheParticleUpdateMS = w3dElapsedMS( tParticleStart, tParticleEnd );
 #endif
 
+			// Linux: the Vulkan shim has no render-to-texture, so every draw these two passes
+			// issue into an offscreen target is discarded by draw_canonical anyway - the passes
+			// cost a full scene traversal of CPU work per frame and produce nothing on screen.
+			// Water mirrors and projected shadows stay unsupported this pass; skipping the passes
+			// is the difference between "missing feature" and "missing feature that also burns
+			// the frame".
+#if !defined(PLATFORM_LINUX) && !defined(__linux__)
 			if (TheWaterRenderObj)
 				TheWaterRenderObj->updateRenderTargetTextures(primaryW3DView->get3DCamera());	//do a render into each texture
 
@@ -2436,6 +2461,7 @@ AGAIN:
 			//before we enter main rendering loop.
 			if (TheW3DProjectedShadowManager)
 				TheW3DProjectedShadowManager->updateRenderTargetTextures();
+#endif
 		}
 		else
 		{
@@ -3377,6 +3403,8 @@ void W3DDisplay::drawImage( const Image *image, Int startX, Int startY,
 	// sanity
 	if( image == NULL )
 		return;
+
+	if (getenv("ZH_UI_LOG")) fprintf(stderr, "UI_IMAGE name=%s file=%s color=%08x\n", image->getName().str(), image->getFilename().str(), (unsigned)color);
 
 	// !!
 	// Remember to update the GUIEditDisplay::drawImage when you make

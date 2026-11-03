@@ -38,6 +38,7 @@
  * Functions:                                                                                  *
  * - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
 
+#include <cstdio>
 #include "render2d.h"
 #include "mutex.h"
 #include "ww3d.h"
@@ -45,6 +46,7 @@
 #include "font3d.h"
 #include "rect.h"
 #include "texture.h"
+#include "missingtexture.h"
 #include "matrix4.h"
 #include "matrix3d.h"
 #include "dx8wrapper.h"
@@ -135,6 +137,7 @@ void Render2DClass::Set_Texture(TextureClass* tex)
 void Render2DClass::Set_Texture( const char * filename)
 {
 	TextureClass * tex = WW3DAssetManager::Get_Instance()->Get_Texture( filename, MIP_LEVELS_1 );
+
 	Set_Texture( tex );
 	if ( tex != NULL ) {
 		SET_REF_OWNER( tex );
@@ -628,6 +631,11 @@ void Render2DClass::Render(void)
 	vp.MinZ		= 0;
 	vp.MaxZ		= 1;
 	DX8Wrapper::Set_Viewport(&vp);
+	if (getenv("ZH_UI_LOG") && Texture) {
+		if (Texture->Peek_D3D_Texture() == MissingTexture::_Get_Missing_Texture()) {
+			fprintf(stderr, "R2D_MISSING name=%s\n", Texture->Get_Texture_Name().Peek_Buffer());
+		}
+	}
 	DX8Wrapper::Set_Texture(0,Texture);
 
 	VertexMaterialClass *vm=VertexMaterialClass::Get_Preset(VertexMaterialClass::PRELIT_DIFFUSE);

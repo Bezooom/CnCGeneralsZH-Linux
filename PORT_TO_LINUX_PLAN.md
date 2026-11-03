@@ -8,7 +8,7 @@
 
 ## Current Status — 2026-10-13
 
-### Full CTest 32/32 Green, Native Linux Port Installed, Wine Version Removed
+### Full CTest 33/33 Green, Native Linux Port Installed, Wine Version Removed
 
 - [x] **GameEngine Initialization Reaches Main Loop (Frame 0)**:
   - Fixed `win.h` `CRITICAL_SECTION` to use `PTHREAD_MUTEX_RECURSIVE`, resolving recursive self-deadlock in `TheUnicodeStringCriticalSection` during Object INI loading.
@@ -50,7 +50,7 @@
   - Verified staging installation via `ninja install` (`/usr/local/bin`, `/usr/local/lib`, `/usr/local/share`).
   - Installed standalone user launcher `~/.local/bin/generals`, XDG desktop entry `~/.local/share/applications/generals.desktop`, icons, and desktop shortcuts.
   - Removed legacy Wine installation (2.8 GB) and Wine desktop entries; game runs 100% standalone with native Linux binaries and bundled `.big` assets.
-- [x] **Full CTest Suite**: **32/32 passed, 0 failed (100% green)** including `test_registry_class_linux`, `test_vkvertexformat` and `test_gameengine`.
+- [x] **Full CTest Suite**: **33/33 passed, 0 failed (100% green)** including `test_registry_class_linux`, `test_vkvertexformat`, `test_vk_pal_shader` and `test_gameengine`.
 Verification: `GeneralsMD/build-linux` (GCC 13.3, Release, C++17, Ninja).
 
 ### FVF decode separated from the draw path — 2026-10-13
@@ -71,7 +71,11 @@ Verification: `GeneralsMD/build-linux` (GCC 13.3, Release, C++17, Ninja).
   different fields; the implementation's handles are now the only definition, including the per-texture
   `descriptorSet`. `VkWriteDescriptorSet`'s member is `pImageInfo`, not `imageInfo`.
 - [x] **Embedded SPIR-V arrays**: the rows were missing the commas between them, so the file did not
-  compile. Both modules now walk cleanly, 236 and 190 words.
+  compile. The push-constant matrix is ColMajor with MatrixStride 16, and the sampled image is a
+  2D color image (Depth=0, Sampled=1). Without those, lavapipe rejects the pipeline or draws nothing
+  while NVIDIA still produces a picture. Both modules walk cleanly, 245 and 200 words.
+  `test_vk_pal_shader` builds its own offscreen pipeline around the game's modules and reads a
+  colored texel back.
 - [x] **`test_vkvertexformat`** (11 tests, 64 checks): offsets per FVF, the two-bit texture-coordinate
   sizes, blend-weight formats the engine never fills, BGRA unpack, the values a disabled stage produces,
   and the draw path through `DrawPrimitiveUP`, including the transposed matrix with the y row negated for

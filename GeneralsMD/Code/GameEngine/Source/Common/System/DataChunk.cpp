@@ -38,6 +38,27 @@
 // If verbose, lots of debug logging.
 #define not_VERBOSE
 
+#include <vector>
+
+// Map files store UnicodeStrings as UTF-16LE code units with a 16-bit unit count: that is what
+// a 2-byte wchar_t wrote.  WideChar is wchar_t, which is 4 bytes outside Windows, so the bytes
+// are converted rather than copied, or every string reads twice its length and desyncs the chunk.
+static std::vector<UnsignedShort> toUtf16(const UnicodeString &s)
+{
+	std::vector<UnsignedShort> units;
+	for (const WideChar *p = s.str(); *p; ++p) {
+		UnsignedInt c = (UnsignedInt)*p;
+		if (sizeof(WideChar) > 2 && c > 0xFFFF && c <= 0x10FFFF) {
+			c -= 0x10000;
+			units.push_back((UnsignedShort)(0xD800 + (c >> 10)));
+			units.push_back((UnsignedShort)(0xDC00 + (c & 0x3FF)));
+		} else {
+			units.push_back((UnsignedShort)c);
+		}
+	}
+	return units;
+}
+
 CachedFileInputStream::CachedFileInputStream(void):m_buffer(NULL),m_size(0)
 {
 }
@@ -363,9 +384,10 @@ void DataChunkOutput::writeAsciiString( const AsciiString& theString )
 
 void DataChunkOutput::writeUnicodeString( UnicodeString theString ) 
 { 
-	UnsignedShort len = theString.getLength();
+	std::vector<UnsignedShort> units = toUtf16(theString);
+	UnsignedShort len = (UnsignedShort)units.size();
 	::fwrite( (const char *)&len, sizeof(UnsignedShort) , 1, m_tmp_file );
-	::fwrite( theString.str(), len*sizeof(WideChar) , 1, m_tmp_file ); 
+	if (len) ::fwrite( units.data(), len*sizeof(UnsignedShort) , 1, m_tmp_file );
 }
 
 void DataChunkOutput::writeNameKey( const NameKeyType key ) 
@@ -942,7 +964,6 @@ Dict DataChunkInput::readDict()
 				break;
 			default:
 				throw ERROR_CORRUPT_FILE_FORMAT;
-				break;
 		}
 	}
 
@@ -974,14 +995,26 @@ UnicodeString DataChunkInput::readUnicodeString(void)
 	DEBUG_ASSERTCRASH(m_chunkStack->dataLeft>=sizeof(UnsignedShort), ("Read past end of chunk."));
 	m_file->read( &len, sizeof(UnsignedShort) );
 	decrementDataLeft( sizeof(UnsignedShort) );
-	DEBUG_ASSERTCRASH(m_chunkStack->dataLeft>=len, ("Read past end of chunk."));
+	DEBUG_ASSERTCRASH(m_chunkStack->dataLeft>=len*sizeof(UnsignedShort), ("Read past end of chunk."));
 	UnicodeString theString;
 	if (len>0) {
+		std::vector<UnsignedShort> units(len);
+		m_file->read( (char*)units.data(), len*sizeof(UnsignedShort) );
+		decrementDataLeft( len*sizeof(UnsignedShort) );
+		// getBufferForRead allocates room for the terminating null; a surrogate pair turns
+		// two units into one character, so the string can only come out shorter.
 		WideChar *str = theString.getBufferForRead(len);
-		m_file->read( (char*)str, len*sizeof(WideChar) );
-		decrementDataLeft( len*sizeof(WideChar) );
-		// add null delimiter to string.  Note that getBufferForRead allocates space for terminating null.
-		str[len] = '\000';
+		Int out = 0;
+		for (Int i = 0; i < len; ++i) {
+			UnsignedInt c = units[i];
+			if (sizeof(WideChar) > 2 && c >= 0xD800 && c < 0xDC00 && i + 1 < len
+					&& units[i + 1] >= 0xDC00 && units[i + 1] < 0xE000) {
+				c = 0x10000 + ((c - 0xD800) << 10) + (units[i + 1] - 0xDC00);
+				++i;
+			}
+			str[out++] = (WideChar)c;
+		}
+		str[out] = '\000';
 	}
 
 	return theString; 

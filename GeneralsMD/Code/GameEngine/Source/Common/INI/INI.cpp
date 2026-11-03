@@ -850,6 +850,7 @@ void INI::parseMappedImage( INI *ini, void * /*instance*/, void *store, const vo
 	{
 		typedef const Image* ConstImagePtr;
 		*(ConstImagePtr*)store = TheMappedImageCollection->findImageByName( AsciiString( token ) );
+		if (getenv("ZH_UI_LOG")) fprintf(stderr, "MAP_IMAGE name=%s found=%d\n", token, *(ConstImagePtr*)store != NULL);
 	}
 	
 	//KM: If we are in the worldbuilder, we want to parse commandbuttons for informational purposes,

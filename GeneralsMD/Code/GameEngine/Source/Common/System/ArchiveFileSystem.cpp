@@ -230,10 +230,12 @@ Bool ArchiveFileSystem::doesFileExist(const Char *filename) const
 	return TRUE;
 }
 
-File * ArchiveFileSystem::openFile(const Char *filename, Int access /* = 0 */) 
+	File * ArchiveFileSystem::openFile(const Char *filename, Int access /* = 0 */) 
 {
 	AsciiString archiveFilename;
 	archiveFilename = getArchiveFilenameForFile(AsciiString(filename));
+
+
 
 	if (archiveFilename.getLength() == 0) {
 		return NULL;

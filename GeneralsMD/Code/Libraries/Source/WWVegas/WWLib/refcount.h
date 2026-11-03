@@ -44,6 +44,8 @@
 #include "always.h"
 #endif
 
+#include <exception>
+
 #ifndef LISTNODE_H
 #include "listnode.h"
 #endif
@@ -182,7 +184,9 @@ protected:
 		#ifndef NDEBUG
 		Remove_Active_Ref(this);	
 		#endif
-		assert(NumRefs == 0);
+		/* During exception propagation the base subobject is destroyed while the
+		** still-owned count is in flight; MSVC release builds assert out entirely. */
+		assert(NumRefs == 0 || std::uncaught_exceptions() > 0);
 	}
 
 private:

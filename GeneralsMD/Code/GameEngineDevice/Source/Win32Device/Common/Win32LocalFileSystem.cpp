@@ -38,6 +38,8 @@
 #include <io.h>
 #else
 #include <unistd.h>
+#include <string>
+#include "PAL_FileSystem.h"
 #endif
 
 Win32LocalFileSystem::Win32LocalFileSystem() : LocalFileSystem() 
@@ -121,6 +123,18 @@ void Win32LocalFileSystem::reset()
 Bool Win32LocalFileSystem::doesFileExist(const Char *filename) const
 {
 	//USE_PERF_TIMER(Win32LocalFileSystem_doesFileExist)
+#if defined(PLATFORM_LINUX) || defined(__linux__) || defined(_UNIX)
+	// Texture names reach here lowercased and may carry backslashes, while the loose assets keep
+	// their original spelling.  _access is case-sensitive on Linux, so without resolving the real
+	// path first every loose texture with a capital in its name looks missing and samples the
+	// magenta placeholder.
+	if (filename) {
+		std::string path = filename;
+		Platform_NormalizePath(path);
+		std::string resolved;
+		if (Platform_ResolveCasePath(path, resolved)) return TRUE;
+	}
+#endif
 	if (_access(filename, 0) == 0) {
 		return TRUE;
 	}

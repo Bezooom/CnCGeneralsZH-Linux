@@ -127,6 +127,32 @@ TEST(pal_filesystem_case_resolution)
     fs::remove_all(temp_dir, ec);
 }
 
+TEST(pal_filesystem_resolves_loose_texture_paths)
+{
+    // The engine lowercases every texture name and the file system may hand it backslashes, while
+    // a loose asset under Art/Textures keeps the spelling it was shipped with.  This is the lookup
+    // the control-bar plates do: ReforgedBarGLACenter.tga queried as
+    // art\textures\reforgedbarglacenter.tga.
+    fs::path temp_dir = fs::temp_directory_path() / "pal_test_loose_textures";
+    std::error_code ec;
+    fs::remove_all(temp_dir, ec);
+    fs::create_directories(temp_dir / "Art" / "Textures", ec);
+
+    const std::string file_path = (temp_dir / "Art" / "Textures" / "ReforgedBarGLACenter.tga").string();
+    {
+        std::ofstream out(file_path);
+        out << "tga";
+    }
+
+    const std::string query = temp_dir.string() + "/art\\textures\\reforgedbarglacenter.tga";
+    std::string resolved;
+    const bool found = Platform_ResolveCasePath(query, resolved);
+    CHECK(found);
+    CHECK_EQ(resolved, file_path);
+
+    fs::remove_all(temp_dir, ec);
+}
+
 TEST(pal_filesystem_directories)
 {
     std::string user_data = Platform_GetUserDataDir();

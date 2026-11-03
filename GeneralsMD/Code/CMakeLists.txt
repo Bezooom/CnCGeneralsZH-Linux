@@ -146,10 +146,26 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID STREQUAL "Clang
     set(SDL_LIBRARIES SDL2::SDL2)
   endif()
   
-  # Optional multimedia packages - core build works without them
+  # OpenAL backs the Linux Miles shim (Miles6/stub/miles_al.cpp).  A distro
+  # dev package is preferred; without it the build falls back to the headers
+  # vendored under Miles6/stub/openal/include and links the runtime soname
+  # directly, so libmss32.so builds without libopenal-dev installed.
   find_package(OpenAL QUIET)
-  if(NOT OpenAL_FOUND)
-    message(WARNING "OpenAL not found - audio will not work")
+  if(OpenAL_FOUND)
+    set(MILES_OPENAL_INCLUDE_DIRS ${OPENAL_INCLUDE_DIR})
+    set(MILES_OPENAL_LIBRARIES ${OPENAL_LIBRARY})
+    set(MILES_HAVE_OPENAL TRUE)
+  else()
+    find_file(MILES_OPENAL_RUNTIME NAMES libopenal.so.1
+              PATHS /lib /usr/lib /lib/x86_64-linux-gnu /usr/lib/x86_64-linux-gnu /usr/local/lib)
+    if(MILES_OPENAL_RUNTIME)
+      set(MILES_OPENAL_INCLUDE_DIRS ${WW}/Miles6/stub/openal/include)
+      set(MILES_OPENAL_LIBRARIES ${MILES_OPENAL_RUNTIME})
+      set(MILES_HAVE_OPENAL TRUE)
+      message(STATUS "OpenAL dev package absent: vendored headers + runtime ${MILES_OPENAL_RUNTIME}")
+    else()
+      message(WARNING "OpenAL not found - audio will not work")
+    endif()
   endif()
   
   find_package(FFmpeg QUIET)
@@ -158,6 +174,10 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID STREQUAL "Clang
   endif()
   
   find_package(ZLIB REQUIRED)
+
+  find_package(PkgConfig REQUIRED)
+  pkg_check_modules(FREETYPE REQUIRED freetype2)
+  pkg_check_modules(FFMPEG REQUIRED libavcodec libavformat libavutil libswscale)
   
   # Optional LibUnwind - for stack walking
   find_package(LibUnwind QUIET)
@@ -544,12 +564,13 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
   # The D3D8-token-to-HLSL translator is pure string work: no device, no d3dx9_43.dll.
   # It builds here even though the D3DX entry points it calls stay NULL on Linux, so the
   # call sites resolve and report D3DERR_INVALIDCALL instead of failing to link.
-  list(APPEND WW3D2_SOURCES ${WW}/WW3D2/d3d8shadertranslate.cpp)
+  list(APPEND WW3D2_SOURCES ${WW}/WW3D2/d3d8shadertranslate.cpp ${CMAKE_CURRENT_SOURCE_DIR}/Platform/PAL_Font.cpp)
   add_library(ww3d2_linux_compile OBJECT ${WW3D2_SOURCES})
   target_include_directories(ww3d2_linux_compile PRIVATE
     ${WW}/WW3D2 ${WW}/WWLib ${WW}/WWMath ${WW}/WWDebug ${WW}/WWSaveLoad ${WW}/Wwutil
     ${WW}/wwshade ${WW}/WWAudio ${WW}/Miles6/include ${WW}/LinuxDX
     ${CMAKE_CURRENT_SOURCE_DIR}/Platform
+    ${FREETYPE_INCLUDE_DIRS}
     $<TARGET_PROPERTY:gameengine,INCLUDE_DIRECTORIES>)
   target_compile_definitions(ww3d2_linux_compile PRIVATE
     $<TARGET_PROPERTY:gameengine,COMPILE_DEFINITIONS>)
@@ -559,7 +580,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
   add_library(ww3d2 STATIC $<TARGET_OBJECTS:ww3d2_linux_compile>)
   target_include_directories(ww3d2 PUBLIC ${WW}/WW3D2 PRIVATE ${WW}/WWLib ${WW}/WWMath)
   # CombinerShader_Key/Generate live in ffshader; the cache cannot resolve them alone.
-  target_link_libraries(ww3d2 PUBLIC ffshader)
+  target_link_libraries(ww3d2 PUBLIC ffshader ${FREETYPE_LIBRARIES})
 endif()
 
 # Phase 8: 1 kHz EIP sampler that symbolizes against the linker map - the
@@ -879,9 +900,19 @@ list(REMOVE_ITEM GAMEENGINEDEVICE_SOURCES
 add_library(binkstub SHARED
   ${WW}/Bink/stub/bink.c ${WW}/Bink/stub/bink.def)
 set_target_properties(binkstub PROPERTIES OUTPUT_NAME binkw32)
-target_include_directories(binkstub PRIVATE ${WW}/Bink/include)
+target_include_directories(binkstub PRIVATE ${WW}/Bink/include ${FFMPEG_INCLUDE_DIRS})
+target_link_libraries(binkstub PRIVATE ${FFMPEG_LIBRARIES})
 
-add_library(milesstub SHARED ${WW}/Miles6/stub/miles.c)
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND MILES_HAVE_OPENAL)
+  # Real OpenAL-backed Miles implementation.  It replaces miles.c wholesale on
+  # Linux (the no-op branch there would collide with these entry points).
+  add_library(milesstub SHARED ${WW}/Miles6/stub/miles_al.cpp)
+  target_include_directories(milesstub PRIVATE
+    ${MILES_OPENAL_INCLUDE_DIRS} ${WW}/Miles6/stub/minimp3)
+  target_link_libraries(milesstub PRIVATE ${MILES_OPENAL_LIBRARIES} Threads::Threads)
+else()
+  add_library(milesstub SHARED ${WW}/Miles6/stub/miles.c)
+endif()
 if(NOT CMAKE_SYSTEM_NAME STREQUAL "Linux")
   target_sources(milesstub PRIVATE ${WW}/Miles6/stub/miles.def)
 endif()
@@ -889,7 +920,7 @@ set_target_properties(milesstub PROPERTIES OUTPUT_NAME mss32 BUILD_WITH_INSTALL_
 if(TARGET binkstub)
   set_target_properties(binkstub PROPERTIES BUILD_WITH_INSTALL_RPATH TRUE INSTALL_RPATH "$ORIGIN")
 endif()
-target_include_directories(milesstub PRIVATE ${WW}/Miles6/stub ${WW}/Miles6/include)
+target_include_directories(milesstub PRIVATE ${WW}/Miles6/stub ${WW}/Miles6/include ${WW}/Miles6/stub/minimp3)
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
   add_library(gameenginedevice STATIC $<TARGET_OBJECTS:gameenginedevice_linux_compile>)
@@ -947,7 +978,8 @@ target_link_libraries(generals PRIVATE
   ${DEBUG_SYSTEM_LIBS}
   "-Wl,--end-group"
   Vulkan::Vulkan
-  -lX11)
+  -lX11
+  ${FREETYPE_LIBRARIES})
 include(GNUInstallDirs)
 install(TARGETS generals RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 install(TARGETS milesstub binkstub LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR})
@@ -1132,7 +1164,7 @@ target_include_directories(test_ww3d2 PRIVATE
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
   target_compile_options(test_ww3d2 PRIVATE -ffunction-sections -fdata-sections)
   target_link_options(test_ww3d2 PRIVATE -Wl,--gc-sections)
-  target_link_libraries(test_ww3d2 PRIVATE -Wl,--start-group ww3d2 wwsaveload debuglib ffshader wwdebug wwlib wwmath -Wl,--end-group pthread dl rt m)
+  target_link_libraries(test_ww3d2 PRIVATE -Wl,--start-group ww3d2 wwsaveload debuglib ffshader wwdebug wwlib wwmath -Wl,--end-group pthread dl rt m ${FREETYPE_LIBRARIES})
 endif()
 
 # The decode is what the Vulkan pipeline reads. A wrong offset reads the normal as the colour, which
@@ -1144,6 +1176,11 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
   target_include_directories(test_vkvertexformat PRIVATE
     ${WW}/WW3D2 ${WW}/WWLib ${CMAKE_CURRENT_SOURCE_DIR}/Platform)
   set_tests_properties(test_vkvertexformat PROPERTIES LABELS "linux;vulkan" TIMEOUT 10)
+
+  add_lib_test(test_asset_layouts wwlib wwmath)
+  target_include_directories(test_asset_layouts PRIVATE
+    ${WW}/WW3D2 ${WW}/WWLib ${WW}/WWMath ${WW}/WWDebug)
+  set_tests_properties(test_asset_layouts PROPERTIES LABELS "linux;assets" TIMEOUT 10)
 endif()
 
 if(MSVC)
@@ -1262,7 +1299,19 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
       ${WW} ${WW}/WWLib ${WW}/LinuxDX)
     target_link_libraries(test_vk_swapchain PRIVATE test_harness debuglib Vulkan::Vulkan -lX11)
     add_test(NAME test_vk_swapchain COMMAND test_vk_swapchain)
-    set_tests_properties(test_vk_swapchain PROPERTIES LABELS "linux;vulkan;renderer" TIMEOUT 15)
+    set_tests_properties(test_vk_swapchain PROPERTIES LABELS "linux;vulkan;renderer" TIMEOUT 120)
+
+    # The game's embedded modules, not a private copy. A depth image or a matrix with no
+    # ColMajor/MatrixStride still draws on NVIDIA and fails here on lavapipe.
+    add_executable(test_vk_pal_shader
+      ${TESTS}/test_vk_pal_shader.cpp
+      ${CMAKE_CURRENT_SOURCE_DIR}/Platform/PAL_Vulkan.cpp)
+    set_target_properties(test_vk_pal_shader PROPERTIES CXX_STANDARD 17)
+    target_include_directories(test_vk_pal_shader PRIVATE
+      ${TESTS} ${CMAKE_CURRENT_SOURCE_DIR}/Platform)
+    target_link_libraries(test_vk_pal_shader PRIVATE test_harness Vulkan::Vulkan -lX11)
+    add_test(NAME test_vk_pal_shader COMMAND test_vk_pal_shader)
+    set_tests_properties(test_vk_pal_shader PROPERTIES LABELS "linux;vulkan;renderer" TIMEOUT 30)
   endif()
 
   # PAL contract unit tests

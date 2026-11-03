@@ -133,8 +133,8 @@ typedef struct _TGAHeader
  */
 typedef struct _TGA2Footer
 	{
-	long Extension;
-	long Developer;
+	int  Extension;
+	int  Developer;
 	char Signature[16];
 	char RsvdChar;
 	char BZST;
@@ -224,15 +224,14 @@ typedef struct _TGA2Extension
 	TGA2TimeStamp JobTime;
 	char          SoftID[41];
 	TGA2SoftVer   SoftVer;
-	long          KeyColor;
+	int           KeyColor;
 	TGA2Ratio     Aspect;
 	TGA2Ratio     Gamma;
-	long          ColorCor;
-	long          PostStamp;
-	long          ScanLine;
+	int           ColorCor;
+	int           PostStamp;
+	int           ScanLine;
 	char          Attributes;
 	} TGA2Extension;
-
 /* Alpha channel attributes (Extension Area) */
 #define EXTA_NOALPHA 0  /* No alpha data included */
 #define EXTA_IGNORE  1  /* Undefined alpha data, can ignore */
@@ -241,6 +240,11 @@ typedef struct _TGA2Extension
 #define EXTA_PREMULT 4  /* Pre-Multiplied alpha data */
 
 #pragma pack(pop)
+#ifdef __cplusplus
+static_assert(sizeof(TGAHeader) == 18, "TGAHeader must match the 18-byte on-disk layout");
+static_assert(sizeof(TGA2Footer) == 26, "TGA2Footer must match the 26-byte on-disk layout");
+static_assert(sizeof(TGA2Extension) == 495, "TGA2Extension must match the 495-byte on-disk layout");
+#endif
 
 /*
 ** This define changes this code from code that works with standard IO calls,

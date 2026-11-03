@@ -150,7 +150,13 @@ struct LegacyDDSURFACEDESC2 {
 	};
 	unsigned AlphaBitDepth;
 	unsigned Reserved;
-	void* Surface;
+	// This slot held the 32-bit Windows surface pointer and is part of the on-disk DDS
+	// layout: 124 bytes with lpSurface as a DWORD.  A real pointer here doubles the
+	// field's size on 64-bit hosts, shifts every member after it and makes the read of
+	// this structure disagree with the size field every DDS file carries, which fails
+	// the load and leaves every texture on the missing-texture stand-in.  The pointer is
+	// never dereferenced on load, so a fixed-width field keeps the layout intact.
+	unsigned Surface;
 	union
 	{
 		LegacyDDCOLORKEY CKDestOverlay;
@@ -163,6 +169,10 @@ struct LegacyDDSURFACEDESC2 {
 	LegacyDDSCAPS2 Caps;
 	unsigned TextureStage;
 };
+
+// The DDS files in the archives were written by 32-bit Windows, whose DDSURFACEDESC is
+// 124 bytes; the loader trusts that size when it reads the header.
+static_assert(sizeof(LegacyDDSURFACEDESC2) == 124, "LegacyDDSURFACEDESC2 must match the 32-bit on-disk layout");
 
 
 enum DDSType

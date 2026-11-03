@@ -284,6 +284,9 @@ void ImageCollection::load( Int textureSize )
 	ini.loadDirectory( AsciiString( buffer ), TRUE, INI_LOAD_OVERWRITE, NULL );
 
 	ini.loadDirectory("Data\\INI\\MappedImages\\HandCreated", TRUE, INI_LOAD_OVERWRITE, NULL );
+	DEBUG_LOG(("ImageCollection::load(%d) registered %d images; MainMenuRuler=%p Buttons-Left=%p LoadPageHuge=%p\n",
+		textureSize, (int)m_imageMap.size(),
+		findImageByName("MainMenuRuler"), findImageByName("Buttons-Left"), findImageByName("LoadPageHuge")));
 
 
 }  // end load

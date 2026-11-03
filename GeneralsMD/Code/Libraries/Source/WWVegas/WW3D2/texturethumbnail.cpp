@@ -337,8 +337,8 @@ void ThumbnailManagerClass::Load()
 					int original_mip_level_count;
 					WW3DFormat original_format;
 					int name_len;
-					unsigned long date_time;
-					thumb_file->Read(&date_time,sizeof(unsigned long));
+					uint32 date_time;
+					thumb_file->Read(&date_time,sizeof(uint32));
 					thumb_file->Read(&offset,sizeof(int));
 					thumb_file->Read(&width,sizeof(int));
 					thumb_file->Read(&height,sizeof(int));
@@ -456,9 +456,9 @@ void ThumbnailManagerClass::Save(bool force)
 		int original_height=thumb->Get_Original_Texture_Height();
 		int original_mip_level_count=thumb->Get_Original_Texture_Mip_Level_Count();
 		WW3DFormat original_format=thumb->Get_Original_Texture_Format();
-		unsigned long date_time=thumb->Get_Date_Time();
+		uint32 date_time=(uint32)thumb->Get_Date_Time();
 
-		thumb_file->Write(&date_time,sizeof(unsigned long));
+		thumb_file->Write(&date_time,sizeof(uint32));
 		thumb_file->Write(&offset,sizeof(int));
 		thumb_file->Write(&width,sizeof(int));
 		thumb_file->Write(&height,sizeof(int));
