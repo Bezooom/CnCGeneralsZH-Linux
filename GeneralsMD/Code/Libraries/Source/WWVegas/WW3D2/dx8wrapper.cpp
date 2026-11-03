@@ -1542,9 +1542,17 @@ int DX8Wrapper::Get_Swap_Interval(void)
 
 bool DX8Wrapper::Has_Stencil(void)
 {
+#if defined(PLATFORM_LINUX) || defined(__linux__) || defined(_UNIX)
+	// The Vulkan pipeline never enables the stencil test, so reporting a stencil here sends the
+	// scene down flushOccludedObjectsIntoStencil(), which writes the player-colour quad expecting
+	// the stencil to mask it.  Without a stencil that quad covers the tactical view in the local
+	// player's colour; report false so the engine uses its non-stencil occlusion path instead.
+	return false;
+#else
 	bool has_stencil = (_PresentParameters.AutoDepthStencilFormat == D3DFMT_D24S8 ||
 						_PresentParameters.AutoDepthStencilFormat == D3DFMT_D24X4S4);
 	return has_stencil;
+#endif
 }
 
 int DX8Wrapper::Get_Render_Device_Count(void)
