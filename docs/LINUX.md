@@ -56,16 +56,10 @@ working arrangement, not a proved root cause.
 
 ## Licensing
 
-The source is GPL v3, inherited from the code EA released. No game data from the retail install is
-committed: no `*.big` archive, map, model or texture from the player's copy, and none may be added.
+The source is GPL v3, inherited from the code EA released. The repository history was scrubbed of
+every asset blob it carried: the tree now contains no `.big` archive, map, model or texture from any
+source, and none may be added.
 
-The repository does carry a small, fixed set of assets, listed here so the claim above is exact:
-
-| Path | Files | Origin |
-| :--- | :--- | :--- |
-| `Generals/Code/Libraries/Source/WWVegas/WW3D2/RequiredAssets/` | `AddProjectorGradient.tga`, `MultProjectorGradient.tga`, `w3d_missing_texture.tga`, `ShatterPlanes0.w3d` | introduced with EA's initial source commit `49843ea4`; part of the source release that `LICENSE.md` covers |
-| `GeneralsMD/Code/Data/Art/Textures/` | `ReforgedBar{US,China,GLA}{Left,Center,Right}.tga` (9), `RebornBar{US,China,GLA}{Left,Center,Right}.tga` (9) | introduced by upstream commit `b95e04b5` (Zero Hour Reforged rename); authorship and file-level licence to be confirmed with the upstream project |
-
-The `LICENSE.md` in this repository covers EA's released source. It does not, by itself, establish
-file-level rights for the interface bars above; that attribution is pending and must be resolved
-before the repository is presented as asset-free.
+The WW3D engine expects four `RequiredAssets` files at runtime (`w3d_missing_texture.tga` and the
+projector and shatter samples). They are not in this repository; take them from the WW3D source drop
+alongside your game data if a path needs them.
