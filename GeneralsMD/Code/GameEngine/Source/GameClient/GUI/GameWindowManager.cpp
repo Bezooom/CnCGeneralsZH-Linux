@@ -1358,6 +1358,10 @@ void GameWindowManager::winRepaint( void )
 {
 	GameWindow *window, *next;
 
+	// The whole interface is a run of 2D quads; holding them in one batch lets the renderer merge
+	// every image that shares a texture page into one draw instead of one draw per button and glyph.
+	TheDisplay->beginBatch2D();
+
 	// draw below windows
 	for( window = m_windowTail; window; window = next )
 	{
@@ -1388,6 +1392,8 @@ void GameWindowManager::winRepaint( void )
 
 	if(TheTransitionHandler)
 		TheTransitionHandler->draw();
+
+	TheDisplay->endBatch2D();
 }  // end WinRepaint
 
 //-------------------------------------------------------------------------------------------------

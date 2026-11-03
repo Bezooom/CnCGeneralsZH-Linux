@@ -2883,10 +2883,28 @@ void W3DDisplay::setTimeOfDay( TimeOfDay tod )
 	* add to it.  Whatever was waiting in a state this call cannot share is drawn first, so nothing
 	* ever changes the order things appear in. */
 //=============================================================================
+// The 2D renderer batches quads, but a batch is one texture. Two different Image objects that
+// name the same file - nearly every button and glyph in the interface does - can share it, which
+// is what turns the control bar and the text from one draw per image into one draw per page.
+static Bool same2DTexture( const Image *a, const Image *b )
+{
+	if( a == b )
+		return TRUE;
+	if( a == NULL || b == NULL )
+		return FALSE;
+	const Bool aRaw = BitTest( a->getStatus(), IMAGE_STATUS_RAW_TEXTURE ) ? TRUE : FALSE;
+	const Bool bRaw = BitTest( b->getStatus(), IMAGE_STATUS_RAW_TEXTURE ) ? TRUE : FALSE;
+	if( aRaw != bRaw )
+		return FALSE;
+	if( aRaw )
+		return a->getRawTextureData() == b->getRawTextureData();
+	return strcmp( a->getFilename().str(), b->getFilename().str() ) == 0;
+}
+
 Bool W3DDisplay::setup2D( const Image *image, Bool batchable )
 {
 
-	if( m_batch2D && batchable && m_batch2DOpen && m_batch2DKeepOpen && m_batch2DImage == image )
+	if( m_batch2D && batchable && m_batch2DOpen && m_batch2DKeepOpen && same2DTexture( m_batch2DImage, image ) )
 		return FALSE;		// what is waiting was set up for exactly this: add to it
 
 	flush2D();
