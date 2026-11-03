@@ -2216,11 +2216,26 @@ void HeightMapRenderObjClass::renderTerrainPass(CameraClass *pCamera)
 	
 	DX8Wrapper::Set_Index_Buffer(m_indexBuffer,0);
 
+	// Only the tiles the camera can see. Every tile of the whole map used to be drawn on every
+	// pass, which on this renderer is hundreds of draw calls a frame for terrain that is off
+	// screen. The box is the tile's world footprint with a full-height z range, so it only culls
+	// what is definitely outside the view.
+	const Int tileBorder = m_map ? m_map->getBorderSizeInline() : 0;
+	const Real tileCell = (Real)MAP_XY_FACTOR;
+	const Real tileWorld = tileCell * (Real)VERTEX_BUFFER_TILE_LENGTH;
+	const Real tileHalf = tileWorld * 0.5f;
+	const Real tileZ = 255.0f * (Real)MAP_HEIGHT_SCALE * 0.5f;
 	for (Int j=0; j<m_numVBTilesY; j++)
 		for (Int i=0; i<m_numVBTilesX; i++)
 		{
-			static int count = 0;
-			count++;
+			{
+				const Real x0 = ((Real)(i * VERTEX_BUFFER_TILE_LENGTH - tileBorder)) * tileCell;
+				const Real y0 = ((Real)(j * VERTEX_BUFFER_TILE_LENGTH - tileBorder)) * tileCell;
+				AABoxClass tileBox( Vector3( x0 + tileHalf, y0 + tileHalf, tileZ ),
+														Vector3( tileHalf, tileHalf, tileZ ) );
+				if( pCamera->Cull_Box( tileBox ) )
+					continue;
+			}
 			Int numPolys = VERTEX_BUFFER_TILE_LENGTH*VERTEX_BUFFER_TILE_LENGTH*2;
 			Int numVertex = (VERTEX_BUFFER_TILE_LENGTH*2)*(VERTEX_BUFFER_TILE_LENGTH*2);
 			if (HALF_RES_MESH) {
