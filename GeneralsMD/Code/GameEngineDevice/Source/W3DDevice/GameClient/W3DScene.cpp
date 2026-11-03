@@ -1546,6 +1546,12 @@ void RTS3DScene::flushOccludedObjectsIntoStencil(RenderInfoClass & rinfo)
 		//INDX contains the occluded player's color index.  We walk through all the player colors and
 		//draw them wherever the stencil matches the color's index.
 		Int usedPlayerColorBits=0;
+#if defined(PLATFORM_LINUX) || defined(__linux__) || defined(_UNIX)
+		// The occlusion pass masks this full-view quad with the stencil buffer, which the Linux
+		// device does not have.  Drawing it unmasked lays the local player's colour over the whole
+		// tactical view, so skip the quad and leave the shadow mask empty.  The occluder and
+		// occludee objects above still render - this only drops their colour tint when hidden.
+#else
 		for (i=0; i<numVisiblePlayerColors; i++)
 		{
 			Int color=visiblePlayerColors[i];
@@ -1563,6 +1569,7 @@ void RTS3DScene::flushOccludedObjectsIntoStencil(RenderInfoClass & rinfo)
 			renderStenciledPlayerColor(0,0, TRUE);
 			TheW3DShadowManager->setStencilShadowMask(0x80808080);	//msb indicates occluded player pixels so ignore it when filling screen with shadow
 		}
+#endif
 
 		DX8Wrapper::Set_DX8_Render_State(D3DRS_STENCILENABLE, FALSE );
 	}
