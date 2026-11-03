@@ -35,6 +35,8 @@ static std::vector<VkSemaphore> s_imageAvailableSemaphores;
 static std::vector<VkSemaphore> s_renderFinishedSemaphores;
 static std::vector<VkFence> s_inFlightFences;
 static VkPresentModeKHR s_presentMode = VK_PRESENT_MODE_FIFO_KHR;
+static void *s_surfaceDisplay = nullptr;
+static bool s_ownsSurfaceDisplay = false;
 static VkClearValue s_clearColor = { {{ 0.0f, 0.0f, 0.0f, 1.0f }} };
 struct PlatformVulkanTexture {
     VkImage image;
@@ -708,16 +710,26 @@ bool Platform_InitVulkan(PlatformWindowInfo *windowInfo)
     }
     s_ctx.instance = instance;
 
-    // 2. Xlib Surface
+    // 2. Xlib Surface. The surface gets its own connection to the server: the driver keeps state
+    // tied to the Display it was handed, and closing the window's connection afterwards walked
+    // freed state in XCloseDisplay (the X11 build crashed on shutdown).
+    Display *surfaceDisplay = XOpenDisplay(nullptr);
+    const bool ownsSurfaceDisplay = surfaceDisplay != nullptr;
+    if (!surfaceDisplay) surfaceDisplay = display;
+    s_surfaceDisplay = surfaceDisplay;
+    s_ownsSurfaceDisplay = ownsSurfaceDisplay;
     VkXlibSurfaceCreateInfoKHR surfInfo = {};
     surfInfo.sType = VK_STRUCTURE_TYPE_XLIB_SURFACE_CREATE_INFO_KHR;
-    surfInfo.dpy = display;
+    surfInfo.dpy = surfaceDisplay;
     surfInfo.window = window;
 
     VkSurfaceKHR surface = VK_NULL_HANDLE;
     if (vkCreateXlibSurfaceKHR(instance, &surfInfo, nullptr, &surface) != VK_SUCCESS) {
         fprintf(stderr, "INITFAIL xlib surface win=0x%lx\n", (unsigned long)window);
         vkDestroyInstance(instance, nullptr);
+        if (s_ownsSurfaceDisplay) XCloseDisplay((Display *)s_surfaceDisplay);
+        s_surfaceDisplay = nullptr;
+        s_ownsSurfaceDisplay = false;
         return false;
     }
     s_ctx.surface = surface;
@@ -2072,6 +2084,9 @@ void Platform_ShutdownVulkan(void)
 
     if (device) vkDestroyDevice(device, nullptr);
     if (s_ctx.surface) vkDestroySurfaceKHR(instance, (VkSurfaceKHR)s_ctx.surface, nullptr);
+    if (s_ownsSurfaceDisplay && s_surfaceDisplay) XCloseDisplay((Display *)s_surfaceDisplay);
+    s_surfaceDisplay = nullptr;
+    s_ownsSurfaceDisplay = false;
     if (instance) vkDestroyInstance(instance, nullptr);
 
     s_ctx.isInitialized = false;
