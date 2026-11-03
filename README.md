@@ -134,33 +134,11 @@ stencil volumes were both built and measured, then reverted, and CHANGELOG says 
 
 ## Linux port (this fork)
 
-The Vulkan/Direct3D-8 shim, PAL and Linux build in this fork live in `GeneralsMD/Code/Platform`
-and `PORT_TO_LINUX_PLAN.md`. The game is the same 2003 content; what differs is the layer it draws
-through: the engine's Direct3D 8 calls are decoded into one canonical vertex format and replayed as
-Vulkan, with PAL supplying files, timing, registry, input and the window.
+This fork builds and runs the game on Linux through Vulkan, with PAL replacing the Windows layer
+and a shim decoding the engine's Direct3D 8 calls. The build, requirements, known limits and
+licensing notes live in [docs/LINUX.md](docs/LINUX.md).
 
-Requirements: GCC 13, CMake 3.20+, Ninja, Vulkan loader and headers, OpenAL, libav.
-
-```console
-cmake -S GeneralsMD/Code -B GeneralsMD/build-linux -G Ninja -DCMAKE_BUILD_TYPE=Release
-cmake --build GeneralsMD/build-linux
-ctest --test-dir GeneralsMD/build-linux --output-on-failure
-```
-
-You still need your own Zero Hour install for the data files, exactly as the Windows build does.
-
-Known limits of the Linux path today:
-
-- **Run it in an X11 session.** The window is a plain Xlib client, so under Wayland it goes through
-  XWayland. In the same match the present call measured about 40-60 ms there against 0.05 ms in an
-  X11 session; the XWayland path is the likely cost, and a native Wayland backend is the planned
-  fix.
-- The Vulkan surface owns its own Xlib connection, closed before the window's. Sharing the window's
-  `Display` crashed in `XCloseDisplay` at shutdown; the separate connection is the empirically
-  working arrangement, not a proved root cause.
-- The minimap is black at match start for China until its radar upgrade is bought; the USA radar
-  shows immediately. The GLA follows the same upgrade-gated pattern (verify against its command
-  centre INI).
+You still need your own Zero Hour install for the data files, as with the Windows build below.
 
 ---
 
