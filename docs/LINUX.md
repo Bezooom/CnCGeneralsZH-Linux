@@ -56,5 +56,14 @@ working arrangement, not a proved root cause.
 
 ## Licensing
 
-The source is GPL v3, inherited from the code EA released. No game data is distributed here: no
-`*.big` archive, map, model or texture from the retail game is committed, and none may be.
+The source is GPL v3, inherited from the code EA released. No game data from the retail install is
+committed: no `*.big` archive, map, model or texture from the player's copy, and none may be added.
+
+The repository does carry a small, fixed set of assets, listed here so the claim above is exact:
+
+| Path | Files | Origin |
+| :--- | :--- | :--- |
+| `Generals/Code/Libraries/Source/WWVegas/WW3D2/RequiredAssets/` | `AddProjectorGradient.tga`, `MultProjectorGradient.tga`, `w3d_missing_texture.tga`, `ShatterPlanes0.w3d` | part of the WW3D source EA released under GPL v3 |
+| `GeneralsMD/Code/Data/Art/Textures/` | `ReforgedBar{US,China,GLA}{Left,Center,Right}.tga` (9), `RebornBar{US,China,GLA}{Left,Center,Right}.tga` (9) | interface art authored by the upstream Reforged project, which is GPL v3; not EA assets |
+
+Their provenance is recorded here and must be kept in step with what the tree actually contains.
