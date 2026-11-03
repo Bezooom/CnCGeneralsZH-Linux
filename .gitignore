@@ -25,3 +25,13 @@ AGENTS.md
 # Game disc images and installation sources
 *.iso
 C&C Generals*/
+
+# Game data. The player's Zero Hour install is never committed: no .big archive, no map, no
+# model, no texture from the retail game belongs in this repository or in a release.
+**/Run/*.big
+**/Run/*.map
+**/Run/*.w3d
+**/Run/*.tga
+**/Run/*.bik
+**/Run/Maps/
+**/*.big

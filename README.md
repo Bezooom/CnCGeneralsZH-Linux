@@ -151,13 +151,16 @@ You still need your own Zero Hour install for the data files, exactly as the Win
 
 Known limits of the Linux path today:
 
-- **Run it in an X11 session.** The window is a plain Xlib client; under Wayland it goes through
-  XWayland, and the compositor's present costs about 60 ms a frame there against 0.05 ms on X11.
-  A native Wayland backend is the planned fix.
-- The Vulkan surface owns its own Xlib connection, closed before the window's, because closing a
-  display that Vulkan was handed walked freed state in `XCloseDisplay`.
-- The China and GLA minimaps are black at match start because their radar comes from an upgrade,
-  not from the command centre; the USA radar shows immediately.
+- **Run it in an X11 session.** The window is a plain Xlib client, so under Wayland it goes through
+  XWayland. In the same match the present call measured about 40-60 ms there against 0.05 ms in an
+  X11 session; the XWayland path is the likely cost, and a native Wayland backend is the planned
+  fix.
+- The Vulkan surface owns its own Xlib connection, closed before the window's. Sharing the window's
+  `Display` crashed in `XCloseDisplay` at shutdown; the separate connection is the empirically
+  working arrangement, not a proved root cause.
+- The minimap is black at match start for China until its radar upgrade is bought; the USA radar
+  shows immediately. The GLA follows the same upgrade-gated pattern (verify against its command
+  centre INI).
 
 ---
 
