@@ -1771,13 +1771,15 @@ TEST(surface_draw_pixel_truncates_the_colour_the_way_drawpixel_did)
 	SurfaceClass::Draw_Pixel( 5, 1, 0x11223344, 2, buf, 16 );
 	CHECK_EQ( *(unsigned short *)( buf + 16 + 5 * 2 ), 0x3344 );
 
-	/* an unsupported pixel size writes nothing at all, exactly as the switch used to */
+	/* three bytes per pixel: blue, green, red in memory order */
 	memset( buf, 0, sizeof( buf ) );
 	SurfaceClass::Draw_Pixel( 5, 1, 0x11223344, 3, buf, 16 );
-	unsigned int written = 0;
-	for( unsigned int i = 0; i < sizeof( buf ); ++i )
-		if( buf[ i ] != 0 ) ++written;
-	CHECK_EQ( written, 0 );
+	CHECK_EQ( buf[ 16 + 5 * 3 + 0 ], 0x44 );
+	CHECK_EQ( buf[ 16 + 5 * 3 + 1 ], 0x33 );
+	CHECK_EQ( buf[ 16 + 5 * 3 + 2 ], 0x22 );
+	/* the bytes on either side of the pixel stay untouched */
+	CHECK_EQ( buf[ 16 + 5 * 3 - 1 ], 0 );
+	CHECK_EQ( buf[ 16 + 5 * 3 + 3 ], 0 );
 }
 
 TEST(surface_draw_h_line_fills_the_run_inclusive_at_both_ends)

@@ -135,12 +135,16 @@ static WW3DFormat findFormat(const WW3DFormat formats[])
 //-------------------------------------------------------------------------------------------------
 void W3DRadar::initializeTextureFormats( void )
 {
+	// X8R8G8B8 comes first: the 24-bit format's surface is 3 bytes per pixel, and while
+	// Draw_Pixel() now writes it, the minimap stayed black end to end in testing with it
+	// selected.  The 32-bit path is the one that is exercised and verified.  R8G8B8 stays in
+	// the list last so a device that somehow lacks the 32-bit format still gets a texture.
 	const WW3DFormat terrainFormats[] = 
 	{
-		WW3D_FORMAT_R8G8B8,
 		WW3D_FORMAT_X8R8G8B8,
 		WW3D_FORMAT_R5G6B5,
 		WW3D_FORMAT_X1R5G5B5,
+		WW3D_FORMAT_R8G8B8,
 		WW3D_FORMAT_UNKNOWN				// keep this one last
 	};
 	const WW3DFormat overlayFormats[] = 
