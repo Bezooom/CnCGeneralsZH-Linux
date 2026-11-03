@@ -132,6 +132,35 @@ stencil volumes were both built and measured, then reverted, and CHANGELOG says 
 
 ---
 
+## Linux port (this fork)
+
+The Vulkan/Direct3D-8 shim, PAL and Linux build in this fork live in `GeneralsMD/Code/Platform`
+and `PORT_TO_LINUX_PLAN.md`. The game is the same 2003 content; what differs is the layer it draws
+through: the engine's Direct3D 8 calls are decoded into one canonical vertex format and replayed as
+Vulkan, with PAL supplying files, timing, registry, input and the window.
+
+Requirements: GCC 13, CMake 3.20+, Ninja, Vulkan loader and headers, OpenAL, libav.
+
+```console
+cmake -S GeneralsMD/Code -B GeneralsMD/build-linux -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake --build GeneralsMD/build-linux
+ctest --test-dir GeneralsMD/build-linux --output-on-failure
+```
+
+You still need your own Zero Hour install for the data files, exactly as the Windows build does.
+
+Known limits of the Linux path today:
+
+- **Run it in an X11 session.** The window is a plain Xlib client; under Wayland it goes through
+  XWayland, and the compositor's present costs about 60 ms a frame there against 0.05 ms on X11.
+  A native Wayland backend is the planned fix.
+- The Vulkan surface owns its own Xlib connection, closed before the window's, because closing a
+  display that Vulkan was handed walked freed state in `XCloseDisplay`.
+- The China and GLA minimaps are black at match start because their radar comes from an upgrade,
+  not from the command centre; the USA radar shows immediately.
+
+---
+
 ## Build it
 
 Win32 x86 only. The code is full of 32-bit inline assembly, and an x64 configure is refused on
