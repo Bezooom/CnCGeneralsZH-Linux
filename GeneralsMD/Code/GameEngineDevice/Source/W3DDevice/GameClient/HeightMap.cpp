@@ -2054,9 +2054,24 @@ void HeightMapRenderObjClass::Render(RenderInfoClass & rinfo)
 			}
 		}
 
+		const Int baseTileBorder = m_map ? m_map->getBorderSizeInline() : 0;
+		const Real baseTileCell = (Real)MAP_XY_FACTOR;
+		const Real baseTileWorld = baseTileCell * (Real)VERTEX_BUFFER_TILE_LENGTH;
+		const Real baseTileHalf = baseTileWorld * 0.5f;
+		const Real baseTileZ = 255.0f * (Real)MAP_HEIGHT_SCALE * 0.5f;
 		for (j=0; j<m_numVBTilesY; j++)
 			for (i=0; i<m_numVBTilesX; i++)
 			{
+				// The same conservative tile test the shroud pass uses: without it every shader
+				// pass drew every tile of the whole map, including the ones off screen.
+				{
+					const Real x0 = ((Real)(i * VERTEX_BUFFER_TILE_LENGTH - baseTileBorder)) * baseTileCell;
+					const Real y0 = ((Real)(j * VERTEX_BUFFER_TILE_LENGTH - baseTileBorder)) * baseTileCell;
+					AABoxClass tileBox( Vector3( x0 + baseTileHalf, y0 + baseTileHalf, baseTileZ ),
+															Vector3( baseTileHalf, baseTileHalf, baseTileZ ) );
+					if( rinfo.Camera.Cull_Box( tileBox ) )
+						continue;
+				}
 				static int count = 0;
 				count++;
 				Int numPolys = VERTEX_BUFFER_TILE_LENGTH*VERTEX_BUFFER_TILE_LENGTH*2;
