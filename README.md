@@ -1,4 +1,44 @@
-# C&C Generals: Zero Hour на Linux (Vulkan / SDL3)
+<a id="readme-top"></a>
+<!-- best-readme-template -->
+<div align="center">
+
+<h1 align="center">C&C Generals: Zero Hour на Linux (Vulkan / SDL3)</h1>
+
+<p align="center">
+  C&C Generals: Zero Hour нативно на Linux (Vulkan / SDL3) на основе CnCGeneralsZH-Reforged: сборка, замеры X11 vs Wayland, заметки по рендеру. Игровые файлы — свои.
+  <br />
+  <br />
+  <a href="https://github.com/Bezooom/CnCGeneralsZH-Linux/tree/HEAD/docs"><strong>Документация »</strong></a> · <a href="https://github.com/Bezooom/CnCGeneralsZH-Linux/issues/new?labels=bug">Сообщить об ошибке</a> · <a href="https://github.com/Bezooom/CnCGeneralsZH-Linux/issues/new?labels=enhancement">Предложить улучшение</a> · <a href="README_EN.md">English</a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/Bezooom/CnCGeneralsZH-Linux/blob/HEAD/LICENSE.md"><img src="https://img.shields.io/badge/License-GPL--3.0%20%2B%20EA%20terms-blue?style=for-the-badge" alt="License" /></a>
+  <a href="https://github.com/Bezooom/CnCGeneralsZH-Linux/stargazers"><img src="https://img.shields.io/github/stars/Bezooom/CnCGeneralsZH-Linux?style=for-the-badge" alt="Stars" /></a>
+  <a href="https://github.com/Bezooom/CnCGeneralsZH-Linux/commits"><img src="https://img.shields.io/github/last-commit/Bezooom/CnCGeneralsZH-Linux?style=for-the-badge" alt="Last commit" /></a>
+  <a href="https://github.com/Bezooom/CnCGeneralsZH-Linux/issues"><img src="https://img.shields.io/github/issues/Bezooom/CnCGeneralsZH-Linux?style=for-the-badge" alt="Issues" /></a>
+</p>
+
+</div>
+
+<details open>
+<summary><b>📑 Содержание</b></summary>
+
+- [📖 О проекте](#-о-проекте)
+- [🗺️ Ландшафт открытых проектов](#-ландшафт-открытых-проектов)
+- [📦 Модель распространения (как у OpenRA)](#-модель-распространения-как-у-openra)
+- [🔬 Инженерные заметки: замеры и оптимизации](#-инженерные-заметки-замеры-и-оптимизации)
+- [🧱 Технологии (Built With)](#-технологии-built-with)
+- [🚀 Как запустить игру на Linux](#-как-запустить-игру-на-linux)
+- [🤝 Взаимодействие с апстримом (Upstream Collaboration)](#-взаимодействие-с-апстримом-upstream-collaboration)
+- [🙏 Основано на / благодарности](#-основано-на--благодарности)
+- [🗺️ Дорожная карта](#-дорожная-карта)
+- [🤝 Участие в разработке](#-участие-в-разработке)
+- [📄 Лицензия](#-лицензия)
+- [📬 Контакты](#-контакты)
+
+</details>
+
+## 📖 О проекте
 
 > **Нативный запуск легендарной RTS на Linux без Wine и Proton: ландшафт открытых проектов, модель распространения OpenRA (Bring-Your-Own-Assets) и инженерные заметки по оптимизации рендера.**
 
@@ -100,6 +140,16 @@
 
 ---
 
+## 🧱 Технологии (Built With)
+
+<p>
+<img src="https://img.shields.io/badge/C%2B%2B-17-00599C?style=for-the-badge&logo=cplusplus&logoColor=white" alt="C++" />
+<img src="https://img.shields.io/badge/Vulkan-1.1-AC162C?style=for-the-badge&logo=vulkan&logoColor=white" alt="Vulkan" />
+<img src="https://img.shields.io/badge/SDL-3-1D4ED8?style=for-the-badge" alt="SDL" />
+<img src="https://img.shields.io/badge/CMake-build-064F8C?style=for-the-badge&logo=cmake&logoColor=white" alt="CMake" />
+<img src="https://img.shields.io/badge/Linux-x86__64-FCC624?style=for-the-badge&logo=linux&logoColor=white" alt="Linux" />
+</p>
+
 ## 🚀 Как запустить игру на Linux
 
 ### Вариант 1. Готовые пакеты из апстрима Reforged (рекомендуется)
@@ -142,8 +192,35 @@ cd CnCGeneralsZH-Reforged
 
 ---
 
+## 🗺️ Дорожная карта
+
+- [ ] Отправить предложения из раздела «Взаимодействие с апстримом» в CnCGeneralsZH-Reforged
+- [ ] Автопроверка сборки на Linux в GitHub Actions
+
+Полный список задач и идей — в [issues](https://github.com/Bezooom/CnCGeneralsZH-Linux/issues).
+
+## 🤝 Участие в разработке
+
+Вклад в проект приветствуется. Если есть идея, как сделать лучше, откройте issue или pull request:
+
+1. Сделайте форк репозитория
+2. Создайте ветку (`git checkout -b feature/my-idea`)
+3. Сделайте коммит (`git commit -m 'feat: my idea'`)
+4. Отправьте ветку (`git push origin feature/my-idea`)
+5. Откройте pull request
+
+Подробные правила: [CONTRIBUTING.md](CONTRIBUTING.md).
+
 ## 📄 Лицензия
 
 - Весь код в репозитории распространяется под **GPL v3 с дополнительными условиями EA** — см. [LICENSE.md](LICENSE.md). Это касается и моих изменений.
 - Игровые ресурсы (`.big`-архивы, текстуры, звуки, карты) не входят в репозиторий и принадлежат Electronic Arts.
 - Проект носит исследовательский характер и не аффилирован с Electronic Arts. Товарные знаки Command & Conquer и Generals принадлежат Electronic Arts Inc.
+
+## 📬 Контакты
+
+**Павел Наумов** (Bezooom) — [naumovai.ru](https://naumovai.ru) · [X @Bezooooom](https://x.com/Bezooooom) · naumov122@gmail.com
+
+Проект: [https://github.com/Bezooom/CnCGeneralsZH-Linux](https://github.com/Bezooom/CnCGeneralsZH-Linux)
+
+<p align="right">(<a href="#readme-top">наверх</a>)</p>

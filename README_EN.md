@@ -1,4 +1,44 @@
-# C&C Generals: Zero Hour on Linux (Vulkan / SDL3)
+<a id="readme-top"></a>
+<!-- best-readme-template -->
+<div align="center">
+
+<h1 align="center">C&C Generals: Zero Hour on Linux (Vulkan / SDL3)</h1>
+
+<p align="center">
+  C&C Generals: Zero Hour natively on Linux (Vulkan / SDL3), based on CnCGeneralsZH-Reforged: build, X11 vs Wayland measurements, renderer notes. Bring your own game data.
+  <br />
+  <br />
+  <a href="https://github.com/Bezooom/CnCGeneralsZH-Linux/tree/HEAD/docs"><strong>Docs »</strong></a> · <a href="https://github.com/Bezooom/CnCGeneralsZH-Linux/issues/new?labels=bug">Report Bug</a> · <a href="https://github.com/Bezooom/CnCGeneralsZH-Linux/issues/new?labels=enhancement">Request Feature</a> · <a href="README.md">Русский</a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/Bezooom/CnCGeneralsZH-Linux/blob/HEAD/LICENSE.md"><img src="https://img.shields.io/badge/License-GPL--3.0%20%2B%20EA%20terms-blue?style=for-the-badge" alt="License" /></a>
+  <a href="https://github.com/Bezooom/CnCGeneralsZH-Linux/stargazers"><img src="https://img.shields.io/github/stars/Bezooom/CnCGeneralsZH-Linux?style=for-the-badge" alt="Stars" /></a>
+  <a href="https://github.com/Bezooom/CnCGeneralsZH-Linux/commits"><img src="https://img.shields.io/github/last-commit/Bezooom/CnCGeneralsZH-Linux?style=for-the-badge" alt="Last commit" /></a>
+  <a href="https://github.com/Bezooom/CnCGeneralsZH-Linux/issues"><img src="https://img.shields.io/github/issues/Bezooom/CnCGeneralsZH-Linux?style=for-the-badge" alt="Issues" /></a>
+</p>
+
+</div>
+
+<details open>
+<summary><b>📑 Table of Contents</b></summary>
+
+- [📖 About The Project](#-about-the-project)
+- [🗺️ Open Source Ecosystem](#-open-source-ecosystem)
+- [📦 Distribution Model (OpenRA Style)](#-distribution-model-openra-style)
+- [🔬 Engineering Field Notes: RTX 3090 Benchmarks](#-engineering-field-notes-rtx-3090-benchmarks)
+- [🚀 How to Run on Linux](#-how-to-run-on-linux)
+- [🤝 Upstream Collaboration](#-upstream-collaboration)
+- [🙏 Based on / Credits](#-based-on--credits)
+- [🗺️ Roadmap](#-roadmap)
+- [🤝 Contributing](#-contributing)
+- [📄 License](#-license)
+- [🧱 Built With](#-built-with)
+- [📬 Contact](#-contact)
+
+</details>
+
+## 📖 About The Project
 
 > **Native execution of the classic RTS on Linux without Wine or Proton: open-source ecosystem map, OpenRA-style distribution model (Bring-Your-Own-Assets), and engineering post-mortem on renderer optimizations.**
 
@@ -139,8 +179,45 @@ Observations and optimizations are documented and offered to the canonical Refor
 
 ---
 
+## 🗺️ Roadmap
+
+- [ ] Send the proposals from “Upstream Collaboration” to CnCGeneralsZH-Reforged
+- [ ] Linux build check in GitHub Actions
+
+See the [open issues](https://github.com/Bezooom/CnCGeneralsZH-Linux/issues) for the full list of ideas and known problems.
+
+## 🤝 Contributing
+
+Contributions are welcome. If you have an idea that would make this better, open an issue or a pull request:
+
+1. Fork the repository
+2. Create a branch (`git checkout -b feature/my-idea`)
+3. Commit (`git commit -m 'feat: my idea'`)
+4. Push (`git push origin feature/my-idea`)
+5. Open a pull request
+
+Detailed guidelines: [CONTRIBUTING.md](CONTRIBUTING.md).
+
 ## 📄 License
 
 - All code in this repository is under **GPL v3 with EA additional terms** — see [LICENSE.md](LICENSE.md). This includes my changes.
 - Game assets (`.big` archives, textures, audio, maps) are not included and remain the property of Electronic Arts.
 - Research project, not affiliated with Electronic Arts. Command & Conquer and Generals are trademarks of Electronic Arts Inc.
+
+## 🧱 Built With
+
+<p>
+<img src="https://img.shields.io/badge/C%2B%2B-17-00599C?style=for-the-badge&logo=cplusplus&logoColor=white" alt="C++" />
+<img src="https://img.shields.io/badge/Vulkan-1.1-AC162C?style=for-the-badge&logo=vulkan&logoColor=white" alt="Vulkan" />
+<img src="https://img.shields.io/badge/SDL-3-1D4ED8?style=for-the-badge" alt="SDL" />
+<img src="https://img.shields.io/badge/CMake-build-064F8C?style=for-the-badge&logo=cmake&logoColor=white" alt="CMake" />
+<img src="https://img.shields.io/badge/Linux-x86__64-FCC624?style=for-the-badge&logo=linux&logoColor=white" alt="Linux" />
+</p>
+
+## 📬 Contact
+
+**Pavel Naumov** (Bezooom) — [naumovai.ru](https://naumovai.ru) · [X @Bezooooom](https://x.com/Bezooooom) · naumov122@gmail.com
+
+Project: [https://github.com/Bezooom/CnCGeneralsZH-Linux](https://github.com/Bezooom/CnCGeneralsZH-Linux)
+
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
