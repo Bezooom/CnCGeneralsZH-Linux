@@ -8,7 +8,7 @@
 ![Renderer](https://img.shields.io/badge/Renderer-Vulkan%20%7C%20SDL3-brightgreen)
 ![Model](https://img.shields.io/badge/Distribution-OpenRA%20Style%20%28BYOG%29-orange)
 ![Hardware](https://img.shields.io/badge/Tested%20on-RTX%203090-purple)
-![License](https://img.shields.io/badge/License-MIT-yellow)
+[![License: GPL-3.0](https://img.shields.io/badge/License-GPL--3.0%20%2B%20EA%20terms-blue)](LICENSE.md)
 
 [English Version](README_EN.md)
 
@@ -22,7 +22,7 @@
 | :--- | :--- | :--- | :--- |
 | **Zero Hour Reforged** | Канонический осовремененный движок: 64-бит, Direct3D 11 / Vulkan / Metal, умный AI, встроенный сетевой клиент, пакеты под Linux и macOS. | Windows (D3D11), macOS (Metal + SDL3), **Linux / Steam Deck (Vulkan + SDL3)** | [olcayseygan/CnCGeneralsZH-Reforged](https://github.com/olcayseygan/CnCGeneralsZH-Reforged) |
 | **Generals Game Code** | Общественный проект модернизации и очистки кодовой базы C++20, поддержка Visual Studio 2022 и кроссплатформенной сборки (Docker). | Windows, Linux (сборка/инструменты) | [TheSuperHackers/GeneralsGameCode](https://github.com/TheSuperHackers/GeneralsGameCode) |
-| **Этот репозиторий** | Инженерный навигатор по нативному запуску на Linux: профилирование узких мест, замеры в сессиях X11 и Wayland, анализ производительности и предложения в апстрим. | Полевые заметки, замеры, draft pull requests | [Bezooom/CnCGeneralsZH-Linux](https://github.com/Bezooom/CnCGeneralsZH-Linux) |
+| **Этот репозиторий** | Инженерный навигатор по нативному запуску на Linux: профилирование узких мест, замеры в сессиях X11 и Wayland, анализ производительности и предложения в апстрим. | Рабочее дерево Linux-порта на основе Reforged (код и история апстрима) + замеры и заметки | [Bezooom/CnCGeneralsZH-Linux](https://github.com/Bezooom/CnCGeneralsZH-Linux) |
 
 ---
 
@@ -133,8 +133,17 @@ cd CnCGeneralsZH-Reforged
 
 ---
 
+## 🙏 Основано на / благодарности
+
+- **Electronic Arts** — исходный код *Command & Conquer: Generals* и *Zero Hour*, открытый в 2025 году под GPL v3 с дополнительными условиями EA: [electronicarts/CnC_Generals_Zero_Hour](https://github.com/electronicarts/CnC_Generals_Zero_Hour).
+- **Olcay Seygan** — проект [CnCGeneralsZH-Reforged](https://github.com/olcayseygan/CnCGeneralsZH-Reforged) (64-бит, Vulkan / Metal / D3D11, SDL3). Этот репозиторий основан на его дереве и сохраняет его историю коммитов; большая часть кода движка — его работа и работа сообщества.
+- **TheSuperHackers** — [GeneralsGameCode](https://github.com/TheSuperHackers/GeneralsGameCode), модернизация кодовой базы.
+- Мой вклад (Bezooom): Linux-сборка и проверка на Ubuntu 24.04, замеры X11 / Wayland, заметки по рендеру, документация и предложения в апстрим (список выше).
+
+---
+
 ## 📄 Лицензия
 
-- Материалы и документация этого репозитория распространяются под лицензией [MIT](LICENSE).
-- Исходный код оригинальной игры Command & Conquer Generals Zero Hour открыт Electronic Arts под лицензией GPL v3 с дополнительными условиями EA ([исходный текст](https://github.com/TheSuperHackers/GeneralsGameCode/blob/main/LICENSE)).
+- Весь код в репозитории распространяется под **GPL v3 с дополнительными условиями EA** — см. [LICENSE.md](LICENSE.md). Это касается и моих изменений.
+- Игровые ресурсы (`.big`-архивы, текстуры, звуки, карты) не входят в репозиторий и принадлежат Electronic Arts.
 - Проект носит исследовательский характер и не аффилирован с Electronic Arts. Товарные знаки Command & Conquer и Generals принадлежат Electronic Arts Inc.

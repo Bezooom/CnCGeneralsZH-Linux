@@ -8,7 +8,7 @@
 ![Renderer](https://img.shields.io/badge/Renderer-Vulkan%20%7C%20SDL3-brightgreen)
 ![Model](https://img.shields.io/badge/Distribution-OpenRA%20Style%20%28BYOG%29-orange)
 ![Hardware](https://img.shields.io/badge/Tested%20on-RTX%203090-purple)
-![License](https://img.shields.io/badge/License-MIT-yellow)
+[![License: GPL-3.0](https://img.shields.io/badge/License-GPL--3.0%20%2B%20EA%20terms-blue)](LICENSE.md)
 
 [Русская версия](README.md)
 
@@ -22,7 +22,7 @@ Following Electronic Arts' 2025 release of the *Command & Conquer: Generals* and
 | :--- | :--- | :--- | :--- |
 | **Zero Hour Reforged** | Canonical modernized engine: 64-bit, Direct3D 11 / Vulkan / Metal, enhanced AI, built-in matchmaking, packages for Linux and macOS. | Windows (D3D11), macOS (Metal + SDL3), **Linux / Steam Deck (Vulkan + SDL3)** | [olcayseygan/CnCGeneralsZH-Reforged](https://github.com/olcayseygan/CnCGeneralsZH-Reforged) |
 | **Generals Game Code** | Community codebase modernization and cleanup for C++20, supporting Visual Studio 2022 and cross-platform build environments (Docker). | Windows, Linux (builds/tooling) | [TheSuperHackers/GeneralsGameCode](https://github.com/TheSuperHackers/GeneralsGameCode) |
-| **This Repository** | Engineering companion guide for Linux: profiling bottlenecks, X11 vs. Wayland benchmarks, renderer optimization analysis, and upstream proposals. | Field notes, benchmark results, draft pull requests | [Bezooom/CnCGeneralsZH-Linux](https://github.com/Bezooom/CnCGeneralsZH-Linux) |
+| **This Repository** | Engineering companion guide for Linux: profiling bottlenecks, X11 vs. Wayland benchmarks, renderer optimization analysis, and upstream proposals. | Linux-port working tree based on Reforged (upstream code and history) + benchmarks and notes | [Bezooom/CnCGeneralsZH-Linux](https://github.com/Bezooom/CnCGeneralsZH-Linux) |
 
 ---
 
@@ -130,8 +130,17 @@ Observations and optimizations are documented and offered to the canonical Refor
 
 ---
 
+## 🙏 Based on / Credits
+
+- **Electronic Arts** — *Command & Conquer: Generals* and *Zero Hour* source code, released in 2025 under GPL v3 with EA additional terms: [electronicarts/CnC_Generals_Zero_Hour](https://github.com/electronicarts/CnC_Generals_Zero_Hour).
+- **Olcay Seygan** — [CnCGeneralsZH-Reforged](https://github.com/olcayseygan/CnCGeneralsZH-Reforged) (64-bit, Vulkan / Metal / D3D11, SDL3). This repository is based on that tree and keeps its commit history; most of the engine code is his and the community's work.
+- **TheSuperHackers** — [GeneralsGameCode](https://github.com/TheSuperHackers/GeneralsGameCode), codebase modernization.
+- My part (Bezooom): Linux build and testing on Ubuntu 24.04, X11 / Wayland measurements, renderer notes, documentation and upstream proposals (listed above).
+
+---
+
 ## 📄 License
 
-- Notes, benchmarks, and documentation in this repository are licensed under [MIT](LICENSE).
-- The original Command & Conquer Generals Zero Hour source code was released by Electronic Arts under GPL v3 with additional EA terms ([source license](https://github.com/TheSuperHackers/GeneralsGameCode/blob/main/LICENSE)).
-- This is an independent research project and is not affiliated with Electronic Arts. Command & Conquer and Generals are trademarks of Electronic Arts Inc.
+- All code in this repository is under **GPL v3 with EA additional terms** — see [LICENSE.md](LICENSE.md). This includes my changes.
+- Game assets (`.big` archives, textures, audio, maps) are not included and remain the property of Electronic Arts.
+- Research project, not affiliated with Electronic Arts. Command & Conquer and Generals are trademarks of Electronic Arts Inc.
